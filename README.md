@@ -44,6 +44,17 @@ docker compose --env-file .env \
 
 개발 환경의 Vite 주소는 `http://localhost:5173`입니다. 해당 포트를 이미 사용 중이면 `.env`의 `FRONTEND_DEV_PORT`를 바꿀 수 있습니다. Vite는 `/api`와 `/ws`를 내부 API 컨테이너로 전달합니다.
 
+개발 환경에서는 Adminer를 `http://127.0.0.1:8081`에서 함께 제공합니다. 포트가 겹치면 `.env`의 `ADMINER_PORT`를 바꿉니다. 로그인 화면에서는 system으로 `PostgreSQL`, server로 `db`를 선택하고 database, username, password에는 `.env`의 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` 값을 각각 입력합니다. Adminer는 개발 환경에만 포함되며, 화면에서 실행한 SQL은 개발 DB 데이터를 변경할 수 있습니다.
+
+개발 환경을 종료할 때도 Adminer가 별도 container로 남지 않도록 실행할 때와 같은 Compose 파일을 지정합니다.
+
+```bash
+docker compose --env-file .env \
+  -f compose.yaml \
+  -f compose.dev.yaml \
+  down
+```
+
 ## Docker 검증
 
 프런트엔드 전체 검증은 다음 명령으로 실행합니다.

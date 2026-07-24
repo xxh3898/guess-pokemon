@@ -285,7 +285,9 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 - `compose.dev.yaml`은 source bind mount와 Vite dev server, Spring `bootRun`, PostgreSQL을 구성한다.
 - host에는 Docker 외 Java·Node·PostgreSQL을 요구하지 않는다.
 - Vite는 `/api`, `/ws`를 API container로 proxy한다.
-- base Compose와 개발 override를 함께 사용하며 Vite만 host의 `5173` port에 공개한다.
+- base Compose와 개발 override를 함께 사용하며 Vite는 host의 `5173` port에, Adminer는 loopback의 `${ADMINER_PORT:-8081}` port에 공개한다.
+- Adminer는 Docker network의 `db:5432`에 연결하고 PostgreSQL port 자체는 host에 공개하지 않는다.
+- Adminer service는 `compose.dev.yaml`에만 정의하며 기본·테스트·운영 구성에는 포함하지 않는다.
 - MacBook 개발 DB는 개발 전용 DB 이름·계정과 named volume을 사용하고 Docker 재시작 뒤에도 데이터를 유지한다.
 
 ### 테스트
