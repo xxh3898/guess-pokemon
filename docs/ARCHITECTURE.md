@@ -18,11 +18,11 @@
 | Web | React 19.2.x, TypeScript 7.0.x, Vite 8.1.x, Lucide React 1.26.x | SPA, 현재 안정 계열, SVG icon |
 | Routing | React Router 8.3.x library mode | browser history, protected route, navigation blocker |
 | 실시간 client | `@stomp/stompjs` 7.3.x | STOMP, reconnect, heartbeat |
-| API | Spring Boot 4.1.x, Java 21, Gradle Wrapper | Servlet 기반 단일 애플리케이션 |
+| API | Spring Boot 4.1.0, Java 21, Gradle Wrapper 9.5.1 | Servlet 기반 단일 애플리케이션 |
 | Security | Spring Security, Spring Session JDBC | same-origin cookie session, CSRF, PostgreSQL session |
-| Persistence | Spring Data JPA, Flyway, PostgreSQL 18.x | 계정·catalog·경기 기록 |
+| Persistence | Spring Data JPA, Flyway, PostgreSQL 18.4 | 계정·catalog·경기 기록 |
 | 실시간 server | Spring WebSocket/STOMP simple broker | 단일 API instance |
-| Reverse proxy | Nginx 계열 multi-arch image | SPA fallback, `/api`, `/ws` proxy |
+| Reverse proxy | Nginx 1.30.4 Alpine multi-arch image | SPA fallback, `/api`, `/ws` proxy |
 | 외부 공개 | Cloudflare Tunnel | 테스트 Quick Tunnel, 운영 named tunnel |
 | 검증 | JUnit, Spring Test, Testcontainers, Vitest, Testing Library, Playwright | 계층별 자동 검증 |
 
@@ -281,20 +281,25 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 - `compose.dev.yaml`은 source bind mount와 Vite dev server, Spring `bootRun`, PostgreSQL을 구성한다.
 - host에는 Docker 외 Java·Node·PostgreSQL을 요구하지 않는다.
 - Vite는 `/api`, `/ws`를 API container로 proxy한다.
+- base Compose와 개발 override를 함께 사용하며 Vite만 host의 `5173` port에 공개한다.
 
 ### 테스트
 
-- `compose.test.yaml`은 frontend test, backend test, PostgreSQL integration test, E2E service를 분리한다.
-- Testcontainers 사용 시 Docker socket mount 범위와 위험을 문서화한다.
+- `compose.test.yaml`은 frontend 검증과 backend Testcontainers 통합 테스트를 분리한다.
+- backend test는 `postgres:18.4-alpine3.24`, `@ServiceConnection`을 사용해 실행마다 격리된 DB를 만든다.
+- Docker Desktop의 sibling container 통신을 위해 source를 host와 같은 절대경로에 mount하고 `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal`을 사용한다.
+- backend test container의 `/var/run/docker.sock` mount는 Docker daemon 전체 제어 권한에 해당하므로 신뢰할 수 있는 로컬 코드 검증에만 사용한다.
 - 외부 PokéAPI에 의존하지 않고 versioned catalog fixture를 사용한다.
 
 ### 운영
 
-- `web`, `api`, `db`, `tunnel` 네 service를 사용한다.
+- 현재 production-like 구성은 `web`, `api`, `db` 세 service를 사용하고, `tunnel`은 홈서버 배포 단계에서 추가한다.
 - `db`는 external port를 publish하지 않고 Docker network에만 expose한다.
-- named volume에 PostgreSQL 18 data를 보관한다.
+- named volume을 PostgreSQL 18의 `/var/lib/postgresql`에 mount해 data를 보관한다.
 - `web`만 내부 HTTP origin으로 노출하고 Tunnel이 outbound connection을 만든다.
 - Nginx는 `/api`, `/ws`, SPA fallback, request body limit, security header를 담당한다.
+- Nginx가 외부에 전달하는 Actuator 경로는 liveness와 readiness 두 개로 제한한다.
+- API readiness에는 `readinessState`와 `db`를 포함하고 liveness에는 외부 dependency를 포함하지 않는다.
 - Cloudflare가 외부 TLS를 종료하고 `X-Forwarded-*`를 전달한다.
 - Spring은 신뢰하는 proxy header만 처리하도록 설정한다.
 

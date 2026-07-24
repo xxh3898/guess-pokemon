@@ -1,0 +1,45 @@
+name: guess-pokemon-test
+
+services:
+  frontend-test:
+    image: node:24.18.0-alpine3.24
+    working_dir: /workspace
+    command: >
+      sh -lc "npm ci --no-fund
+      && npm run lint
+      && npm run typecheck
+      && npm test
+      && npm run build
+      && npm audit --audit-level=high"
+    volumes:
+      - ./frontend:/workspace:ro
+      - frontend-test-dist:/workspace/dist
+      - frontend-test-node-modules:/workspace/node_modules
+
+  backend-test:
+    image: gradle:9.5.1-jdk21-alpine
+    user: root
+    working_dir: ${PWD:?Run Docker Compose from the repository root}/backend
+    command: ./gradlew test build --no-daemon
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      TESTCONTAINERS_HOST_OVERRIDE: ${TESTCONTAINERS_HOST_OVERRIDE:-host.docker.internal}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - type: bind
+        source: ${PWD:?Run Docker Compose from the repository root}/backend
+        target: ${PWD:?Run Docker Compose from the repository root}/backend
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - backend-test-build:${PWD:?Run Docker Compose from the repository root}/backend/build
+      - backend-test-gradle-cache:/home/gradle/.gradle
+      - backend-test-project-cache:${PWD:?Run Docker Compose from the repository root}/backend/.gradle
+
+volumes:
+  backend-test-build:
+  backend-test-gradle-cache:
+  backend-test-project-cache:
+  frontend-test-dist:
+  frontend-test-node-modules:

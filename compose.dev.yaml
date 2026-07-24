@@ -1,0 +1,29 @@
+services:
+  api:
+    image: guess-pokemon-api-dev
+    build:
+      target: development
+    volumes:
+      - ./backend:/workspace
+      - backend-build:/workspace/build
+      - backend-gradle-cache:/home/gradle/.gradle
+      - backend-project-cache:/workspace/.gradle
+
+  web:
+    image: guess-pokemon-web-dev
+    build:
+      target: development
+    command: sh -lc "npm ci --no-fund && npm run dev"
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+    ports: !override
+      - "${FRONTEND_DEV_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/workspace
+      - frontend-node-modules:/workspace/node_modules
+
+volumes:
+  backend-build:
+  backend-gradle-cache:
+  backend-project-cache:
+  frontend-node-modules:
