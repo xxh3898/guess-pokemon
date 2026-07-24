@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+**/.DS_Store
+**/.gradle
+**/build
+**/coverage
+**/dist
+**/node_modules
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+backups
+secrets

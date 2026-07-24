@@ -15,7 +15,7 @@
 
 | 영역 | 선택 | 기준 |
 |---|---|---|
-| Web | React 19.2.x, TypeScript 7.0.x, Vite 8.1.x | SPA, 현재 안정 계열 |
+| Web | React 19.2.x, TypeScript 7.0.x, Vite 8.1.x, Lucide React 1.26.x | SPA, 현재 안정 계열, SVG icon |
 | Routing | React Router 8.3.x library mode | browser history, protected route, navigation blocker |
 | 실시간 client | `@stomp/stompjs` 7.3.x | STOMP, reconnect, heartbeat |
 | API | Spring Boot 4.1.x, Java 21, Gradle Wrapper | Servlet 기반 단일 애플리케이션 |
@@ -51,7 +51,10 @@ flowchart LR
 guess-pokemon/
 ├── AGENTS.md
 ├── README.md
+├── .dockerignore
+├── .editorconfig
 ├── .env.example
+├── .gitattributes
 ├── .gitignore
 ├── compose.yaml
 ├── compose.dev.yaml
@@ -180,6 +183,7 @@ src/
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.
 - server snapshot을 기준으로 UI store를 재구성하고 event `stateVersion`이 이전 값이면 무시한다.
 - 정답 포켓몬 type을 selector 전용 snapshot에만 둔다.
+- Lucide icon은 named import만 사용하고 장식 icon은 screen reader에서 숨긴다. icon-only control은 부모 control에 접근 가능한 이름을 제공한다.
 
 ## 7. 인증과 session 흐름
 

@@ -14,13 +14,35 @@
 
 ## 기술 구성
 
-- React, TypeScript, Vite, React Router
+- React, TypeScript, Vite, React Router, Lucide React
 - Spring Boot, Java 21, Gradle
 - PostgreSQL, Flyway
 - WebSocket/STOMP
 - Docker Compose, Nginx, Cloudflare Tunnel
 
 호스트에 Java, Node.js, PostgreSQL을 직접 설치하지 않고 Docker 환경에서 개발하고 검증합니다.
+
+## 현재 기본 골격 실행
+
+프런트엔드와 백엔드는 아직 Docker Compose로 묶기 전이므로 각 터미널에서 따로 실행합니다.
+
+```bash
+docker run --rm -it -p 5173:5173 \
+  --mount type=bind,src="$PWD/frontend",dst=/workspace \
+  --mount type=volume,dst=/workspace/node_modules \
+  -w /workspace node:24.18.0-alpine \
+  sh -lc 'npm ci --no-fund && npm run dev'
+```
+
+```bash
+docker run --rm -it -p 8080:8080 \
+  --mount type=bind,src="$PWD/backend",dst=/workspace \
+  --mount type=volume,dst=/home/gradle/.gradle \
+  -w /workspace gradle:9.5.1-jdk21-alpine \
+  ./gradlew bootRun --no-daemon
+```
+
+프런트엔드 전체 검증은 `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` 순서로 실행합니다. 백엔드는 `./gradlew test --no-daemon`과 `./gradlew build --no-daemon`으로 검증합니다.
 
 ## 문서
 
@@ -29,7 +51,7 @@
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 공식 계약 문서를 확정하는 첫 개발 단계입니다. 실행 명령은 애플리케이션 scaffold와 Docker 구성을 추가한 뒤 이 문서에 안내합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot 기본 실행 골격까지 구성했습니다. PostgreSQL과 Docker Compose 통합은 다음 작업 단위에서 추가합니다.
 
 ## 공개 운영 주의
 
