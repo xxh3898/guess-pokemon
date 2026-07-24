@@ -145,6 +145,7 @@ com.guesspokemon
 - `WAITING_FOR_SELECTION`, `PLAYING`, `PAUSED`, `RESULT` 전이
 - 역할, 질문/추측 순서, 20회, 승패 계산
 - 정답 포켓몬은 aggregate private field로 유지
+- 기존 state를 직접 바꾸지 않고 immutable candidate를 만들어 persistence commit 뒤 교체
 
 ### `history`
 
@@ -247,6 +248,12 @@ room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든
 
 질문은 pending 상태를 만든다. 답변을 저장한 뒤 다음 행동을 허용한다. 추측은 서버가 `pokemon_species_id`를 정답과 비교해 즉시 결과를 확정한다.
 
+game start는 game 1건과 participant 2건을 한 transaction에 저장한다. 질문·답변·추측도 action과 game count·version·필요한 participant result를 같은 transaction에 반영한다. command service는 persistence bean의 transaction이 commit된 뒤에만 immutable candidate를 registry current state로 교체한다. DB 실패 시 이전 memory aggregate를 그대로 유지한다.
+
+active game은 모든 processed command ID를 memory에 보관한다. 질문·추측 command ID는 `game_action` unique constraint로도 막는다. 답변은 기존 action row를 갱신하므로 command ID를 memory에서 관리한다. 서버 재시작 뒤 active game을 복구하지 않는 동안은 별도 command journal을 두지 않는다.
+
+game command 시각은 PostgreSQL `timestamptz` 정밀도에 맞춰 microsecond로 절삭한 뒤 domain과 DB에 함께 전달한다. 따라서 transaction 이후 DB에서 game을 다시 읽어도 immutable memory aggregate의 identity timestamp와 동일하게 비교할 수 있다.
+
 ## 10. 재접속
 
 1. `SessionDisconnectEvent`를 받으면 해당 STOMP session과 사용자·방 mapping을 찾는다.
@@ -272,7 +279,7 @@ STOMP library의 자동 재연결만 신뢰하지 않는다. 브라우저 route�
 | socket mapping·60초 task | API memory | 연결 수명과 결합 |
 | 인증 요청 제한 | API Caffeine memory | 10분 수명, 최대 key 수 제한 |
 
-API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로 정리한다. 진행 중 방 자체는 복구하지 않는다.
+API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER_RESTART`로 정리하고 state version과 종료 시각을 갱신한다. 진행 중 방 자체는 복구하지 않는다.
 
 ## 12. 포켓몬 catalog
 

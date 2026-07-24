@@ -621,7 +621,9 @@ wss://<host>/ws
 
 - `commandId`: client가 한 사용자 행동마다 생성하는 UUID
 - `expectedStateVersion`: client가 마지막으로 본 room version
-- server는 같은 game의 `commandId` 중복 적용을 막는다.
+- server는 같은 active game에서 select·question·answer·guess의 `commandId` 중복 적용을 막는다.
+- 질문·추측 command ID는 history action row의 unique constraint로 한 번 더 검증한다. 답변 command ID는 active game memory에 유지하며 서버 재시작 뒤 해당 game은 `SERVER_RESTART`로 중단한다.
+- 성공한 select·question·answer·guess마다 state version을 1 증가시킨다.
 - version 충돌 시 `/user/queue/errors`로 `STALE_ROOM_STATE`와 최신 snapshot 요청 지침을 보낸다.
 
 ## 12. STOMP command
@@ -669,6 +671,8 @@ payload:
 ```
 
 권한: 질문자
+
+20번째 잘못된 추측은 `QUESTION_LIMIT`로 즉시 질문자 패배를 확정한다. 20번째 정답 추측은 `CORRECT_GUESS`가 우선하며 질문자 승리로 끝난다.
 
 ### 12.3 답변
 

@@ -8,6 +8,7 @@
 ## 1. 설계 원칙
 
 - 모든 영구 시간은 UTC `timestamptz`로 저장한다.
+- 애플리케이션은 영속할 `Instant`를 PostgreSQL과 같은 microsecond 정밀도로 맞춰 메모리 상태와 재조회 값이 달라지지 않게 한다.
 - 애플리케이션 entity ID는 UUID를 사용한다.
 - National Dex 번호는 포켓몬의 안정 식별자로 사용한다.
 - 방은 짧은 수명의 메모리 상태이므로 DB table을 만들지 않는다.
@@ -169,6 +170,13 @@ catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫
 
 `COMPLETED`는 앞 네 정상 승패 사유 중 하나를 가진다. `ABORTED`는 `BOTH_DISCONNECTED`, `SERVER_RESTART`만 허용한다.
 
+table-level `CHECK`가 다음 lifecycle 조합을 강제한다.
+
+- `IN_PROGRESS`: `end_reason`, `ended_at` 모두 null
+- `COMPLETED`: `CORRECT_GUESS`, `QUESTION_LIMIT`, `PLAYER_LEFT`, `RECONNECT_TIMEOUT` 중 하나와 `ended_at` not null
+- `ABORTED`: `BOTH_DISCONNECTED`, `SERVER_RESTART` 중 하나와 `ended_at` not null
+- 종료 시각은 시작 시각보다 빠를 수 없다.
+
 ## 6. `game_participant`
 
 | Column | Type | Null | Constraint | 설명 |
@@ -195,7 +203,7 @@ application과 integration test가 다음 invariant를 검증한다.
 | `id` | `uuid` | N | PK | 행동 ID |
 | `command_id` | `uuid` | N | UK | client 재전송 idempotency key |
 | `game_id` | `uuid` | N | FK, UK(game, sequence) | 경기 |
-| `actor_user_id` | `uuid` | N | FK | 질문자 ID |
+| `actor_user_id` | `uuid` | N | FK(game participant) | 질문자 ID |
 | `sequence_no` | `smallint` | N | CHECK 1~20 | 행동 순서 |
 | `action_type` | `varchar(20)` | N | CHECK | `QUESTION`, `GUESS` |
 | `question_text` | `varchar(200)` | Y |  | 질문 |
@@ -218,6 +226,8 @@ application과 integration test가 다음 invariant를 검증한다.
 
 Flyway migration에 위 조건을 표현하는 table-level `CHECK`를 둔다.
 
+`(game_id, actor_user_id)`는 `game_participant(game_id, user_id)`를 참조해 참가자가 아닌 사용자의 action row를 막는다. 질문·추측 command ID는 `game_action.command_id`에 영구 저장한다. 답변은 기존 question row를 갱신하므로 active game aggregate의 processed command set에서 중복을 막는다. 첫 버전은 active game을 서버 재시작 뒤 복구하지 않고 `SERVER_RESTART`로 중단하므로 별도 command journal table을 미리 만들지 않는다.
+
 ## 8. Spring Session table
 
 Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
@@ -235,6 +245,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 - `pokemon_species(korean_name)`
 - `pokemon_species(generation, national_dex_id)`
 - `game_participant(user_id, game_id)`
+- `game(round_group_id)`
 - `game(status, updated_at)`
 - `game(ended_at desc)`
 - `game_action(game_id, sequence_no)` unique
@@ -253,7 +264,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 - guess: action insert + game count/version + participant result·game end update 한 transaction
 - reconnect timeout: participant result + game end update 한 transaction
 
-WebSocket event는 transaction commit 뒤 전송한다. commit이 실패하면 성공 event를 보내지 않는다.
+game command는 기존 memory aggregate를 직접 바꾸지 않고 immutable candidate를 만든다. persistence transaction이 commit한 뒤에만 candidate를 현재 memory state로 교체한다. commit이 실패하면 기존 aggregate를 유지한다. WebSocket event는 transaction commit과 memory 교체 뒤 전송하며, commit이 실패하면 성공 event를 보내지 않는다.
 
 ## 11. 삭제와 보존
 
