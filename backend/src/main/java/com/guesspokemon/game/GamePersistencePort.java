@@ -24,6 +24,10 @@ public interface GamePersistencePort {
             GameState gameState,
             ActionState actionState);
 
+    void updateGame(
+            long expectedPreviousVersion,
+            GameState gameState);
+
     boolean actionCommandExists(UUID commandId);
 
     int abortInProgressGames(Instant endedAt);

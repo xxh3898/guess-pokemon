@@ -7,6 +7,7 @@ import static com.guesspokemon.game.GameTypes.GameActionType.GUESS;
 import static com.guesspokemon.game.GameTypes.GameActionType.QUESTION;
 import static com.guesspokemon.game.GameTypes.GameAnswer.NO;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
+import static com.guesspokemon.game.GameTypes.GameEndReason.RECONNECT_TIMEOUT;
 import static com.guesspokemon.game.GameTypes.GameResult.LOSS;
 import static com.guesspokemon.game.GameTypes.GameResult.WIN;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
@@ -21,6 +22,7 @@ import com.guesspokemon.game.GameCommandService;
 import com.guesspokemon.game.GameCommands.AnswerQuestionCommand;
 import com.guesspokemon.game.GameCommands.AskQuestionCommand;
 import com.guesspokemon.game.GameCommands.GuessPokemonCommand;
+import com.guesspokemon.game.GameCommands.EndGameCommand;
 import com.guesspokemon.game.GameCommands.StartGameCommand;
 import com.guesspokemon.game.GameRuleException;
 import com.guesspokemon.game.GameRuleException.GameRuleError;
@@ -202,6 +204,53 @@ class GameHistoryStoreIntegrationTest {
         assertEquals(0, current.usedActionCount());
         assertEquals(99L, stored.getStateVersion());
         assertEquals((short) 0, stored.getActionCount());
+        assertEquals(0L, gameActionRecordRepository.count());
+    }
+
+    @Test
+    void should_persistWinnerAndLoser_when_reconnectTimesOut() {
+        AppUser selector = saveUser("timeout_selector");
+        AppUser questioner = saveUser("timeout_questioner");
+        String roomCode = randomRoomCode();
+        ParticipantGameView started =
+                startGame(
+                        roomCode,
+                        selector.getId(),
+                        questioner.getId());
+
+        ParticipantGameView ended =
+                gameCommandService.endGame(
+                        new EndGameCommand(
+                                roomCode,
+                                questioner.getId(),
+                                UUID.randomUUID(),
+                                RECONNECT_TIMEOUT,
+                                INITIAL_STATE_VERSION + 2),
+                        selector.getId());
+
+        GameRecord stored =
+                gameRecordRepository
+                        .findById(started.gameId())
+                        .orElseThrow();
+        Map<UUID, GameParticipantRecord> participants =
+                gameParticipantRecordRepository
+                        .findAllByIdGameId(started.gameId())
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        record ->
+                                                record
+                                                        .getId()
+                                                        .getUserId(),
+                                        Function.identity()));
+
+        assertEquals(COMPLETED, ended.status());
+        assertEquals(RECONNECT_TIMEOUT, stored.getEndReason());
+        assertEquals(
+                INITIAL_STATE_VERSION + 2,
+                stored.getStateVersion());
+        assertEquals(WIN, participants.get(selector.getId()).getResult());
+        assertEquals(LOSS, participants.get(questioner.getId()).getResult());
         assertEquals(0L, gameActionRecordRepository.count());
     }
 

@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,7 +110,20 @@ public class RoomRegistry {
             String roomCodeInput,
             UUID userId,
             String nickname) {
+        return join(
+                roomCodeInput,
+                userId,
+                nickname,
+                room -> room.snapshotFor(userId));
+    }
+
+    <T> T join(
+            String roomCodeInput,
+            UUID userId,
+            String nickname,
+            Function<Room, T> afterJoin) {
         requireParticipant(userId, nickname);
+        Objects.requireNonNull(afterJoin);
         String roomCode = normalizeRoomCode(roomCodeInput);
         mutationLock.lock();
         try {
@@ -138,7 +152,7 @@ public class RoomRegistry {
                     "Room joined hostUserId={} guestUserId={}",
                     room.hostUserId(),
                     userId);
-            return room.snapshotFor(userId);
+            return afterJoin.apply(room);
         } finally {
             mutationLock.unlock();
         }
@@ -164,7 +178,18 @@ public class RoomRegistry {
     }
 
     public void leave(String roomCodeInput, UUID userId) {
+        leave(
+                roomCodeInput,
+                userId,
+                room -> null);
+    }
+
+    <T> LeaveExecution<T> leave(
+            String roomCodeInput,
+            UUID userId,
+            Function<Room, T> beforeLeave) {
         Objects.requireNonNull(userId);
+        Objects.requireNonNull(beforeLeave);
         String roomCode = normalizeRoomCode(roomCodeInput);
         mutationLock.lock();
         try {
@@ -177,8 +202,9 @@ public class RoomRegistry {
                 throw new ApiException(ROOM_MEMBERSHIP_REQUIRED);
             }
 
+            T result = beforeLeave.apply(room);
             Room.LeaveResult leaveResult = room.leave(userId);
-            if (leaveResult == Room.LeaveResult.HOST_LEFT) {
+            if (leaveResult == Room.LeaveResult.ROOM_CLOSED) {
                 rooms.remove(roomCode, room);
                 activeRoomByUser.remove(room.hostUserId(), roomCode);
                 UUID guestUserId = room.guestUserId();
@@ -191,7 +217,10 @@ public class RoomRegistry {
             LOGGER.info(
                     "Room left userId={} hostLeft={}",
                     userId,
-                    leaveResult == Room.LeaveResult.HOST_LEFT);
+                    room.isHost(userId));
+            return new LeaveExecution<>(
+                    leaveResult,
+                    result);
         } finally {
             mutationLock.unlock();
         }
@@ -203,6 +232,29 @@ public class RoomRegistry {
         try {
             cleanExpiredState(clock.instant());
             return Optional.ofNullable(activeRoomByUser.get(userId));
+        } finally {
+            mutationLock.unlock();
+        }
+    }
+
+    <T> T executeLocked(
+            String roomCodeInput,
+            UUID userId,
+            Function<Room, T> operation) {
+        Objects.requireNonNull(userId);
+        Objects.requireNonNull(operation);
+        String roomCode = normalizeRoomCode(roomCodeInput);
+        mutationLock.lock();
+        try {
+            cleanExpiredState(clock.instant());
+            Room room = rooms.get(roomCode);
+            if (room == null) {
+                throw new ApiException(ROOM_NOT_FOUND);
+            }
+            if (!room.isParticipant(userId)) {
+                throw new ApiException(ROOM_MEMBERSHIP_REQUIRED);
+            }
+            return operation.apply(room);
         } finally {
             mutationLock.unlock();
         }
@@ -331,5 +383,10 @@ public class RoomRegistry {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
+    }
+
+    record LeaveExecution<T>(
+            Room.LeaveResult leaveResult,
+            T result) {
     }
 }

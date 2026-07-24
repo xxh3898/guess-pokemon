@@ -120,6 +120,27 @@ public class JpaGameHistoryStore
     }
 
     @Override
+    @Transactional
+    public void updateGame(
+            long expectedPreviousVersion,
+            GameState gameState) {
+        validateParticipants(gameState);
+        GameRecord gameRecord =
+                requireGameAtVersion(
+                        gameState.gameId(),
+                        expectedPreviousVersion);
+        if (gameState.endedAt() == null) {
+            throw new GameRuleException(
+                    PERSISTENCE_CONFLICT);
+        }
+        gameRecord.apply(
+                gameState,
+                gameState.endedAt());
+        applyParticipantResults(gameState);
+        flushAll();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public boolean actionCommandExists(UUID commandId) {
         return gameActionRecordRepository

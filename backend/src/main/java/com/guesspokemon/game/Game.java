@@ -8,12 +8,16 @@ import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_ROLE
 import static com.guesspokemon.game.GameRuleException.GameRuleError.NO_PENDING_QUESTION;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
+import static com.guesspokemon.game.GameTypes.GameEndReason.BOTH_DISCONNECTED;
+import static com.guesspokemon.game.GameTypes.GameEndReason.PLAYER_LEFT;
 import static com.guesspokemon.game.GameTypes.GameEndReason.QUESTION_LIMIT;
+import static com.guesspokemon.game.GameTypes.GameEndReason.RECONNECT_TIMEOUT;
 import static com.guesspokemon.game.GameTypes.GameResult.LOSS;
 import static com.guesspokemon.game.GameTypes.GameResult.NONE;
 import static com.guesspokemon.game.GameTypes.GameResult.WIN;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
 import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
+import static com.guesspokemon.game.GameTypes.GameStatus.ABORTED;
 import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
 
@@ -139,9 +143,26 @@ final class Game {
             UUID actionId,
             String questionInput,
             Instant now) {
+        return ask(
+                userId,
+                commandId,
+                actionId,
+                questionInput,
+                stateVersion + 1,
+                now);
+    }
+
+    Transition ask(
+            UUID userId,
+            UUID commandId,
+            UUID actionId,
+            String questionInput,
+            long targetStateVersion,
+            Instant now) {
         requireInProgress();
         requireRole(userId, QUESTIONER);
         rejectDuplicateCommand(commandId);
+        requireNextStateVersion(targetStateVersion);
         requireActionAvailable();
         if (pendingQuestion() != null) {
             throw new GameRuleException(ANSWER_PENDING);
@@ -159,7 +180,7 @@ final class Game {
         return transitionWithAction(
                 action,
                 nextActionCount,
-                stateVersion + 1,
+                targetStateVersion,
                 null,
                 null,
                 null,
@@ -171,9 +192,24 @@ final class Game {
             UUID commandId,
             GameAnswer answer,
             Instant now) {
+        return answer(
+                userId,
+                commandId,
+                answer,
+                stateVersion + 1,
+                now);
+    }
+
+    Transition answer(
+            UUID userId,
+            UUID commandId,
+            GameAnswer answer,
+            long targetStateVersion,
+            Instant now) {
         requireInProgress();
         requireRole(userId, SELECTOR);
         rejectDuplicateCommand(commandId);
+        requireNextStateVersion(targetStateVersion);
         GameAction pendingQuestion = pendingQuestion();
         if (pendingQuestion == null) {
             throw new GameRuleException(NO_PENDING_QUESTION);
@@ -191,7 +227,7 @@ final class Game {
                             QUESTION_LIMIT,
                             selectorUserId,
                             questionerUserId,
-                            stateVersion + 1,
+                            targetStateVersion,
                             now,
                             updatedActions,
                             updatedCommands);
@@ -204,7 +240,7 @@ final class Game {
                         null,
                         null,
                         actionCount,
-                        stateVersion + 1,
+                        targetStateVersion,
                         null,
                         updatedActions,
                         updatedCommands);
@@ -217,9 +253,26 @@ final class Game {
             UUID actionId,
             int guessedPokemonId,
             Instant now) {
+        return guess(
+                userId,
+                commandId,
+                actionId,
+                guessedPokemonId,
+                stateVersion + 1,
+                now);
+    }
+
+    Transition guess(
+            UUID userId,
+            UUID commandId,
+            UUID actionId,
+            int guessedPokemonId,
+            long targetStateVersion,
+            Instant now) {
         requireInProgress();
         requireRole(userId, QUESTIONER);
         rejectDuplicateCommand(commandId);
+        requireNextStateVersion(targetStateVersion);
         requireActionAvailable();
         if (pendingQuestion() != null) {
             throw new GameRuleException(ANSWER_PENDING);
@@ -242,7 +295,7 @@ final class Game {
             return transitionWithAction(
                     action,
                     nextActionCount,
-                    stateVersion + 1,
+                    targetStateVersion,
                     CORRECT_GUESS,
                     questionerUserId,
                     selectorUserId,
@@ -252,7 +305,7 @@ final class Game {
             return transitionWithAction(
                     action,
                     nextActionCount,
-                    stateVersion + 1,
+                    targetStateVersion,
                     QUESTION_LIMIT,
                     selectorUserId,
                     questionerUserId,
@@ -261,11 +314,63 @@ final class Game {
         return transitionWithAction(
                 action,
                 nextActionCount,
-                stateVersion + 1,
+                targetStateVersion,
                 null,
                 null,
                 null,
                 null);
+    }
+
+    LifecycleTransition end(
+            UUID disconnectedUserId,
+            UUID commandId,
+            GameEndReason reason,
+            long targetStateVersion,
+            Instant now) {
+        requireInProgress();
+        rejectDuplicateCommand(commandId);
+        requireNextStateVersion(targetStateVersion);
+        Objects.requireNonNull(reason);
+        Objects.requireNonNull(now);
+
+        Set<UUID> updatedCommands = addCommand(commandId);
+        Game candidate;
+        if (reason == BOTH_DISCONNECTED) {
+            if (disconnectedUserId != null) {
+                throw new GameRuleException(VALIDATION_FAILED);
+            }
+            candidate =
+                    copy(
+                            ABORTED,
+                            BOTH_DISCONNECTED,
+                            null,
+                            null,
+                            actionCount,
+                            targetStateVersion,
+                            now,
+                            actions,
+                            updatedCommands);
+        } else if (reason == PLAYER_LEFT
+                || reason == RECONNECT_TIMEOUT) {
+            GameRole disconnectedRole =
+                    roleOf(disconnectedUserId);
+            UUID winner =
+                    disconnectedRole == SELECTOR
+                            ? questionerUserId
+                            : selectorUserId;
+            candidate =
+                    completed(
+                            reason,
+                            winner,
+                            disconnectedUserId,
+                            targetStateVersion,
+                            now,
+                            actions,
+                            updatedCommands);
+        } else {
+            throw new GameRuleException(VALIDATION_FAILED);
+        }
+        return new LifecycleTransition(this, candidate);
     }
 
     ParticipantGameView viewFor(UUID userId) {
@@ -509,6 +614,12 @@ final class Game {
         }
     }
 
+    private void requireNextStateVersion(long targetStateVersion) {
+        if (targetStateVersion <= stateVersion) {
+            throw new GameRuleException(VALIDATION_FAILED);
+        }
+    }
+
     private String normalizeQuestion(String questionInput) {
         if (questionInput == null) {
             throw new GameRuleException(VALIDATION_FAILED);
@@ -537,13 +648,25 @@ final class Game {
             }
             return;
         }
+        boolean invalidEndTime =
+                endedAt == null
+                        || endedAt.isBefore(startedAt);
+        if (status == ABORTED) {
+            if (endReason != BOTH_DISCONNECTED
+                    || winnerUserId != null
+                    || loserUserId != null
+                    || invalidEndTime) {
+                throw new IllegalArgumentException(
+                        "중단 game lifecycle이 올바르지 않습니다.");
+            }
+            return;
+        }
         if (status != COMPLETED
                 || endReason == null
                 || winnerUserId == null
                 || loserUserId == null
                 || winnerUserId.equals(loserUserId)
-                || endedAt == null
-                || endedAt.isBefore(startedAt)) {
+                || invalidEndTime) {
             throw new IllegalArgumentException(
                     "완료 game lifecycle이 올바르지 않습니다.");
         }
@@ -570,6 +693,16 @@ final class Game {
             Objects.requireNonNull(previous);
             Objects.requireNonNull(candidate);
             Objects.requireNonNull(changedAction);
+        }
+    }
+
+    record LifecycleTransition(
+            Game previous,
+            Game candidate) {
+
+        LifecycleTransition {
+            Objects.requireNonNull(previous);
+            Objects.requireNonNull(candidate);
         }
     }
 }

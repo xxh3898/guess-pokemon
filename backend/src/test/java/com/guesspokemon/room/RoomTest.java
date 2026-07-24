@@ -7,6 +7,11 @@ import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
 import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_OPPONENT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.PAUSED;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
+import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
+import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
+import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -15,10 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.common.error.ApiErrorCode;
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.game.GameViews.SelectorGameView;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class RoomTest {
@@ -103,7 +110,7 @@ class RoomTest {
 
         Room.LeaveResult result = room.leave(HOST_ID);
 
-        assertEquals(Room.LeaveResult.HOST_LEFT, result);
+        assertEquals(Room.LeaveResult.ROOM_CLOSED, result);
     }
 
     @Test
@@ -141,6 +148,139 @@ class RoomTest {
                 room.isHostOnlyExpired(
                         CREATED_AT.plus(Duration.ofDays(1)),
                         Duration.ofMinutes(30)));
+    }
+
+    @Test
+    void should_pauseAndResumeGame_when_participantConnectionChanges() {
+        Room room = startedRoom();
+
+        Room.ConnectionChange disconnected =
+                room.disconnect(
+                        GUEST_ID,
+                        CREATED_AT.plusSeconds(10),
+                        Duration.ofSeconds(60));
+
+        assertTrue(disconnected.changed());
+        assertEquals(PAUSED, room.snapshotFor(HOST_ID).status());
+        assertEquals(
+                CREATED_AT.plusSeconds(70),
+                disconnected.reconnectDeadline());
+        assertFalse(
+                room.snapshotFor(GUEST_ID)
+                        .me()
+                        .connected());
+
+        Room.ConnectionChange resumed =
+                room.resume(GUEST_ID);
+
+        assertTrue(resumed.changed());
+        assertEquals(PLAYING, room.snapshotFor(HOST_ID).status());
+        assertTrue(
+                room.snapshotFor(GUEST_ID)
+                        .me()
+                        .connected());
+        assertNull(
+                room.snapshotFor(GUEST_ID)
+                        .me()
+                        .reconnectDeadline());
+    }
+
+    @Test
+    void should_prepareBothDisconnectedAbort_when_bothDeadlinesAreActive() {
+        Room room = startedRoom();
+        Room.ConnectionChange hostDisconnect =
+                room.disconnect(
+                        HOST_ID,
+                        CREATED_AT.plusSeconds(10),
+                        Duration.ofSeconds(60));
+        room.disconnect(
+                GUEST_ID,
+                CREATED_AT.plusSeconds(11),
+                Duration.ofSeconds(60));
+
+        Room.TimeoutContext timeout =
+                room.prepareReconnectTimeout(
+                        HOST_ID,
+                        hostDisconnect.reconnectToken(),
+                        hostDisconnect.reconnectDeadline());
+
+        assertEquals(
+                com.guesspokemon.game.GameTypes.GameEndReason
+                        .BOTH_DISCONNECTED,
+                timeout.endReason());
+        assertNull(timeout.disconnectedUserId());
+        assertEquals(6L, timeout.targetStateVersion());
+    }
+
+    @Test
+    void should_swapRoles_when_bothPlayersAcceptRematch() {
+        Room room = completedRoom();
+
+        Room.RematchChange hostReady =
+                room.changeRematchReady(
+                        HOST_ID,
+                        UUID.randomUUID(),
+                        3,
+                        true);
+        Room.RematchChange guestReady =
+                room.changeRematchReady(
+                        GUEST_ID,
+                        UUID.randomUUID(),
+                        4,
+                        true);
+
+        assertFalse(hostReady.nextRoundReady());
+        assertTrue(guestReady.nextRoundReady());
+        RoomSnapshot hostSnapshot = room.snapshotFor(HOST_ID);
+        RoomSnapshot guestSnapshot = room.snapshotFor(GUEST_ID);
+        assertEquals(WAITING_FOR_SELECTION, hostSnapshot.status());
+        assertEquals(2, hostSnapshot.roundNumber());
+        assertEquals(QUESTIONER, hostSnapshot.me().role());
+        assertEquals(SELECTOR, guestSnapshot.me().role());
+        assertNull(hostSnapshot.game());
+        assertNull(hostSnapshot.rematch());
+    }
+
+    private Room startedRoom() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        room.applyGameView(
+                UUID.randomUUID(),
+                new SelectorGameView(
+                        UUID.randomUUID(),
+                        IN_PROGRESS,
+                        3,
+                        0,
+                        20,
+                        com.guesspokemon.game.GameTypes.GameRole
+                                .SELECTOR,
+                        25,
+                        null,
+                        null,
+                        null,
+                        List.of()));
+        return room;
+    }
+
+    private Room completedRoom() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        room.applyGameView(
+                UUID.randomUUID(),
+                new SelectorGameView(
+                        UUID.randomUUID(),
+                        COMPLETED,
+                        3,
+                        1,
+                        19,
+                        com.guesspokemon.game.GameTypes.GameRole
+                                .SELECTOR,
+                        25,
+                        GUEST_ID,
+                        HOST_ID,
+                        CORRECT_GUESS,
+                        List.of()));
+        return room;
     }
 
     private Room createRoom() {

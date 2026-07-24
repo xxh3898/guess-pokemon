@@ -74,6 +74,27 @@ final class GameRegistry {
         }
     }
 
+    Game end(
+            String roomCodeInput,
+            Function<Game, Game.LifecycleTransition>
+                    transitionFactory,
+            Consumer<Game.LifecycleTransition> persistence) {
+        String roomCode = normalizeRoomCode(roomCodeInput);
+        commandLock.lock();
+        try {
+            Game current = requireGame(roomCode);
+            Game.LifecycleTransition transition =
+                    transitionFactory.apply(current);
+            persistence.accept(transition);
+            gamesByRoomCode.put(
+                    roomCode,
+                    transition.candidate());
+            return transition.candidate();
+        } finally {
+            commandLock.unlock();
+        }
+    }
+
     ParticipantGameView viewFor(
             String roomCodeInput,
             UUID userId) {
@@ -81,6 +102,16 @@ final class GameRegistry {
         commandLock.lock();
         try {
             return requireGame(roomCode).viewFor(userId);
+        } finally {
+            commandLock.unlock();
+        }
+    }
+
+    void remove(String roomCodeInput) {
+        String roomCode = normalizeRoomCode(roomCodeInput);
+        commandLock.lock();
+        try {
+            gamesByRoomCode.remove(roomCode);
         } finally {
             commandLock.unlock();
         }

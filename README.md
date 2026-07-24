@@ -104,7 +104,7 @@ docker compose --env-file .env down
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자, 포켓몬 검색, 2인 방 생성·입장·조회·대기 중 나가기 API를 제공합니다. 질문·답변·추측·20회·승패 state machine과 transaction 기록 경계까지 구현했으며 STOMP 연결과 경기 기록 조회 API, 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자, 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 경기 기록 조회 API와 실제 경기 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
 
 ## 공개 운영 주의
 

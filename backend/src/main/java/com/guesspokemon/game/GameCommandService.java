@@ -8,6 +8,7 @@ import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
 import com.guesspokemon.game.GameCommands.AnswerQuestionCommand;
 import com.guesspokemon.game.GameCommands.AskQuestionCommand;
 import com.guesspokemon.game.GameCommands.GuessPokemonCommand;
+import com.guesspokemon.game.GameCommands.EndGameCommand;
 import com.guesspokemon.game.GameCommands.StartGameCommand;
 import com.guesspokemon.game.GamePersistencePort.ActionState;
 import com.guesspokemon.game.GamePersistencePort.GameState;
@@ -68,16 +69,38 @@ public class GameCommandService {
 
     public ParticipantGameView askQuestion(
             AskQuestionCommand command) {
+        return askQuestion(command, null);
+    }
+
+    public ParticipantGameView askQuestion(
+            AskQuestionCommand command,
+            long targetStateVersion) {
+        return askQuestion(
+                command,
+                Long.valueOf(targetStateVersion));
+    }
+
+    private ParticipantGameView askQuestion(
+            AskQuestionCommand command,
+            Long targetStateVersion) {
         Game game =
                 gameRegistry.transition(
                         command.roomCode(),
                         current ->
-                                current.ask(
-                                        command.userId(),
-                                        command.commandId(),
-                                        UUID.randomUUID(),
-                                        command.question(),
-                                        currentTime()),
+                                targetStateVersion == null
+                                        ? current.ask(
+                                                command.userId(),
+                                                command.commandId(),
+                                                UUID.randomUUID(),
+                                                command.question(),
+                                                currentTime())
+                                        : current.ask(
+                                                command.userId(),
+                                                command.commandId(),
+                                                UUID.randomUUID(),
+                                                command.question(),
+                                                targetStateVersion,
+                                                currentTime()),
                         transition ->
                                 persistNewAction(
                                         command.commandId(),
@@ -87,15 +110,36 @@ public class GameCommandService {
 
     public ParticipantGameView answerQuestion(
             AnswerQuestionCommand command) {
+        return answerQuestion(command, null);
+    }
+
+    public ParticipantGameView answerQuestion(
+            AnswerQuestionCommand command,
+            long targetStateVersion) {
+        return answerQuestion(
+                command,
+                Long.valueOf(targetStateVersion));
+    }
+
+    private ParticipantGameView answerQuestion(
+            AnswerQuestionCommand command,
+            Long targetStateVersion) {
         Game game =
                 gameRegistry.transition(
                         command.roomCode(),
                         current ->
-                                current.answer(
-                                        command.userId(),
-                                        command.commandId(),
-                                        command.answer(),
-                                        currentTime()),
+                                targetStateVersion == null
+                                        ? current.answer(
+                                                command.userId(),
+                                                command.commandId(),
+                                                command.answer(),
+                                                currentTime())
+                                        : current.answer(
+                                                command.userId(),
+                                                command.commandId(),
+                                                command.answer(),
+                                                targetStateVersion,
+                                                currentTime()),
                         transition ->
                                 gamePersistencePort
                                         .updateAnsweredQuestion(
@@ -113,18 +157,40 @@ public class GameCommandService {
 
     public ParticipantGameView guessPokemon(
             GuessPokemonCommand command) {
+        return guessPokemon(command, null);
+    }
+
+    public ParticipantGameView guessPokemon(
+            GuessPokemonCommand command,
+            long targetStateVersion) {
+        return guessPokemon(
+                command,
+                Long.valueOf(targetStateVersion));
+    }
+
+    private ParticipantGameView guessPokemon(
+            GuessPokemonCommand command,
+            Long targetStateVersion) {
         requireEnabledPokemon(
                 command.guessedPokemonNationalDexId());
         Game game =
                 gameRegistry.transition(
                         command.roomCode(),
                         current ->
-                                current.guess(
-                                        command.userId(),
-                                        command.commandId(),
-                                        UUID.randomUUID(),
-                                        command.guessedPokemonNationalDexId(),
-                                        currentTime()),
+                                targetStateVersion == null
+                                        ? current.guess(
+                                                command.userId(),
+                                                command.commandId(),
+                                                UUID.randomUUID(),
+                                                command.guessedPokemonNationalDexId(),
+                                                currentTime())
+                                        : current.guess(
+                                                command.userId(),
+                                                command.commandId(),
+                                                UUID.randomUUID(),
+                                                command.guessedPokemonNationalDexId(),
+                                                targetStateVersion,
+                                                currentTime()),
                         transition ->
                                 persistNewAction(
                                         command.commandId(),
@@ -132,10 +198,37 @@ public class GameCommandService {
         return game.viewFor(command.userId());
     }
 
+    public ParticipantGameView endGame(
+            EndGameCommand command,
+            UUID viewerUserId) {
+        Game game =
+                gameRegistry.end(
+                        command.roomCode(),
+                        current ->
+                                current.end(
+                                        command.disconnectedUserId(),
+                                        command.commandId(),
+                                        command.endReason(),
+                                        command.targetStateVersion(),
+                                        currentTime()),
+                        transition ->
+                                gamePersistencePort.updateGame(
+                                        transition
+                                                .previous()
+                                                .stateVersion(),
+                                        toGameState(
+                                                transition.candidate())));
+        return game.viewFor(viewerUserId);
+    }
+
     public ParticipantGameView getView(
             String roomCode,
             UUID userId) {
         return gameRegistry.viewFor(roomCode, userId);
+    }
+
+    public void removeGame(String roomCode) {
+        gameRegistry.remove(roomCode);
     }
 
     private void persistNewAction(

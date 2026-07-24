@@ -333,10 +333,12 @@ query:
     "userId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
     "nickname": "그린",
     "role": "SELECTOR",
-    "connected": true
+    "connected": true,
+    "reconnectDeadline": null
   },
   "opponent": null,
-  "game": null
+  "game": null,
+  "rematch": null
 }
 ```
 
@@ -346,43 +348,61 @@ query:
 {
   "roomCode": "AB3K7M",
   "status": "WAITING_FOR_SELECTION",
-  "stateVersion": 3,
+  "stateVersion": 2,
   "roundNumber": 1,
   "me": {
     "userId": "624f7d62-e328-4ff0-8b90-f6520b81a47f",
     "nickname": "레드",
     "role": "QUESTIONER",
-    "connected": true
+    "connected": true,
+    "reconnectDeadline": null
   },
   "opponent": {
     "userId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
     "nickname": "그린",
     "role": "SELECTOR",
-    "connected": true
+    "connected": true,
+    "reconnectDeadline": null
   },
-  "game": null
+  "game": null,
+  "rematch": null
 }
 ```
 
 첫 round는 방장이 `SELECTOR`, 입장한 사용자가 `QUESTIONER`다. 생성 직후 status는 `WAITING_FOR_OPPONENT`이고 입장 뒤 `WAITING_FOR_SELECTION`로 바뀐다. `stateVersion`은 1부터 시작하고 membership이나 status가 바뀔 때 증가한다. `roundNumber`는 1부터 시작한다.
 
-이번 REST 방 단계의 `connected=true`는 create·join 요청을 성공한 활성 participant라는 뜻이다. 실제 STOMP session 연결 상태는 실시간 통신 구현에서 같은 field에 연결한다.
+create·join 직후에는 참가자를 연결 상태로 시작한다. room route에서 `resume` 또는 첫 성공 command가 STOMP session을 방에 연결하며, 이후 마지막으로 연결된 session의 disconnect event를 받으면 `connected=false`로 바꾼다. 진행 중 경기라면 `reconnectDeadline`에 server clock 기준 60초 마감 시각을 함께 보낸다.
 
-출제자용 snapshot은 본인에게만 다음 field를 추가할 수 있다.
+경기 중 출제자용 `game`은 본인에게만 `selectedPokemon`을 포함한다.
 
 ```json
 {
+  "gameId": "3f249b3c-f0a6-4054-8bcf-e6284eec5f3e",
+  "status": "IN_PROGRESS",
+  "usedActionCount": 0,
+  "remainingActionCount": 20,
   "selectedPokemon": {
     "nationalDexId": 25,
     "koreanName": "피카츄",
     "generation": 1,
     "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
     "artworkEnabled": true
-  }
+  },
+  "actions": []
 }
 ```
 
-질문자 DTO type에는 `selectedPokemon` field 자체를 두지 않는다.
+진행 중 질문자 DTO type에는 `selectedPokemon` field 자체를 두지 않는다. 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`, 승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는 `rematch.meReady`, `rematch.opponentReady`로 동의 상태를 복구한다.
+
+room status:
+
+- `WAITING_FOR_OPPONENT`
+- `WAITING_FOR_SELECTION`
+- `PLAYING`
+- `PAUSED`
+- `RESULT`
+
+membership, 연결 상태, game command, 재대결 준비 상태가 바뀔 때마다 `stateVersion`을 증가시킨다. 연결 event 때문에 DB에 저장된 직전 game version보다 room version이 앞설 수 있으며 다음 game command가 성공할 때 다시 하나의 최신 version으로 맞춘다.
 
 ### 7.1 방 생성
 
@@ -449,6 +469,7 @@ query:
 - 대기 중 방장이 나가면 방을 닫고 두 참가자의 활성 방을 해제한다.
 - 대기 중 참가자가 나가면 방장만 남은 `WAITING_FOR_OPPONENT` 상태로 돌아간다.
 - 진행 중이면 즉시 `PLAYER_LEFT` 기권 패배를 확정한다.
+- 결과 화면에서 나가면 방을 닫고 memory의 활성 game을 해제한다.
 - 네트워크 단절과 달리 60초 유예를 적용하지 않는다.
 
 오류:
@@ -457,7 +478,7 @@ query:
 - `403 ROOM_MEMBERSHIP_REQUIRED`
 - `404 ROOM_NOT_FOUND`
 
-이번 방 생성·입장 단계는 대기 상태 나가기만 처리한다. 진행 중 기권과 경기 종료 기록은 game 구현에서 같은 endpoint에 연결한다.
+진행 중 나가기는 game·participant 결과를 한 transaction에서 저장한 뒤 `GAME_ENDED`를 보내고 방을 닫는다.
 
 ## 8. 경기 기록 REST API
 
@@ -592,7 +613,7 @@ wss://<host>/ws
 
 - SockJS fallback은 첫 버전에서 사용하지 않는다.
 - HTTP session cookie는 WebSocket handshake에 포함된다.
-- `CONNECT` header에 REST로 받은 CSRF token을 넣는다.
+- `CONNECT` header에 `GET /api/v1/auth/csrf`로 받은 `X-XSRF-TOKEN` 값을 넣는다.
 - 연결 뒤 다음 두 queue를 구독한다.
 
 ```text
@@ -601,6 +622,15 @@ wss://<host>/ws
 ```
 
 공개 `/topic/rooms/**`는 만들지 않는다. 서버가 두 참가자에게 사용자별 event를 각각 보낸다.
+
+message authorization:
+
+- `CONNECT`: 인증된 HTTP session과 올바른 CSRF token 필요
+- `SEND`: `/app/rooms/**`만 허용하고 command handler에서 room membership·role·version 검증
+- `SUBSCRIBE`: `/user/queue/game-events`, `/user/queue/errors`만 허용
+- client가 broker `/queue/**`로 직접 보내거나 `/topic/**`을 구독하는 요청은 거부
+
+두 subscribe destination은 사용자별 queue라 다른 사용자의 event를 구독할 수 없다. room membership은 room code가 포함된 SEND command에서 검증하고, outbound event는 server가 확인한 현재 참가자에게만 보낸다.
 
 ### heartbeat·reconnect
 
@@ -624,6 +654,7 @@ wss://<host>/ws
 - server는 같은 active game에서 select·question·answer·guess의 `commandId` 중복 적용을 막는다.
 - 질문·추측 command ID는 history action row의 unique constraint로 한 번 더 검증한다. 답변 command ID는 active game memory에 유지하며 서버 재시작 뒤 해당 game은 `SERVER_RESTART`로 중단한다.
 - 성공한 select·question·answer·guess마다 state version을 1 증가시킨다.
+- 실제 연결 상태가 바뀐 disconnect·resume과 재대결 준비 변경도 room state version을 1 증가시킨다.
 - version 충돌 시 `/user/queue/errors`로 `STALE_ROOM_STATE`와 최신 snapshot 요청 지침을 보낸다.
 
 ## 12. STOMP command
@@ -641,7 +672,7 @@ payload:
 ```json
 {
   "commandId": "88860116-11d1-477f-bf30-ec8d9d853514",
-  "expectedStateVersion": 3,
+  "expectedStateVersion": 2,
   "payload": {
     "nationalDexId": 25
   }
@@ -740,6 +771,8 @@ payload:
 
 server는 전달받은 version 대신 현재 상태를 기준으로 역할별 `ROOM_SNAPSHOT`을 보낸다.
 
+`resume`은 현재 STOMP session ID를 인증 사용자와 방에 연결한다. 같은 사용자가 여러 tab을 열었다면 마지막 room-bound session이 끊길 때만 offline으로 전환한다.
+
 ### 12.6 재대결 동의
 
 destination:
@@ -761,6 +794,8 @@ payload:
 ```
 
 두 사용자가 `true`면 역할을 바꾸고 `WAITING_FOR_SELECTION`으로 전환한다.
+
+첫 준비 변경은 `REMATCH_STATE_CHANGED`를 보낸다. 두 번째 준비로 역할 교대가 끝나면 `roundNumber`를 증가시키고 역할별 `ROOM_SNAPSHOT`을 보낸다.
 
 ## 13. STOMP event envelope
 
@@ -937,7 +972,7 @@ destination:
 - `VALIDATION_FAILED`
 - `INTERNAL_ERROR`
 
-`INTERNAL_ERROR`는 내부 메시지를 노출하지 않고 client에 snapshot 재조회 또는 재시도 경로만 제공한다.
+`INTERNAL_ERROR`는 내부 메시지를 노출하지 않고 client에 snapshot 재조회 또는 재시도 경로만 제공한다. JSON 변환이나 Bean Validation처럼 handler 진입 전에 실패한 요청은 `commandId`, `latestStateVersion`이 `null`일 수 있다.
 
 ## 16. API 계약 검증
 

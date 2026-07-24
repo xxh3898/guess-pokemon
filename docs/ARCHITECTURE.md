@@ -155,11 +155,12 @@ com.guesspokemon
 
 ### `realtime`
 
-- STOMP command controller
-- user-specific event publisher
-- connect/disconnect event listener
-- 60초 timeout scheduler
-- command idempotency와 state version
+- `WebSocketConfig`: `/ws`, `/app`, simple broker `/queue`, 10초 heartbeat
+- `WebSocketSecurityConfig`: STOMP `CONNECT` CSRF·인증과 SEND·SUBSCRIBE allowlist
+- `RealtimeCommandController`: select, ask, answer, guess, resume, rematch-ready
+- `RealtimeEventPublisher`: `/user/queue/game-events` 역할별 event
+- `RoomConnectionService`: session과 사용자·방 mapping, 마지막 session disconnect 판단, 60초 timeout
+- `WebSocketDisconnectListener`: 중복 가능한 `SessionDisconnectEvent` 전달
 
 ## 6. 프런트엔드 경계
 
@@ -226,11 +227,11 @@ sequenceDiagram
     API-->>G: questioner ROUND_STARTED
 ```
 
-방 생성 직후에는 `WAITING_FOR_OPPONENT`, `stateVersion=1`, `roundNumber=1`이며 방장이 `SELECTOR`다. guest가 입장하면 `QUESTIONER`로 배정하고 `WAITING_FOR_SELECTION`로 전환한다. create·join REST 단계의 `connected=true`는 활성 participant라는 뜻이며 실제 socket session 상태는 STOMP 구현에서 연결한다.
+방 생성 직후에는 `WAITING_FOR_OPPONENT`, `stateVersion=1`, `roundNumber=1`이며 방장이 `SELECTOR`다. guest가 입장하면 `QUESTIONER`로 배정하고 `WAITING_FOR_SELECTION`, `stateVersion=2`로 전환한다. create·join 직후에는 참가자를 연결 상태로 시작하고 room route의 `resume` 또는 첫 성공 command가 STOMP session을 사용자·방에 연결한다. 이후 마지막으로 연결된 session이 끊기면 실제 socket 상태를 `connected=false`로 반영한다.
 
 room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든다. 입력은 앞뒤 공백 제거와 대문자 정규화 뒤 같은 alphabet으로 검증한다. code 충돌 재시도 상한이나 활성 방 상한을 넘으면 room map을 부분 갱신하지 않고 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
 
-대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한다. 방장이 나가면 room을 닫고 두 participant index를 모두 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 idle expiry와 진행 중 leave는 실시간 연결·game 단위에서 완성한다.
+대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한다. 방장이 나가면 room을 닫고 두 participant index를 모두 해제한다. 진행 중 참가자가 나가면 `PLAYER_LEFT` 결과를 먼저 저장하고 두 참가자에게 `GAME_ENDED`를 보낸 뒤 room과 active game memory를 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 별도 idle expiry는 첫 범위에 두지 않는다.
 
 같은 event type이라도 selector와 questioner payload class를 분리한다. 공용 객체를 만들고 serializer annotation으로 필드를 감추는 방식은 사용하지 않는다.
 
@@ -239,12 +240,12 @@ room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든
 모든 command는 다음 순서로 처리한다.
 
 1. 인증된 `Principal` 확인
-2. room membership 확인
-3. room lock 안에서 role, status, expected version 확인
+2. room lock 안에서 room membership, role, status, expected version 확인
 4. `commandId` 중복 확인
 5. domain state transition
 6. 필요한 DB 변경 transaction
-7. transaction commit 뒤 participant별 event 생성·전송
+7. transaction commit 뒤 game memory와 room 상태 교체
+8. room lock 해제 뒤 participant별 event 생성·전송
 
 질문은 pending 상태를 만든다. 답변을 저장한 뒤 다음 행동을 허용한다. 추측은 서버가 `pokemon_species_id`를 정답과 비교해 즉시 결과를 확정한다.
 
@@ -254,17 +255,25 @@ active game은 모든 processed command ID를 memory에 보관한다. 질문·�
 
 game command 시각은 PostgreSQL `timestamptz` 정밀도에 맞춰 microsecond로 절삭한 뒤 domain과 DB에 함께 전달한다. 따라서 transaction 이후 DB에서 game을 다시 읽어도 immutable memory aggregate의 identity timestamp와 동일하게 비교할 수 있다.
 
+room과 game은 client에 하나의 `stateVersion` 흐름으로 보인다. disconnect·resume처럼 DB game row를 바꾸지 않는 room 전이도 version을 증가시킬 수 있다. 다음 game command는 DB optimistic check에 직전 game version을 사용하고 candidate는 room의 다음 version으로 맞춘다. 따라서 version 사이에 연결 event가 들어와도 stale command를 거부하면서 DB와 room의 최신 version이 다시 합쳐진다.
+
+action이 없는 `PLAYER_LEFT`, `RECONNECT_TIMEOUT`, `BOTH_DISCONNECTED` 종료는 `GamePersistencePort.updateGame`으로 game과 participant result를 한 transaction에서 반영한다. `COMPLETED`는 한 명의 승자·패자를, `ABORTED/BOTH_DISCONNECTED`는 두 명의 `NONE` 결과를 저장한다.
+
 ## 10. 재접속
 
-1. `SessionDisconnectEvent`를 받으면 해당 STOMP session과 사용자·방 mapping을 찾는다.
-2. 명시적 leave가 아니면 사용자를 offline으로 표시하고 `reconnectDeadline = now + 60s`를 설정한다.
-3. 상대에게 `PLAYER_CONNECTION_CHANGED`를 보낸다.
-4. scheduler에 timeout task를 등록한다.
-5. 같은 인증 사용자가 `/rooms/:roomCode`로 돌아와 `resume` command를 보내면 기존 task를 취소한다.
-6. 역할별 snapshot과 누락 event 이후 상태를 다시 보낸다.
-7. deadline이 지나면 domain command로 이탈 패배를 확정하고 DB와 두 참가자 event를 갱신한다.
+1. `resume` 또는 첫 성공 room command가 STOMP session ID를 인증 사용자와 활성 방에 연결한다.
+2. `SessionDisconnectEvent`를 받으면 mapping을 한 번만 제거한다.
+3. 같은 사용자·방에 다른 session이 남아 있으면 연결 상태를 유지한다.
+4. 마지막 session이고 명시적 leave가 아니면 사용자를 offline으로 표시하고 진행 중 경기에는 `reconnectDeadline = now + 60s`와 새 token을 설정한다.
+5. 두 참가자에게 `PLAYER_CONNECTION_CHANGED`를 보내고 scheduler에 timeout task를 등록한다.
+6. 같은 인증 사용자가 `/rooms/:roomCode`로 돌아와 `resume` command를 보내면 기존 task를 취소한다.
+7. 역할별 snapshot과 누락 event 이후 상태를 다시 보낸다.
+8. task는 현재 token·deadline·room status가 모두 같을 때만 실행한다.
+9. 한 명만 offline이면 `RECONNECT_TIMEOUT`, 두 명 모두 offline이면 먼저 도래한 deadline에 `BOTH_DISCONNECTED`를 확정한다.
 
 STOMP library의 자동 재연결만 신뢰하지 않는다. 브라우저 route가 복원되지 않거나 새 socket session이 생길 수 있으므로 명시적 `resume` command와 server snapshot을 사용한다.
+
+heartbeat, reconnect timeout, 기존 `@Scheduled` room cleanup은 이름이 `taskScheduler`인 2-thread scheduler bean을 사용한다. 취소한 task는 queue에서 제거하고, resume와 timeout은 같은 connection lock에서 경쟁해 한쪽 결과만 적용한다.
 
 ## 11. 영속 상태와 메모리 상태
 
@@ -346,7 +355,9 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - application은 login ID별 실패 5회/10분, client IP별 login 30회/10분, signup 5회/10분을 제한한다.
 - 제한 상태는 Caffeine cache 세 개에 각각 최대 10,000개 key만 저장한다. API 재시작 시 초기화되며 여러 API instance가 상태를 공유하지 않는다.
 - Nginx 자체 rate limit과 Cloudflare client IP 신뢰 설정은 홈서버 배포 단위에서 추가한다.
-- STOMP `SUBSCRIBE`, `SEND`는 인증과 room membership을 검사한다.
+- STOMP `CONNECT`는 HTTP session 인증과 CSRF token을 검사한다.
+- STOMP `SEND`는 `/app/rooms/**`만 허용하고 handler가 room membership을 검사한다.
+- STOMP `SUBSCRIBE`는 사용자별 `/user/queue/game-events`, `/user/queue/errors`만 허용한다. 공개 room subscription은 없다.
 - 모든 outbound event를 `/user/queue/game-events`로 보내고 공개 room topic은 만들지 않는다.
 - error 응답은 안정적인 code만 제공하고 내부 예외와 stack trace를 감춘다.
 - log에는 login ID 원문 대신 user UUID를 우선 사용하고 question text와 session ID를 남기지 않는다.

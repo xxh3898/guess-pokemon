@@ -3,6 +3,7 @@ package com.guesspokemon.game;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.POKEMON_NOT_FOUND;
 import static com.guesspokemon.game.GameTypes.GameAnswer.NO;
+import static com.guesspokemon.game.GameTypes.GameEndReason.RECONNECT_TIMEOUT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.guesspokemon.game.GameCommands.AnswerQuestionCommand;
 import com.guesspokemon.game.GameCommands.AskQuestionCommand;
 import com.guesspokemon.game.GameCommands.GuessPokemonCommand;
+import com.guesspokemon.game.GameCommands.EndGameCommand;
 import com.guesspokemon.game.GameCommands.StartGameCommand;
 import com.guesspokemon.game.GamePersistencePort.ActionState;
 import com.guesspokemon.game.GamePersistencePort.GameState;
@@ -213,6 +215,34 @@ class GameCommandServiceTest {
         assertEquals(List.of(), persistencePort.createdGames);
     }
 
+    @Test
+    void should_keepPreviousMemoryState_when_endPersistenceFails() {
+        gameCommandService.startGame(startCommand(ROOM_CODE));
+        persistencePort.failEnd = true;
+
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        gameCommandService.endGame(
+                                new EndGameCommand(
+                                        ROOM_CODE,
+                                        QUESTIONER_USER_ID,
+                                        UUID.randomUUID(),
+                                        RECONNECT_TIMEOUT,
+                                        INITIAL_STATE_VERSION + 3),
+                                SELECTOR_USER_ID));
+        ParticipantGameView current =
+                gameCommandService.getView(
+                        ROOM_CODE,
+                        SELECTOR_USER_ID);
+
+        assertEquals(
+                INITIAL_STATE_VERSION,
+                current.stateVersion());
+        assertNull(current.endReason());
+        assertEquals(List.of(), persistencePort.endedGames);
+    }
+
     private StartGameCommand startCommand(String roomCode) {
         return new StartGameCommand(
                 roomCode,
@@ -243,11 +273,14 @@ class GameCommandServiceTest {
                 new ArrayList<>();
         private final List<ActionState> answeredActions =
                 new ArrayList<>();
+        private final List<GameState> endedGames =
+                new ArrayList<>();
         private final Set<UUID> actionCommandIds =
                 new HashSet<>();
         private boolean failCreate;
         private boolean failAppend;
         private boolean failAnswer;
+        private boolean failEnd;
 
         @Override
         public void createGame(GameState gameState) {
@@ -281,6 +314,17 @@ class GameCommandServiceTest {
                         "answer persistence failure");
             }
             answeredActions.add(actionState);
+        }
+
+        @Override
+        public void updateGame(
+                long expectedPreviousVersion,
+                GameState gameState) {
+            if (failEnd) {
+                throw new IllegalStateException(
+                        "end persistence failure");
+            }
+            endedGames.add(gameState);
         }
 
         @Override

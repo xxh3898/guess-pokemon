@@ -9,7 +9,11 @@ import static com.guesspokemon.game.GameRuleException.GameRuleError.NO_PENDING_Q
 import static com.guesspokemon.game.GameRuleException.GameRuleError.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameAnswer.NO;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
+import static com.guesspokemon.game.GameTypes.GameEndReason.BOTH_DISCONNECTED;
+import static com.guesspokemon.game.GameTypes.GameEndReason.PLAYER_LEFT;
 import static com.guesspokemon.game.GameTypes.GameEndReason.QUESTION_LIMIT;
+import static com.guesspokemon.game.GameTypes.GameResult.NONE;
+import static com.guesspokemon.game.GameTypes.GameStatus.ABORTED;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
 import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
 import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
@@ -400,6 +404,52 @@ class GameTest {
                                 UUID.randomUUID(),
                                 ANSWER_POKEMON_ID,
                                 STARTED_AT.plusSeconds(2)));
+    }
+
+    @Test
+    void should_completeWithOpponentWin_when_playerLeaves() {
+        long targetStateVersion =
+                INITIAL_STATE_VERSION + 4;
+
+        Game ended =
+                newGame()
+                        .end(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                PLAYER_LEFT,
+                                targetStateVersion,
+                                STARTED_AT.plusSeconds(10))
+                        .candidate();
+        ParticipantGameView view =
+                ended.viewFor(SELECTOR_USER_ID);
+
+        assertEquals(COMPLETED, view.status());
+        assertEquals(PLAYER_LEFT, view.endReason());
+        assertEquals(SELECTOR_USER_ID, view.winnerUserId());
+        assertEquals(QUESTIONER_USER_ID, view.loserUserId());
+        assertEquals(targetStateVersion, view.stateVersion());
+    }
+
+    @Test
+    void should_abortWithoutWinner_when_bothPlayersDisconnect() {
+        Game ended =
+                newGame()
+                        .end(
+                                null,
+                                UUID.randomUUID(),
+                                BOTH_DISCONNECTED,
+                                INITIAL_STATE_VERSION + 3,
+                                STARTED_AT.plusSeconds(10))
+                        .candidate();
+        ParticipantGameView view =
+                ended.viewFor(SELECTOR_USER_ID);
+
+        assertEquals(ABORTED, view.status());
+        assertEquals(BOTH_DISCONNECTED, view.endReason());
+        assertNull(view.winnerUserId());
+        assertNull(view.loserUserId());
+        assertEquals(NONE, ended.resultFor(SELECTOR_USER_ID));
+        assertEquals(NONE, ended.resultFor(QUESTIONER_USER_ID));
     }
 
     private Game newGame() {

@@ -3,6 +3,10 @@ package com.guesspokemon.room;
 import static com.guesspokemon.common.error.ApiErrorCode.AUTHENTICATION_REQUIRED;
 
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.realtime.RealtimeEventPublisher;
+import com.guesspokemon.realtime.RoomConnectionService;
+import com.guesspokemon.room.RoomApplicationService.JoinOutcome;
+import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.security.AuthenticatedUser;
 import org.springframework.http.CacheControl;
@@ -22,10 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/rooms")
 public class RoomController {
 
-    private final RoomRegistry roomRegistry;
+    private final RoomApplicationService roomApplicationService;
+    private final RealtimeEventPublisher eventPublisher;
+    private final RoomConnectionService roomConnectionService;
 
-    public RoomController(RoomRegistry roomRegistry) {
-        this.roomRegistry = roomRegistry;
+    public RoomController(
+            RoomApplicationService roomApplicationService,
+            RealtimeEventPublisher eventPublisher,
+            RoomConnectionService roomConnectionService) {
+        this.roomApplicationService = roomApplicationService;
+        this.eventPublisher = eventPublisher;
+        this.roomConnectionService = roomConnectionService;
     }
 
     @PostMapping
@@ -33,7 +44,9 @@ public class RoomController {
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
         AuthenticatedUser user = requireAuthenticatedUser(authenticatedUser);
         RoomSnapshot snapshot =
-                roomRegistry.create(user.id(), user.nickname());
+                roomApplicationService.create(
+                        user.id(),
+                        user.nickname());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .cacheControl(CacheControl.noStore())
                 .body(snapshot);
@@ -44,14 +57,15 @@ public class RoomController {
             @PathVariable String roomCode,
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
         AuthenticatedUser user = requireAuthenticatedUser(authenticatedUser);
-        RoomSnapshot snapshot =
-                roomRegistry.join(
+        JoinOutcome outcome =
+                roomApplicationService.join(
                         roomCode,
                         user.id(),
                         user.nickname());
+        eventPublisher.publishPlayerJoined(outcome);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(snapshot);
+                .body(outcome.joinedSnapshot());
     }
 
     @GetMapping("/{roomCode}")
@@ -60,7 +74,9 @@ public class RoomController {
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
         AuthenticatedUser user = requireAuthenticatedUser(authenticatedUser);
         RoomSnapshot snapshot =
-                roomRegistry.getSnapshot(roomCode, user.id());
+                roomApplicationService.getSnapshot(
+                        roomCode,
+                        user.id());
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(snapshot);
@@ -71,7 +87,18 @@ public class RoomController {
             @PathVariable String roomCode,
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
         AuthenticatedUser user = requireAuthenticatedUser(authenticatedUser);
-        roomRegistry.leave(roomCode, user.id());
+        LeaveOutcome outcome =
+                roomApplicationService.leave(
+                        roomCode,
+                        user.id());
+        eventPublisher.publishLeave(outcome);
+        if (outcome.roomClosed()) {
+            roomConnectionService.clearRoom(roomCode);
+        } else {
+            roomConnectionService.clearUserRoom(
+                    user.id(),
+                    roomCode);
+        }
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())
                 .build();
