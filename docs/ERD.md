@@ -134,13 +134,13 @@ erDiagram
 | `national_dex_id` | `integer` | N | PK, CHECK > 0 | 전국도감 번호 |
 | `slug` | `varchar(80)` | N | UK | PokéAPI 영문 resource name |
 | `korean_name` | `varchar(80)` | N | UK | 공식 한국어 이름 |
-| `generation` | `smallint` | N | CHECK 1~99 | 첫 등장 세대 |
+| `generation` | `smallint` | N | CHECK 1~9 | 첫 등장 세대 |
 | `artwork_url` | `text` | N | HTTPS validation | 기본 official artwork URL |
-| `catalog_version` | `varchar(40)` | N |  | snapshot 식별자 |
+| `catalog_version` | `varchar(40)` | N |  | canonical snapshot content hash 기반 식별자 |
 | `source_updated_at` | `timestamptz` | N |  | snapshot 생성 시각 |
 | `enabled` | `boolean` | N | default true | kill switch·누락 대응 |
 
-catalog snapshot은 1~1,025 ID 연속성, 한국어 이름, artwork URL을 import 전에 검증한다.
+catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫 등장 세대 1~9, default variety, HTTPS artwork URL을 import 전에 검증한다. 같은 version 1,025행이 이미 있으면 적재를 건너뛰고, 다른 version은 전체 upsert 뒤 과거 version row를 비활성화한다.
 
 ## 5. `game`
 

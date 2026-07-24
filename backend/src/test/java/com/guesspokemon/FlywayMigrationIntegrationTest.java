@@ -20,7 +20,7 @@ class FlywayMigrationIntegrationTest {
     private Flyway flyway;
 
     @Test
-    void should_createUserAndSessionTables_when_v1MigrationRuns() {
+    void should_createUserSessionAndCatalogTables_when_migrationsRun() {
         Long tableCount =
                 jdbcClient
                         .sql(
@@ -31,13 +31,14 @@ class FlywayMigrationIntegrationTest {
                                   AND table_name IN (
                                       'app_user',
                                       'spring_session',
-                                      'spring_session_attributes'
+                                      'spring_session_attributes',
+                                      'pokemon_species'
                                   )
                                 """)
                         .query(Long.class)
                         .single();
 
-        assertEquals(3L, tableCount);
+        assertEquals(4L, tableCount);
     }
 
     @Test
@@ -55,6 +56,50 @@ class FlywayMigrationIntegrationTest {
                         .single();
 
         assertEquals(0, migrationsExecuted);
-        assertEquals(1L, historyCount);
+        assertEquals(2L, historyCount);
+    }
+
+    @Test
+    void should_createCatalogConstraintsAndIndexes_when_v2MigrationRuns() {
+        Long constraintCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM information_schema.table_constraints
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'pokemon_species'
+                                  AND constraint_name IN (
+                                      'pk_pokemon_species',
+                                      'uk_pokemon_species_slug',
+                                      'uk_pokemon_species_korean_name',
+                                      'ck_pokemon_species_national_dex_id',
+                                      'ck_pokemon_species_slug',
+                                      'ck_pokemon_species_korean_name',
+                                      'ck_pokemon_species_generation',
+                                      'ck_pokemon_species_artwork_url',
+                                      'ck_pokemon_species_catalog_version'
+                                  )
+                                """)
+                        .query(Long.class)
+                        .single();
+        Long indexCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM pg_indexes
+                                WHERE schemaname = 'public'
+                                  AND tablename = 'pokemon_species'
+                                  AND indexname IN (
+                                      'ix_pokemon_species_korean_name',
+                                      'ix_pokemon_species_generation_national_dex_id'
+                                  )
+                                """)
+                        .query(Long.class)
+                        .single();
+
+        assertEquals(9L, constraintCount);
+        assertEquals(2L, indexCount);
     }
 }

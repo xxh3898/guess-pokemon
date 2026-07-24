@@ -55,6 +55,26 @@ docker compose --env-file .env \
   down
 ```
 
+## 전국도감 snapshot
+
+전국도감 snapshot 생성기는 PokéAPI 응답을 local cache에 저장하고 1~1,025번 기본 포켓몬의 한국어 이름, 세대, official artwork를 검증합니다. runtime과 일반 test는 PokéAPI를 호출하지 않습니다.
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  node:24.18.0-alpine3.24 \
+  node --test scripts/fetch-pokemon-catalog.test.mjs
+
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  node:24.18.0-alpine3.24 \
+  node scripts/fetch-pokemon-catalog.mjs
+```
+
+PokéAPI species 수가 1,025와 달라지거나 필수 한국어 이름·artwork가 빠지면 생성기는 기존 snapshot을 교체하지 않고 실패합니다. 새 포켓몬 반영은 PRD와 catalog 검증 범위를 먼저 갱신한 별도 commit으로 진행합니다.
+
 ## Docker 검증
 
 프런트엔드 전체 검증은 다음 명령으로 실행합니다.
@@ -84,7 +104,7 @@ docker compose --env-file .env down
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway V1 기반 회원·Spring Session schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자 API를 제공합니다. 프런트엔드 인증 화면은 다음 작업 단위에서 연결합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감 schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자, 포켓몬 검색 API를 제공합니다. 프런트엔드 인증·catalog 화면은 후속 작업 단위에서 연결합니다.
 
 ## 공개 운영 주의
 

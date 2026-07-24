@@ -48,6 +48,10 @@ public enum ApiErrorCode {
             HttpStatus.TOO_MANY_REQUESTS,
             "회원가입 요청 제한",
             "회원가입 요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요."),
+    POKEMON_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "포켓몬 없음",
+            "요청한 포켓몬을 찾을 수 없습니다."),
     INTERNAL_ERROR(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "서버 오류",

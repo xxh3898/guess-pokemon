@@ -276,6 +276,8 @@ query:
 | `page` | integer | 0 | 0 이상 |
 | `size` | integer | 20 | 1~100 |
 
+`query`는 trim 뒤 최대 80자다. 숫자만 입력하면 National Dex 번호 exact match로, 그 외에는 NFC 정규화한 한국어 이름 부분 일치로 검색한다. 빈 값은 전체 목록을 뜻한다. 결과는 `nationalDexId` 오름차순으로 고정하며 client가 임의 sort를 지정할 수 없다.
+
 응답 `200`:
 
 ```json
@@ -296,6 +298,11 @@ query:
 }
 ```
 
+오류:
+
+- `400 VALIDATION_FAILED`
+- `401 AUTHENTICATION_REQUIRED`
+
 ### 6.2 단건
 
 `GET /api/v1/pokemon-species/{nationalDexId}`
@@ -304,7 +311,11 @@ query:
 
 응답: `200 PokemonSummary`
 
-오류: `404 POKEMON_NOT_FOUND`
+오류:
+
+- `400 VALIDATION_FAILED`
+- `401 AUTHENTICATION_REQUIRED`
+- `404 POKEMON_NOT_FOUND`
 
 ## 7. 방 REST API
 

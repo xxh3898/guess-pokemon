@@ -230,3 +230,6 @@ backups/
 **/coverage/
 playwright-report/
 test-results/
+
+# PokéAPI catalog generator cache
+scripts/.cache/

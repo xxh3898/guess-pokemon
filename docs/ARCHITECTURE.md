@@ -268,13 +268,18 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 
 - `scripts/fetch-pokemon-catalog.mjs`는 명시적으로 실행하는 개발 도구다.
 - PokéAPI에서 기본 species, 한국어 이름, generation, official artwork URL을 모은다.
+- PokéAPI Fair Use Policy에 맞춰 응답을 `scripts/.cache/pokeapi/`에 저장하고 cache miss만 제한된 동시성으로 요청한다.
+- PokéAPI species count가 승인된 최대 번호 1,025와 다르면 새 종을 자동 포함하지 않고 생성에 실패한다.
 - 1부터 snapshot의 최대 National Dex 번호까지 다음 조건을 검증한다.
   - ID 중복·누락 없음
-  - 한국어 이름 존재
-  - default variety 존재
-  - official artwork URL 존재
+  - slug·한국어 이름 존재와 중복 없음
+  - generation 1~9
+  - default variety 정확히 하나
+  - HTTPS official artwork URL 존재
 - 결과를 `backend/src/main/resources/catalog/pokemon-species.json`에 저장한다.
-- 애플리케이션은 catalog version이 DB에 없을 때 transaction으로 upsert한다.
+- canonical species content의 SHA-256 일부를 catalog version으로 사용하고 생성 시각은 별도 field로 기록한다.
+- 애플리케이션은 snapshot을 다시 검증한 뒤 같은 catalog version 1,025행이 없을 때 transaction으로 JDBC batch upsert한다.
+- 같은 National Dex ID의 기존 `enabled=false`는 import가 되살리지 않는다. 현재 snapshot에 없는 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
 - 운영 시작마다 PokéAPI를 호출하거나 자동으로 종 수를 바꾸지 않는다.
 - catalog 갱신은 독립 commit과 검증 결과를 요구한다.
 

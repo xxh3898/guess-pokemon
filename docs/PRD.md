@@ -53,7 +53,7 @@ Guess Pokémon은 두 명이 방 코드를 공유해 실시간 포켓몬 스무�
 ## 6. 포켓몬 범위
 
 - 전국도감 1~1,025번의 기본 포켓몬 종
-- 2026-07-24 PokéAPI snapshot 기준 9개 세대
+- 2026-07-25 PokéAPI snapshot 기준 9개 세대
 - 한국어 공식 이름
 - PokéAPI sprites 저장소의 기본 `official-artwork`
 - 제외:

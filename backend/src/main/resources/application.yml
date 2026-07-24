@@ -21,6 +21,11 @@ spring:
     jdbc:
       initialize-schema: never
 
+pokemon:
+  catalog:
+    artwork-enabled: ${POKEMON_ARTWORK_ENABLED:true}
+    snapshot-location: classpath:catalog/pokemon-species.json
+
 management:
   endpoints:
     web:
