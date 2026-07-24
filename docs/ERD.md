@@ -114,7 +114,7 @@ erDiagram
 | `login_id` | `varchar(30)` | N |  | 사용자 입력 표시값 |
 | `login_id_key` | `varchar(30)` | N | UK | trim·lowercase 정규화 값 |
 | `nickname` | `varchar(16)` | N |  | 게임 표시 이름 |
-| `nickname_key` | `varchar(32)` | N | UK | Unicode normalize·lowercase 값 |
+| `nickname_key` | `varchar(32)` | N | UK | NFKC·lowercase 중복 비교 값 |
 | `password_hash` | `varchar(255)` | N |  | `{bcrypt}...` 등 algorithm prefix 포함 |
 | `status` | `varchar(20)` | N | CHECK | `ACTIVE`, `DISABLED` |
 | `created_at` | `timestamptz` | N |  | 생성 시각 |
@@ -226,6 +226,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 - `spring_session_attributes`
 
 애플리케이션 자동 schema 초기화는 끄고 Flyway만 DDL source of truth로 사용한다. session 만료 cleanup은 Spring Session의 repository 기능을 사용한다.
+`max_inactive_interval`은 1,800초이며 `principal_name`에는 login ID가 아니라 사용자 UUID 문자열을 저장한다.
 
 ## 9. 주요 index
 
@@ -261,7 +262,7 @@ WebSocket event는 transaction commit 뒤 전송한다. commit이 실패하면 �
 - 실제 공개 운영 전에 개인정보·사용자 생성 콘텐츠 보존 정책을 다시 결정해야 한다.
 - DB backup 삭제와 restore는 별도 운영 승인 대상이다.
 
-## 12. Migration 초안
+## 12. Migration 순서
 
 | Version | 책임 |
 |---|---|
@@ -270,3 +271,4 @@ WebSocket event는 transaction commit 뒤 전송한다. commit이 실패하면 �
 | `V3__create_game_history.sql` | 경기, 참가자, 행동 |
 
 각 migration commit은 빈 DB 적용, 재시작, Testcontainers integration test를 통과해야 한다. 이미 적용한 migration 파일은 수정하지 않고 후속 migration을 추가한다.
+같은 migration 파일을 Testcontainers 임시 DB, MacBook 개발 DB, Mac mini 운영 DB 순서로 적용하며 환경별 SQL을 따로 만들지 않는다.

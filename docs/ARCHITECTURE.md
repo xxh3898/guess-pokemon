@@ -21,6 +21,7 @@
 | API | Spring Boot 4.1.0, Java 21, Gradle Wrapper 9.5.1 | Servlet 기반 단일 애플리케이션 |
 | Security | Spring Security, Spring Session JDBC | same-origin cookie session, CSRF, PostgreSQL session |
 | Persistence | Spring Data JPA, Flyway, PostgreSQL 18.4 | 계정·catalog·경기 기록 |
+| Auth rate limit | Caffeine 3.2.x | 단일 instance의 짧은 수명 요청 제한 |
 | 실시간 server | Spring WebSocket/STOMP simple broker | 단일 API instance |
 | Reverse proxy | Nginx 1.30.4 Alpine multi-arch image | SPA fallback, `/api`, `/ws` proxy |
 | 외부 공개 | Cloudflare Tunnel | 테스트 Quick Tunnel, 운영 named tunnel |
@@ -111,6 +112,7 @@ com.guesspokemon
 - signup, login, logout, current user
 - `AuthenticationManager`와 `SecurityContextRepository` 연계
 - session fixation protection
+- login ID별 실패와 client IP별 login·signup 요청 제한
 
 ### `user`
 
@@ -197,6 +199,7 @@ src/
 8. client payload의 user ID나 role은 신뢰하지 않는다.
 
 운영 session cookie는 `Secure`, `HttpOnly`, `SameSite=Lax`다. 개발 환경의 HTTP cookie 차이는 profile로 제한하고 운영 설정을 약화하지 않는다.
+session idle timeout은 30분이다.
 
 ## 8. 방 생성과 게임 시작
 
@@ -257,6 +260,7 @@ STOMP library의 자동 재연결만 신뢰하지 않는다. 브라우저 route�
 | 방 코드·대기 상태 | API memory | 짧은 수명, 단일 instance |
 | 현재 game aggregate | API memory + 핵심 전이 DB 반영 | 낮은 지연과 기록 보존 |
 | socket mapping·60초 task | API memory | 연결 수명과 결합 |
+| 인증 요청 제한 | API Caffeine memory | 10분 수명, 최대 key 수 제한 |
 
 API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로 정리한다. 진행 중 방 자체는 복구하지 않는다.
 
@@ -282,6 +286,7 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 - host에는 Docker 외 Java·Node·PostgreSQL을 요구하지 않는다.
 - Vite는 `/api`, `/ws`를 API container로 proxy한다.
 - base Compose와 개발 override를 함께 사용하며 Vite만 host의 `5173` port에 공개한다.
+- MacBook 개발 DB는 개발 전용 DB 이름·계정과 named volume을 사용하고 Docker 재시작 뒤에도 데이터를 유지한다.
 
 ### 테스트
 
@@ -290,6 +295,7 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 - Docker Desktop의 sibling container 통신을 위해 source를 host와 같은 절대경로에 mount하고 `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal`을 사용한다.
 - backend test container의 `/var/run/docker.sock` mount는 Docker daemon 전체 제어 권한에 해당하므로 신뢰할 수 있는 로컬 코드 검증에만 사용한다.
 - 외부 PokéAPI에 의존하지 않고 versioned catalog fixture를 사용한다.
+- Testcontainers DB는 실행마다 임의 port와 credential을 사용하고 test 종료 뒤 폐기한다.
 
 ### 운영
 
@@ -298,17 +304,24 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 - named volume을 PostgreSQL 18의 `/var/lib/postgresql`에 mount해 data를 보관한다.
 - `web`만 내부 HTTP origin으로 노출하고 Tunnel이 outbound connection을 만든다.
 - Nginx는 `/api`, `/ws`, SPA fallback, request body limit, security header를 담당한다.
+- Nginx는 외부에서 받은 `X-Forwarded-For`를 이어 붙이지 않고 직접 확인한 remote address로 덮어쓴다.
 - Nginx가 외부에 전달하는 Actuator 경로는 liveness와 readiness 두 개로 제한한다.
 - API readiness에는 `readinessState`와 `db`를 포함하고 liveness에는 외부 dependency를 포함하지 않는다.
 - Cloudflare가 외부 TLS를 종료하고 `X-Forwarded-*`를 전달한다.
 - Spring은 신뢰하는 proxy header만 처리하도록 설정한다.
+- Mac mini 운영 DB는 MacBook 개발 DB와 다른 DB 이름·계정·secret·named volume을 사용한다.
+- 운영 migration은 Testcontainers 검증을 통과한 동일한 Flyway 파일을 backup 뒤 적용한다.
+
+Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유하지 않는다. schema source는 하나의 Flyway migration 집합으로 유지한다.
 
 ## 14. 보안 경계
 
 - secret, password, token, 실제 DB URL을 Git에 넣지 않는다.
 - `.env.example`은 key 이름과 안전한 placeholder만 제공한다.
 - 운영 secret file과 backup directory는 `.gitignore`에 포함한다.
-- Nginx와 application 양쪽에서 auth endpoint rate limit을 둔다.
+- application은 login ID별 실패 5회/10분, client IP별 login 30회/10분, signup 5회/10분을 제한한다.
+- 제한 상태는 Caffeine cache 세 개에 각각 최대 10,000개 key만 저장한다. API 재시작 시 초기화되며 여러 API instance가 상태를 공유하지 않는다.
+- Nginx 자체 rate limit과 Cloudflare client IP 신뢰 설정은 홈서버 배포 단위에서 추가한다.
 - STOMP `SUBSCRIBE`, `SEND`는 인증과 room membership을 검사한다.
 - 모든 outbound event를 `/user/queue/game-events`로 보내고 공개 room topic은 만들지 않는다.
 - error 응답은 안정적인 code만 제공하고 내부 예외와 stack trace를 감춘다.
@@ -351,6 +364,7 @@ API 시작 시 DB의 오래된 `IN_PROGRESS` game을 `ABORTED/SERVER_RESTART`로
 | Spring Boot + STOMP | 인증·DB·WebSocket 통합 | Node보다 초기 코드량 증가 |
 | 사용자별 event queue | 정답 노출·무단 구독 위험 감소 | 같은 공개 event를 두 번 생성 |
 | DB session | API 재시작 뒤 로그인 유지 | session table·cleanup 필요 |
+| memory auth limiter | Redis 없이 단일 서버에서 단순하게 제한 | 재시작·다중 instance에서 상태 초기화·분리 |
 | memory room | 구현·지연 최소화 | API 재시작·다중 instance 복구 불가 |
 | versioned catalog | 재현 가능·외부 API 장애 격리 | 새 포켓몬 반영에 명시적 갱신 필요 |
 | Cloudflare Tunnel | 포트 개방·공인 IP 불필요 | 외부 공급자와 계정에 의존 |

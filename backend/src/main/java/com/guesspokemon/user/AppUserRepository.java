@@ -1,0 +1,14 @@
+package com.guesspokemon.user;
+
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
+
+    Optional<AppUser> findByLoginIdKey(String loginIdKey);
+
+    boolean existsByLoginIdKey(String loginIdKey);
+
+    boolean existsByNicknameKey(String nicknameKey);
+}

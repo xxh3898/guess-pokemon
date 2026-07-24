@@ -79,6 +79,11 @@ catalog에 한국어 이름이나 기본 공식 일러스트가 빠진 종이 �
 - `FR-AUTH-07`: 한 회원은 동시에 하나의 활성 방에만 참여한다.
 - `FR-AUTH-08`: 사용자 UUID를 게임 기록의 참조 기준으로 삼는다.
 - `FR-AUTH-09`: 추후 이메일 인증을 추가해도 기존 사용자 UUID와 게임 기록은 유지한다.
+- `FR-AUTH-10`: 로그인 session은 마지막 접근 뒤 30분 동안 활동이 없으면 만료한다.
+- `FR-AUTH-11`: 단일 API instance에서 아래 인증 요청 제한을 적용한다.
+  - login ID별 비밀번호 실패 5회/10분
+  - client IP별 전체 login 시도 30회/10분
+  - client IP별 전체 signup 시도 5회/10분
 
 ### 7.2 로비와 방
 
@@ -160,7 +165,9 @@ catalog에 한국어 이름이나 기본 공식 일러스트가 빠진 종이 �
 - 운영 cookie에 `HttpOnly`, `Secure`, `SameSite=Lax`를 적용한다.
 - REST state change와 STOMP `CONNECT`에 CSRF 검증을 적용한다.
 - 비밀번호는 Spring Security `DelegatingPasswordEncoder`로 해시한다.
-- 인증·회원가입 요청에 rate limit을 적용한다.
+- 인증 요청 제한 상태는 최대 크기와 10분 만료를 둔 Caffeine memory cache에 저장한다.
+- login ID 제한에 도달하기 전 로그인에 성공하면 해당 ID의 실패 횟수를 초기화한다.
+- client IP는 신뢰한 reverse proxy가 정규화한 servlet remote address만 사용한다.
 - 정답 포켓몬은 역할별 DTO와 사용자별 STOMP queue로 분리한다.
 - 질문·닉네임은 React text node로 렌더링하고 HTML 주입을 허용하지 않는다.
 - DB, actuator 상세 정보, stack trace, 환경변수, session ID를 외부 응답과 log에 노출하지 않는다.

@@ -37,6 +37,12 @@ Cache-Control: no-store
 
 인증·방·게임 기록 응답에는 `no-store`를 적용한다. 포켓몬 catalog 목록은 짧은 private cache 또는 ETag를 사용할 수 있다.
 
+인증 요청 제한 응답에는 보수적인 재시도 대기값으로 다음 header를 추가한다.
+
+```http
+Retry-After: 600
+```
+
 ## 3. 오류 형식
 
 Spring `ProblemDetail` 기반 `application/problem+json`을 사용한다.
@@ -56,6 +62,7 @@ Spring `ProblemDetail` 기반 `application/problem+json`을 사용한다.
 - `detail`은 사용자에게 보여줄 수 있는 안전한 한국어 문장이다.
 - `code`는 프런트엔드 분기용 안정 식별자다.
 - `traceId`는 민감정보가 아닌 짧은 server correlation ID다.
+- 정의하지 않은 API 경로는 `404 RESOURCE_NOT_FOUND`를 반환한다.
 
 공통 status:
 
@@ -151,9 +158,9 @@ token 값은 log에 남기지 않는다.
 
 validation:
 
-- `loginId`: 4~30자, 영문 소문자·숫자·underscore
-- `password`: 8자 이상, UTF-8 기준 encoder 허용 길이 초과 금지
-- `nickname`: trim 뒤 2~16자, 제어문자·HTML tag 금지
+- `loginId`: trim·lowercase 정규화 뒤 4~30자, 영문 소문자·숫자·underscore
+- `password`: UTF-8 기준 8~72 byte
+- `nickname`: trim·NFC 뒤 2~16자, 제어문자·format 문자·`<`·`>` 금지
 
 응답 `201`:
 
@@ -169,11 +176,14 @@ validation:
 
 오류:
 
+- `400 VALIDATION_FAILED`
+- `403 ACCESS_DENIED` (이미 로그인한 회원)
 - `409 LOGIN_ID_ALREADY_EXISTS`
 - `409 NICKNAME_ALREADY_EXISTS`
 - `429 SIGNUP_RATE_LIMITED`
 
 중복 응답은 login ID와 nickname 중 어떤 항목인지 사용자 본인 입력 검증 범위에서 알려준다.
+같은 client IP에서 10분 동안 signup 요청 5개를 처리하고 여섯 번째 요청부터 제한한다.
 
 ### 5.3 로그인
 
@@ -190,6 +200,8 @@ validation:
 }
 ```
 
+`loginId`는 회원가입과 같은 방식으로 정규화한다. 형식이 올바르지 않아도 계정 존재 여부를 드러내지 않고 `INVALID_CREDENTIALS`를 반환한다.
+
 응답 `200`:
 
 ```json
@@ -204,11 +216,15 @@ validation:
 
 오류:
 
+- `400 VALIDATION_FAILED`
 - `401 INVALID_CREDENTIALS`
+- `403 ACCESS_DENIED` (이미 로그인한 회원)
 - `403 USER_DISABLED`
 - `429 LOGIN_RATE_LIMITED`
 
 존재하지 않는 login ID와 잘못된 password는 같은 `INVALID_CREDENTIALS` 응답과 유사한 처리 시간을 사용한다.
+login ID별 비밀번호 실패는 10분 동안 5개를 처리하고 여섯 번째 요청부터 제한한다. 제한에 도달하기 전에 성공하면 해당 ID의 실패 횟수를 초기화한다.
+같은 client IP의 전체 login 요청은 성공 여부와 관계없이 10분 동안 30개를 처리하고 서른한 번째 요청부터 제한한다.
 
 ### 5.4 로그아웃
 
@@ -240,6 +256,8 @@ validation:
 ```
 
 비회원: `401 AUTHENTICATION_REQUIRED`
+
+방 기능을 구현하기 전까지 `activeRoomCode`는 `null`이다.
 
 ## 6. 포켓몬 REST API
 

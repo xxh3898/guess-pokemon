@@ -73,7 +73,7 @@ docker compose --env-file .env down
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 TypeScript 7.0.2 기반 React SPA, Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 애플리케이션 테이블과 회원가입 기능은 이후 작업 단위에서 Flyway migration과 함께 추가합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway V1 기반 회원·Spring Session schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자 API를 제공합니다. 프런트엔드 인증 화면은 다음 작업 단위에서 연결합니다.
 
 ## 공개 운영 주의
 
