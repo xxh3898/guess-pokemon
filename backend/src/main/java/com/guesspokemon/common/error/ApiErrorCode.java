@@ -52,6 +52,34 @@ public enum ApiErrorCode {
             HttpStatus.NOT_FOUND,
             "포켓몬 없음",
             "요청한 포켓몬을 찾을 수 없습니다."),
+    USER_ALREADY_IN_ACTIVE_ROOM(
+            HttpStatus.CONFLICT,
+            "방 참여 실패",
+            "이미 다른 활성 방에 참여하고 있습니다."),
+    ROOM_CAPACITY_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "방 생성 실패",
+            "현재 새 방을 만들 수 없습니다. 잠시 뒤 다시 시도해 주세요."),
+    ROOM_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "방 없음",
+            "요청한 방을 찾을 수 없습니다."),
+    ROOM_EXPIRED(
+            HttpStatus.GONE,
+            "방 만료",
+            "요청한 방이 만료되었습니다."),
+    ROOM_FULL(
+            HttpStatus.CONFLICT,
+            "방 입장 실패",
+            "이미 두 명이 참여 중인 방입니다."),
+    CANNOT_JOIN_OWN_ROOM(
+            HttpStatus.CONFLICT,
+            "방 입장 실패",
+            "자신이 만든 방에는 다시 입장할 수 없습니다."),
+    ROOM_MEMBERSHIP_REQUIRED(
+            HttpStatus.FORBIDDEN,
+            "방 접근 거부",
+            "해당 방 참가자만 요청할 수 있습니다."),
     INTERNAL_ERROR(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "서버 오류",

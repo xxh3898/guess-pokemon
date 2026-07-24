@@ -257,7 +257,7 @@ login ID별 비밀번호 실패는 10분 동안 5개를 처리하고 여섯 번�
 
 비회원: `401 AUTHENTICATION_REQUIRED`
 
-방 기능을 구현하기 전까지 `activeRoomCode`는 `null`이다.
+활성 방이 없으면 `activeRoomCode`는 `null`이다. 방 생성·입장 뒤에는 해당 code를 반환하며, 명시적 나가기나 방 만료로 membership을 해제하면 다시 `null`을 반환한다.
 
 ## 6. 포켓몬 REST API
 
@@ -321,6 +321,25 @@ query:
 
 ### `RoomSnapshot`
 
+방 생성 직후 방장용 예:
+
+```json
+{
+  "roomCode": "AB3K7M",
+  "status": "WAITING_FOR_OPPONENT",
+  "stateVersion": 1,
+  "roundNumber": 1,
+  "me": {
+    "userId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
+    "nickname": "그린",
+    "role": "SELECTOR",
+    "connected": true
+  },
+  "opponent": null,
+  "game": null
+}
+```
+
 질문자용 예:
 
 ```json
@@ -344,6 +363,10 @@ query:
   "game": null
 }
 ```
+
+첫 round는 방장이 `SELECTOR`, 입장한 사용자가 `QUESTIONER`다. 생성 직후 status는 `WAITING_FOR_OPPONENT`이고 입장 뒤 `WAITING_FOR_SELECTION`로 바뀐다. `stateVersion`은 1부터 시작하고 membership이나 status가 바뀔 때 증가한다. `roundNumber`는 1부터 시작한다.
+
+이번 REST 방 단계의 `connected=true`는 create·join 요청을 성공한 활성 participant라는 뜻이다. 실제 STOMP session 연결 상태는 실시간 통신 구현에서 같은 field에 연결한다.
 
 출제자용 snapshot은 본인에게만 다음 field를 추가할 수 있다.
 
@@ -376,6 +399,8 @@ query:
 - `409 USER_ALREADY_IN_ACTIVE_ROOM`
 - `503 ROOM_CAPACITY_UNAVAILABLE`
 
+활성 방은 단일 API instance에서 최대 1,000개다. 새 code를 100회 안에 할당하지 못한 경우에도 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
+
 ### 7.2 방 입장
 
 `POST /api/v1/rooms/{roomCode}/join`
@@ -384,13 +409,18 @@ query:
 
 응답 `200`: 참가자용 `RoomSnapshot`
 
+`roomCode`는 앞뒤 공백을 제거하고 대문자로 정규화한다. 허용 문자는 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`이며 길이는 6자다.
+
 오류:
 
+- `400 VALIDATION_FAILED`
 - `404 ROOM_NOT_FOUND`
 - `410 ROOM_EXPIRED`
 - `409 ROOM_FULL`
 - `409 CANNOT_JOIN_OWN_ROOM`
 - `409 USER_ALREADY_IN_ACTIVE_ROOM`
+
+방장만 있는 방은 최초 생성 30분 뒤 만료한다. 만료 code는 30분 동안 `ROOM_EXPIRED`로 구분한 뒤 `ROOM_NOT_FOUND`로 수렴한다.
 
 ### 7.3 방 상태
 
@@ -402,6 +432,7 @@ query:
 
 오류:
 
+- `400 VALIDATION_FAILED`
 - `403 ROOM_MEMBERSHIP_REQUIRED`
 - `404 ROOM_NOT_FOUND`
 
@@ -415,9 +446,18 @@ query:
 
 응답: `204`
 
-- 대기 중이면 방을 떠난다.
+- 대기 중 방장이 나가면 방을 닫고 두 참가자의 활성 방을 해제한다.
+- 대기 중 참가자가 나가면 방장만 남은 `WAITING_FOR_OPPONENT` 상태로 돌아간다.
 - 진행 중이면 즉시 `PLAYER_LEFT` 기권 패배를 확정한다.
 - 네트워크 단절과 달리 60초 유예를 적용하지 않는다.
+
+오류:
+
+- `400 VALIDATION_FAILED`
+- `403 ROOM_MEMBERSHIP_REQUIRED`
+- `404 ROOM_NOT_FOUND`
+
+이번 방 생성·입장 단계는 대기 상태 나가기만 처리한다. 진행 중 기권과 경기 종료 기록은 game 구현에서 같은 endpoint에 연결한다.
 
 ## 8. 경기 기록 REST API
 

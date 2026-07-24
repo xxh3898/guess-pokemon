@@ -133,7 +133,11 @@ com.guesspokemon
 - `ConcurrentHashMap` 기반 `RoomRegistry`
 - 방 코드, 두 참가자, 현재 round, 연결 상태, 만료
 - 사용자당 활성 방 하나
+- room map과 사용자 index를 함께 바꾸는 create·join·leave·expire는 짧은 registry lock 안에서 처리
 - 방별 직렬 실행 경계
+- 방장만 남은 방은 최초 생성 30분 뒤 만료하고 1분 fixed-delay cleanup으로 제거
+- 만료 code는 최대 10,000개를 30분 동안 tombstone으로 유지해 `410`과 `404`를 구분
+- 활성 방 최대 1,000개, unique code 할당 최대 100회
 
 ### `game`
 
@@ -220,6 +224,12 @@ sequenceDiagram
     API-->>H: selector ROUND_STARTED + secret
     API-->>G: questioner ROUND_STARTED
 ```
+
+방 생성 직후에는 `WAITING_FOR_OPPONENT`, `stateVersion=1`, `roundNumber=1`이며 방장이 `SELECTOR`다. guest가 입장하면 `QUESTIONER`로 배정하고 `WAITING_FOR_SELECTION`로 전환한다. create·join REST 단계의 `connected=true`는 활성 participant라는 뜻이며 실제 socket session 상태는 STOMP 구현에서 연결한다.
+
+room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든다. 입력은 앞뒤 공백 제거와 대문자 정규화 뒤 같은 alphabet으로 검증한다. code 충돌 재시도 상한이나 활성 방 상한을 넘으면 room map을 부분 갱신하지 않고 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
+
+대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한다. 방장이 나가면 room을 닫고 두 participant index를 모두 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 idle expiry와 진행 중 leave는 실시간 연결·game 단위에서 완성한다.
 
 같은 event type이라도 selector와 questioner payload class를 분리한다. 공용 객체를 만들고 serializer annotation으로 필드를 감추는 방식은 사용하지 않는다.
 

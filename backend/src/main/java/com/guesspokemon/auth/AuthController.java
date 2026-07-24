@@ -9,6 +9,7 @@ import com.guesspokemon.auth.AuthDtos.LoginRequest;
 import com.guesspokemon.auth.AuthDtos.SignupRequest;
 import com.guesspokemon.auth.AuthDtos.UserSummary;
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.room.RoomRegistry;
 import com.guesspokemon.user.AppUser;
 import com.guesspokemon.user.UserRegistrationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,18 +35,21 @@ public class AuthController {
     private final AuthAttemptLimiter authAttemptLimiter;
     private final ClientIpAddressResolver clientIpAddressResolver;
     private final LogoutHandler logoutHandler;
+    private final RoomRegistry roomRegistry;
 
     public AuthController(
             UserRegistrationService userRegistrationService,
             AuthService authService,
             AuthAttemptLimiter authAttemptLimiter,
             ClientIpAddressResolver clientIpAddressResolver,
-            LogoutHandler logoutHandler) {
+            LogoutHandler logoutHandler,
+            RoomRegistry roomRegistry) {
         this.userRegistrationService = userRegistrationService;
         this.authService = authService;
         this.authAttemptLimiter = authAttemptLimiter;
         this.clientIpAddressResolver = clientIpAddressResolver;
         this.logoutHandler = logoutHandler;
+        this.roomRegistry = roomRegistry;
     }
 
     @GetMapping("/csrf")
@@ -105,8 +109,11 @@ public class AuthController {
 
     @GetMapping("/me")
     CurrentUserResponse currentUser(Authentication authentication) {
+        UserSummary userSummary = authService.currentUser(authentication);
         return new CurrentUserResponse(
-                authService.currentUser(authentication),
-                null);
+                userSummary,
+                roomRegistry
+                        .findActiveRoomCode(userSummary.id())
+                        .orElse(null));
     }
 }
