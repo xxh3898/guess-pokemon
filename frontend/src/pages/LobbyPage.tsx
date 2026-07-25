@@ -1,26 +1,50 @@
-import { useState } from "react";
 import {
+  AlertCircle,
   Clock3,
   CircleHelp,
   Gamepad2,
   History,
+  LoaderCircle,
   LogOut,
   Plus,
+  Play,
   Search,
   UserRound,
   UsersRound,
 } from "lucide-react";
+import {
+  type FormEvent,
+  useState,
+} from "react";
 import { Link, useNavigate } from "react-router";
 
 import { useAuth } from "../features/auth/AuthContext";
+import {
+  type RoomGateway,
+  roomGateway,
+} from "../features/room/roomApi";
+import {
+  validateRoomCode,
+} from "../features/room/roomCode";
 import { ApiError } from "../shared/api/HttpClient";
 import { PageStatus } from "../shared/ui/PageStatus";
 
-export function LobbyPage() {
+interface LobbyPageProps {
+  gateway?: RoomGateway;
+}
+
+export function LobbyPage({
+  gateway = roomGateway,
+}: LobbyPageProps) {
   const auth = useAuth();
   const navigate = useNavigate();
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [joiningRoom, setJoiningRoom] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState("");
 
   if (!auth.currentUser) {
     return (
@@ -35,6 +59,8 @@ export function LobbyPage() {
   }
 
   const { activeRoomCode, user } = auth.currentUser;
+  const roomActionDisabled =
+    creatingRoom || joiningRoom || activeRoomCode !== null;
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -50,6 +76,45 @@ export function LobbyPage() {
           : "로그아웃 요청을 처리하지 못했습니다. 다시 시도해 주세요.",
       );
       setLoggingOut(false);
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    if (roomActionDisabled) {
+      return;
+    }
+    setCreatingRoom(true);
+    setCreateError(null);
+    try {
+      const snapshot = await gateway.create();
+      auth.setActiveRoomCode(snapshot.roomCode);
+      navigate(`/rooms/${snapshot.roomCode}`);
+    } catch (error) {
+      setCreateError(roomActionError(error));
+      setCreatingRoom(false);
+    }
+  };
+
+  const handleJoinRoom = async (event: FormEvent) => {
+    event.preventDefault();
+    if (roomActionDisabled) {
+      return;
+    }
+    const validationMessage = validateRoomCode(roomCode);
+    if (validationMessage) {
+      setJoinError(validationMessage);
+      return;
+    }
+
+    setJoiningRoom(true);
+    setJoinError(null);
+    try {
+      const snapshot = await gateway.join(roomCode);
+      auth.setActiveRoomCode(snapshot.roomCode);
+      navigate(`/rooms/${snapshot.roomCode}`);
+    } catch (error) {
+      setJoinError(roomActionError(error));
+      setJoiningRoom(false);
     }
   };
 
@@ -113,12 +178,18 @@ export function LobbyPage() {
           {activeRoomCode ? (
             <article className="active-room-card">
               <span className="step-number yellow-number">03</span>
-              <div>
+              <div className="active-room-summary">
                 <p className="card-caption">참여 중인 방</p>
                 <h2 className="room-code">{activeRoomCode}</h2>
-                <p>진행 중인 방 정보가 계정에 남아 있어요.</p>
+                <p>이어갈 수 있는 방이 있어요.</p>
               </div>
-              <Gamepad2 aria-hidden="true" size={36} />
+              <Link
+                className="active-room-link"
+                to={`/rooms/${activeRoomCode}`}
+              >
+                <Play aria-hidden="true" size={17} />
+                이어서 하기
+              </Link>
             </article>
           ) : null}
 
@@ -132,9 +203,30 @@ export function LobbyPage() {
                 <h2>새 방 만들기</h2>
                 <p>새로운 방을 만들고 친구에게 방 코드를 알려주세요.</p>
               </div>
-              <button className="primary-button" disabled type="button">
-                <Plus aria-hidden="true" size={18} />
-                다음 단계에서 연결
+              {createError ? (
+                <div className="card-error-message" role="alert">
+                  <AlertCircle aria-hidden="true" size={17} />
+                  {createError}
+                </div>
+              ) : null}
+              <button
+                className="primary-button"
+                disabled={roomActionDisabled}
+                onClick={() => {
+                  void handleCreateRoom();
+                }}
+                type="button"
+              >
+                {creatingRoom ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="spin-icon"
+                    size={18}
+                  />
+                ) : (
+                  <Plus aria-hidden="true" size={18} />
+                )}
+                {creatingRoom ? "방 만드는 중..." : "방 만들기"}
               </button>
             </article>
 
@@ -147,12 +239,66 @@ export function LobbyPage() {
                 <h2>방 코드로 입장</h2>
                 <p>친구에게 받은 6자리 방 코드로 참여할 수 있어요.</p>
               </div>
-              <button className="mint-button" disabled type="button">
-                <Search aria-hidden="true" size={18} />
-                다음 단계에서 연결
-              </button>
+              <form
+                className="room-join-form"
+                onSubmit={(event) => {
+                  void handleJoinRoom(event);
+                }}
+              >
+                <label htmlFor="room-code">방 코드</label>
+                <input
+                  aria-describedby={
+                    joinError ? "room-code-error" : undefined
+                  }
+                  aria-invalid={joinError !== null}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  disabled={roomActionDisabled}
+                  id="room-code"
+                  onChange={(event) => {
+                    setRoomCode(event.target.value.toUpperCase());
+                    setJoinError(null);
+                  }}
+                  placeholder="예: ABCD12"
+                  spellCheck={false}
+                  value={roomCode}
+                />
+                {joinError ? (
+                  <p
+                    className="field-error-message"
+                    id="room-code-error"
+                    role="alert"
+                  >
+                    <AlertCircle aria-hidden="true" size={16} />
+                    {joinError}
+                  </p>
+                ) : null}
+                <button
+                  className="mint-button"
+                  disabled={roomActionDisabled}
+                  type="submit"
+                >
+                  {joiningRoom ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="spin-icon"
+                      size={18}
+                    />
+                  ) : (
+                    <Search aria-hidden="true" size={18} />
+                  )}
+                  {joiningRoom ? "입장하는 중..." : "입장하기"}
+                </button>
+              </form>
             </article>
           </div>
+
+          {activeRoomCode ? (
+            <p className="active-room-guidance">
+              새 방을 만들거나 다른 방에 들어가려면 참여 중인 방을
+              먼저 확인해 주세요.
+            </p>
+          ) : null}
 
           <aside className="lobby-coming-soon">
             <History aria-hidden="true" size={22} />
@@ -170,4 +316,11 @@ export function LobbyPage() {
       </div>
     </main>
   );
+}
+
+function roomActionError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.detail;
+  }
+  return "방 요청을 처리하지 못했습니다. 다시 시도해 주세요.";
 }

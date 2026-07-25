@@ -91,7 +91,13 @@ public class RoomApplicationService {
                 roomRegistry.leave(
                         roomCode,
                         userId,
-                        room -> prepareLeave(room, userId));
+                        room -> prepareLeave(room, userId),
+                        (room, prepared) ->
+                                new LeaveOutcome(
+                                        prepared.gameEnded(),
+                                        false,
+                                        prepared.leftUserId(),
+                                        snapshotsFor(room)));
         LeaveOutcome outcome = execution.result();
         boolean roomClosed =
                 execution.leaveResult()
@@ -102,6 +108,7 @@ public class RoomApplicationService {
         return new LeaveOutcome(
                 outcome.gameEnded(),
                 roomClosed,
+                outcome.leftUserId(),
                 outcome.snapshots());
     }
 
@@ -332,6 +339,7 @@ public class RoomApplicationService {
             return new LeaveOutcome(
                     false,
                     false,
+                    userId,
                     Map.of());
         }
         UUID commandId = UUID.randomUUID();
@@ -347,8 +355,9 @@ public class RoomApplicationService {
         room.applyGameView(commandId, gameView);
         return new LeaveOutcome(
                 true,
-                true,
-                snapshotsFor(room));
+                false,
+                userId,
+                Map.of());
     }
 
     private CommandOutcome commandOutcome(
@@ -475,9 +484,11 @@ public class RoomApplicationService {
     public record LeaveOutcome(
             boolean gameEnded,
             boolean roomClosed,
+            UUID leftUserId,
             Map<UUID, RoomSnapshot> snapshots) {
 
         public LeaveOutcome {
+            Objects.requireNonNull(leftUserId);
             snapshots = Map.copyOf(snapshots);
         }
     }

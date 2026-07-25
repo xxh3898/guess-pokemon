@@ -91,6 +91,12 @@ docker compose -f compose.test.yaml run --rm frontend-test
 docker compose -f compose.test.yaml run --rm backend-test
 ```
 
+Nginx WebSocket 프록시 설정 검증은 다음 명령으로 실행합니다.
+
+```bash
+docker compose -f compose.test.yaml run --rm infra-test
+```
+
 서비스를 종료할 때는 PostgreSQL named volume을 보존합니다.
 
 ```bash
@@ -106,7 +112,7 @@ docker compose --env-file .env down
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 프런트엔드는 회원가입·로그인·로그아웃, cookie session 복원, CSRF 공통 client, 비회원·회원 route guard와 최소 대전 로비를 제공합니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 방 생성·포켓몬 선택·실제 경기·기록 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 프런트엔드는 회원가입·로그인·로그아웃, cookie session 복원, CSRF 공통 client, 비회원·회원 route guard, 방 생성·코드 입장·이어하기와 실시간 대기방을 제공합니다. 대기방은 `@stomp/stompjs`로 사용자별 queue를 구독하고 `resume` snapshot, 연결 상태, 명시적 이탈과 방 종료를 동기화합니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 포켓몬 선택·실제 경기·기록 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
 
 ## 공개 운영 주의
 

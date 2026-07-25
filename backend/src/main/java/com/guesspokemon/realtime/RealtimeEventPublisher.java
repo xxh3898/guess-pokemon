@@ -7,8 +7,12 @@ import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.PLAYER_JOINED
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.QUESTION_ANSWERED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.QUESTION_ASKED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.REMATCH_STATE_CHANGED;
+import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_CLOSED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_SNAPSHOT;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROUND_STARTED;
+import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.HOST_LEFT;
+import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.RESULT_ROOM_LEFT;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.RESULT;
 
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameViews.ActionView;
@@ -24,6 +28,8 @@ import com.guesspokemon.realtime.RealtimeDtos.QuestionAnsweredPayload;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionAskedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionerRoundStartedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RematchStateChangedPayload;
+import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
+import com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason;
 import com.guesspokemon.realtime.RealtimeDtos.RoundStartedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.SelectorRoundStartedPayload;
 import com.guesspokemon.room.RoomApplicationService.CommandOutcome;
@@ -202,7 +208,14 @@ public class RealtimeEventPublisher {
     public void publishLeave(LeaveOutcome outcome) {
         if (outcome.gameEnded()) {
             publishGameEnded(outcome.snapshots());
+            return;
         }
+        if (outcome.roomClosed()) {
+            publishRoomClosed(outcome);
+            return;
+        }
+        outcome.snapshots()
+                .forEach(this::publishSnapshot);
     }
 
     public void publishRematch(
@@ -245,6 +258,36 @@ public class RealtimeEventPublisher {
                 GAME_ENDED,
                 snapshots,
                 payload);
+    }
+
+    private void publishRoomClosed(
+            LeaveOutcome outcome) {
+        RoomClosedReason reason =
+                outcome.snapshots()
+                                .values()
+                                .stream()
+                                .anyMatch(
+                                        snapshot ->
+                                                snapshot.status()
+                                                        == RESULT)
+                        ? RESULT_ROOM_LEFT
+                        : HOST_LEFT;
+        RoomClosedPayload payload =
+                new RoomClosedPayload(
+                        outcome.leftUserId(),
+                        reason);
+        outcome.snapshots()
+                .forEach(
+                        (userId, snapshot) -> {
+                            if (!userId.equals(
+                                    outcome.leftUserId())) {
+                                publish(
+                                        userId,
+                                        ROOM_CLOSED,
+                                        snapshot,
+                                        payload);
+                            }
+                        });
     }
 
     private RoundStartedPayload roundStartedPayload(

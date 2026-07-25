@@ -158,7 +158,7 @@ com.guesspokemon
 - `WebSocketConfig`: `/ws`, `/app`, simple broker `/queue`, 10초 heartbeat
 - `WebSocketSecurityConfig`: STOMP `CONNECT` CSRF·인증과 SEND·SUBSCRIBE allowlist
 - `RealtimeCommandController`: select, ask, answer, guess, resume, rematch-ready
-- `RealtimeEventPublisher`: `/user/queue/game-events` 역할별 event
+- `RealtimeEventPublisher`: `/user/queue/game-events` 역할별 event와 대기방 이탈 상태 동기화
 - `RoomConnectionService`: session과 사용자·방 mapping, 마지막 session disconnect 판단, 60초 timeout
 - `WebSocketDisconnectListener`: 중복 가능한 `SessionDisconnectEvent` 전달
 
@@ -170,8 +170,7 @@ src/
 │   └── routes.tsx
 ├── features/
 │   ├── auth/
-│   ├── lobby/       # 후속 화면 단위
-│   ├── room/        # 후속 화면 단위
+│   ├── room/        # 방 REST 계약, 대기방 화면, room state
 │   ├── game/        # 후속 화면 단위
 │   ├── pokemon/     # 후속 화면 단위
 │   └── history/     # 후속 화면 단위
@@ -184,7 +183,7 @@ src/
 │   └── system-status.css
 ├── shared/
 │   ├── api/
-│   ├── realtime/    # 후속 화면 단위
+│   ├── realtime/    # STOMP 연결, resume, 역할별 event parser
 │   ├── ui/
 │   └── validation/
 ├── styles/
@@ -204,9 +203,12 @@ src/
 - `AuthProvider`는 앱 시작 시 `/auth/me`로 session을 복원하고 `loading`, `anonymous`, `authenticated`, `error` 상태를 구분한다.
 - `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
 - anonymous-only route는 로그인 회원을 `/lobby`로 보내고, protected route는 원래 내부 URL을 보존한 채 비회원을 `/login`으로 보낸다.
-- STOMP client는 앱 전체에 하나만 활성화하고 로그인·로그아웃 수명주기에 맞춰 `activate`·`deactivate`한다.
+- 로비는 방 생성·코드 입장·활성 방 이어하기를 REST API와 연결하고, `/rooms/:roomCode`는 direct URL과 뒤로가기를 지원한다.
+- `@stomp/stompjs` client는 앱 전체에 하나만 활성화하고 room route 수명주기에 맞춰 `activate`·`deactivate`한다.
+- room route는 연결할 때마다 CSRF credential을 넣고 사용자별 queue를 구독한 뒤 `resume`을 보내 authoritative snapshot을 복구한다.
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.
-- server snapshot을 기준으로 UI store를 재구성하고 event `stateVersion`이 이전 값이면 무시한다.
+- server snapshot을 기준으로 UI store를 재구성한다. 이전 version은 무시하고 같은 version의 `ROOM_SNAPSHOT`만 authoritative replacement로 허용한다.
+- `ROOM_CLOSED`를 받으면 local active room을 비우고 닫힌 방 안내와 로비 복귀 경로를 제공한다.
 - 정답 포켓몬 type을 selector 전용 snapshot에만 둔다.
 - Lucide icon은 named import만 사용하고 장식 icon은 screen reader에서 숨긴다. icon-only control은 부모 control에 접근 가능한 이름을 제공한다.
 
@@ -252,7 +254,7 @@ sequenceDiagram
 
 room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든다. 입력은 앞뒤 공백 제거와 대문자 정규화 뒤 같은 alphabet으로 검증한다. code 충돌 재시도 상한이나 활성 방 상한을 넘으면 room map을 부분 갱신하지 않고 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
 
-대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한다. 방장이 나가면 room을 닫고 두 participant index를 모두 해제한다. 진행 중 참가자가 나가면 `PLAYER_LEFT` 결과를 먼저 저장하고 두 참가자에게 `GAME_ENDED`를 보낸 뒤 room과 active game memory를 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 별도 idle expiry는 첫 범위에 두지 않는다.
+대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한 뒤, 남은 방장에게 post-leave `ROOM_SNAPSHOT`을 보낸다. 대기 중 방장이 나가면 room과 두 participant index를 해제하고 나가지 않은 guest에게 `ROOM_CLOSED/HOST_LEFT`를 보낸다. 결과 단계 참가자가 room을 닫으면 상대에게 `ROOM_CLOSED/RESULT_ROOM_LEFT`를 보낸다. 진행 중 참가자가 나가면 `PLAYER_LEFT` 결과를 먼저 저장하고 두 참가자에게 `GAME_ENDED`를 보낸 뒤 room과 active game memory를 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 별도 idle expiry는 첫 범위에 두지 않는다.
 
 같은 event type이라도 selector와 questioner payload class를 분리한다. 공용 객체를 만들고 serializer annotation으로 필드를 감추는 방식은 사용하지 않는다.
 
@@ -344,7 +346,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 
 ### 테스트
 
-- `compose.test.yaml`은 frontend 검증과 backend Testcontainers 통합 테스트를 분리한다.
+- `compose.test.yaml`은 frontend 검증, backend Testcontainers 통합 테스트, Nginx 설정 회귀 테스트를 분리한다.
 - backend test는 `postgres:18.4-alpine3.24`, `@ServiceConnection`을 사용해 실행마다 격리된 DB를 만든다.
 - Docker Desktop의 sibling container 통신을 위해 source를 host와 같은 절대경로에 mount하고 `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal`을 사용한다.
 - backend test container의 `/var/run/docker.sock` mount는 Docker daemon 전체 제어 권한에 해당하므로 신뢰할 수 있는 로컬 코드 검증에만 사용한다.
@@ -359,6 +361,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - `web`만 내부 HTTP origin으로 노출하고 Tunnel이 outbound connection을 만든다.
 - Nginx는 `/api`, `/ws`, SPA fallback, request body limit, security header를 담당한다.
 - Nginx는 외부에서 받은 `X-Forwarded-For`를 이어 붙이지 않고 직접 확인한 remote address로 덮어쓴다.
+- `/ws` proxy는 원래 `Host`의 명시적 port를 `X-Forwarded-Port`로 전달한다. Docker port mapping에서도 Spring same-origin 검사가 브라우저 `Origin`과 같은 외부 port를 비교하게 한다.
 - Nginx가 외부에 전달하는 Actuator 경로는 liveness와 readiness 두 개로 제한한다.
 - API readiness에는 `readinessState`와 `db`를 포함하고 liveness에는 외부 dependency를 포함하지 않는다.
 - Cloudflare가 외부 TLS를 종료하고 `X-Forwarded-*`를 전달한다.

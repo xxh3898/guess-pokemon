@@ -60,6 +60,42 @@ describe("HttpClient", () => {
     expect(fetcher.mock.calls[2]?.[0]).toBe("/api/v1/second");
   });
 
+  it("should_shareCsrfCredential_when_realtimeConnects", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      csrfResponse("realtime-token"),
+    );
+    const client = new HttpClient(fetcher);
+
+    await expect(client.getCsrfCredential()).resolves.toEqual({
+      headerName: "X-XSRF-TOKEN",
+      token: "realtime-token",
+    });
+    await expect(client.getCsrfCredential()).resolves.toEqual({
+      headerName: "X-XSRF-TOKEN",
+      token: "realtime-token",
+    });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("should_sendCsrfHeader_when_deletingResource", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(csrfResponse("leave-token"))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new HttpClient(fetcher);
+
+    await expect(
+      client.delete("/api/v1/rooms/AB3K7M/members/me"),
+    ).resolves.toBeUndefined();
+
+    const request = fetcher.mock.calls[1]?.[1] as RequestInit;
+    expect(request.method).toBe("DELETE");
+    expect(new Headers(request.headers).get("X-XSRF-TOKEN")).toBe(
+      "leave-token",
+    );
+  });
+
   it("should_refreshTokenOnce_when_csrfTokenIsRejected", async () => {
     const fetcher = vi
       .fn()

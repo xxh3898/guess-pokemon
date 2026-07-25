@@ -56,6 +56,7 @@ public final class RealtimeDtos {
         QUESTION_ANSWERED,
         GUESS_RESOLVED,
         PLAYER_CONNECTION_CHANGED,
+        ROOM_CLOSED,
         GAME_ENDED,
         REMATCH_STATE_CHANGED
     }
@@ -85,6 +86,16 @@ public final class RealtimeDtos {
 
     public record PlayerJoinedPayload(
             PlayerSummary player) {
+    }
+
+    public enum RoomClosedReason {
+        HOST_LEFT,
+        RESULT_ROOM_LEFT
+    }
+
+    public record RoomClosedPayload(
+            UUID leftUserId,
+            RoomClosedReason reason) {
     }
 
     public sealed interface RoundStartedPayload

@@ -59,8 +59,11 @@
   line-height: 1.65;
 }
 
-.status-card .compact-button,
-.status-card .compact-link {
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
   margin-top: 24px;
 }
 

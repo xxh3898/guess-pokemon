@@ -126,15 +126,44 @@ export function AuthProvider({
     }
   }, [gateway]);
 
+  const setActiveRoomCode = useCallback(
+    (activeRoomCode: string | null) => {
+      setState((current) => {
+        if (
+          current.status !== "authenticated" ||
+          !current.currentUser
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          currentUser: {
+            ...current.currentUser,
+            activeRoomCode,
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
       login,
       logout,
       restoreSession,
+      setActiveRoomCode,
       signup,
     }),
-    [login, logout, restoreSession, signup, state],
+    [
+      login,
+      logout,
+      restoreSession,
+      setActiveRoomCode,
+      signup,
+      state,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

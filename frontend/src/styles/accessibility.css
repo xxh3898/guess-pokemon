@@ -6,6 +6,10 @@
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
 .mint-button:focus-visible,
+.active-room-link:focus-visible,
+.room-header-code button:focus-visible,
+.room-copy-box button:focus-visible,
+.room-leave-button:focus-visible,
 .logout-button:focus-visible,
 .password-toggle:focus-visible,
 input:focus-visible {

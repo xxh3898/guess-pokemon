@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -181,15 +182,29 @@ public class RoomRegistry {
         leave(
                 roomCodeInput,
                 userId,
-                room -> null);
+                room -> null,
+                (room, result) -> result);
     }
 
     <T> LeaveExecution<T> leave(
             String roomCodeInput,
             UUID userId,
             Function<Room, T> beforeLeave) {
+        return leave(
+                roomCodeInput,
+                userId,
+                beforeLeave,
+                (room, result) -> result);
+    }
+
+    <T> LeaveExecution<T> leave(
+            String roomCodeInput,
+            UUID userId,
+            Function<Room, T> beforeLeave,
+            BiFunction<Room, T, T> afterLeave) {
         Objects.requireNonNull(userId);
         Objects.requireNonNull(beforeLeave);
+        Objects.requireNonNull(afterLeave);
         String roomCode = normalizeRoomCode(roomCodeInput);
         mutationLock.lock();
         try {
@@ -202,7 +217,7 @@ public class RoomRegistry {
                 throw new ApiException(ROOM_MEMBERSHIP_REQUIRED);
             }
 
-            T result = beforeLeave.apply(room);
+            T preparedResult = beforeLeave.apply(room);
             Room.LeaveResult leaveResult = room.leave(userId);
             if (leaveResult == Room.LeaveResult.ROOM_CLOSED) {
                 rooms.remove(roomCode, room);
@@ -218,6 +233,10 @@ public class RoomRegistry {
                     "Room left userId={} hostLeft={}",
                     userId,
                     room.isHost(userId));
+            T result =
+                    afterLeave.apply(
+                            room,
+                            preparedResult);
             return new LeaveExecution<>(
                     leaveResult,
                     result);

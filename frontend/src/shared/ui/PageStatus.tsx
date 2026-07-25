@@ -7,6 +7,10 @@ import {
 import { Link } from "react-router";
 
 interface PageStatusProps {
+  backLink?: {
+    label: string;
+    to: string;
+  };
   detail: string;
   loading?: boolean;
   onRetry?: () => void;
@@ -14,6 +18,7 @@ interface PageStatusProps {
 }
 
 export function PageStatus({
+  backLink,
   detail,
   loading = false,
   onRetry,
@@ -53,15 +58,27 @@ export function PageStatus({
           </p>
           <h1>{title}</h1>
           <p>{detail}</p>
-          {onRetry ? (
-            <button
-              className="primary-button compact-button"
-              onClick={onRetry}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={18} />
-              다시 시도
-            </button>
+          {onRetry || backLink ? (
+            <div className="status-actions">
+              {onRetry ? (
+                <button
+                  className="primary-button compact-button"
+                  onClick={onRetry}
+                  type="button"
+                >
+                  <RefreshCw aria-hidden="true" size={18} />
+                  다시 시도
+                </button>
+              ) : null}
+              {backLink ? (
+                <Link
+                  className="secondary-link compact-link"
+                  to={backLink.to}
+                >
+                  {backLink.label}
+                </Link>
+              ) : null}
+            </div>
           ) : null}
         </section>
       </div>

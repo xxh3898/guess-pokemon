@@ -21,6 +21,7 @@ export function createAuthContextValue(
     login: vi.fn(),
     logout: vi.fn(),
     restoreSession: vi.fn(),
+    setActiveRoomCode: vi.fn(),
     signup: vi.fn(),
     status: "anonymous",
     ...overrides,

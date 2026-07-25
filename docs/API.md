@@ -811,7 +811,9 @@ payload:
 }
 ```
 
-client는 `stateVersion`이 현재 값보다 작거나 같은 중복 event를 무시한다.
+client는 현재 값보다 작은 `stateVersion` event를 무시한다. 같은 version의
+`ROOM_SNAPSHOT`은 직전에 받은 알림 event를 보완하는 authoritative 상태일
+수 있으므로 적용하고, 그 밖의 같은 version event는 중복으로 무시한다.
 
 ## 14. STOMP event
 
@@ -902,6 +904,26 @@ client는 `stateVersion`이 현재 값보다 작거나 같은 중복 event를 �
 ```
 
 재접속 성공 시 `connected=true`, `reconnectDeadline=null`이다.
+
+### `ROOM_CLOSED`
+
+```json
+{
+  "leftUserId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
+  "reason": "HOST_LEFT"
+}
+```
+
+`reason`:
+
+- `HOST_LEFT`: 대기 중 방장이 나가 room을 닫음
+- `RESULT_ROOM_LEFT`: 결과 단계 참가자가 나가 room을 닫음
+
+server는 나간 사용자를 제외한 기존 상대에게만 이 event를 보낸다. client는
+활성 방 정보를 비우고 방 종료 안내와 로비 복귀 경로를 제공한다.
+
+대기 중 guest가 나가 room이 유지되는 경우에는 `ROOM_CLOSED` 대신 남은
+host에게 `WAITING_FOR_OPPONENT` 상태의 최신 `ROOM_SNAPSHOT`을 보낸다.
 
 ### `GAME_ENDED`
 

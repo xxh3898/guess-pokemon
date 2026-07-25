@@ -6,6 +6,7 @@ import {
 } from "../features/auth/AuthRouteGuards";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SignupPage } from "../features/auth/SignupPage";
+import { RoomPage } from "../features/room/RoomPage";
 import { HomePage } from "../pages/HomePage";
 import { LobbyPage } from "../pages/LobbyPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -34,6 +35,10 @@ export const routes: RouteObject[] = [
       {
         path: "/lobby",
         Component: LobbyPage,
+      },
+      {
+        path: "/rooms/:roomCode",
+        Component: RoomPage,
       },
     ],
   },

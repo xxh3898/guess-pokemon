@@ -128,6 +128,23 @@ describe("AuthProvider", () => {
     expect(gateway.logout).toHaveBeenCalledOnce();
     expect(gateway.clearSessionSecurity).toHaveBeenCalledOnce();
   });
+
+  it("should_updateActiveRoomLocally_when_roomMembershipChanges", async () => {
+    const gateway = createGateway({
+      currentUser: vi.fn().mockResolvedValue(CURRENT_USER),
+    });
+
+    renderHarness(gateway);
+    await screen.findByText("authenticated");
+    fireEvent.click(
+      screen.getByRole("button", { name: "활성 방 설정" }),
+    );
+
+    expect(screen.getByTestId("room-code")).toHaveTextContent(
+      "AB3K7M",
+    );
+    expect(gateway.currentUser).toHaveBeenCalledOnce();
+  });
 });
 
 function renderHarness(gateway: AuthGateway): void {
@@ -173,6 +190,14 @@ function Harness() {
         type="button"
       >
         다시 확인
+      </button>
+      <button
+        onClick={() => {
+          auth.setActiveRoomCode("AB3K7M");
+        }}
+        type="button"
+      >
+        활성 방 설정
       </button>
     </div>
   );

@@ -3,12 +3,15 @@ package com.guesspokemon.realtime;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
 import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
+import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.HOST_LEFT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionerRoundStartedPayload;
+import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.SelectorRoundStartedPayload;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomMember;
@@ -120,5 +123,22 @@ class RealtimePayloadMappingTest {
         assertTrue(selectorJson.contains("selectedPokemon"));
         assertFalse(questionerJson.contains("selectedPokemon"));
         assertFalse(questionerJson.contains("피카츄"));
+    }
+
+    @Test
+    void should_serializeMinimalPayload_when_roomClosedEventIsCreated()
+            throws Exception {
+        String payloadJson =
+                jsonMapper.writeValueAsString(
+                        new RoomClosedPayload(
+                                SELECTOR_ID,
+                                HOST_LEFT));
+
+        assertEquals(
+                """
+                {"leftUserId":"11111111-1111-1111-1111-111111111111","reason":"HOST_LEFT"}\
+                """,
+                payloadJson);
+        assertFalse(payloadJson.contains("nickname"));
     }
 }

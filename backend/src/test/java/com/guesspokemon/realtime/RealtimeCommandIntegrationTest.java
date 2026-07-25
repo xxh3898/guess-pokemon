@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.PostgreSqlTestContainerConfiguration;
+import com.guesspokemon.user.AppUser;
 import com.guesspokemon.user.UserRegistrationService;
 import java.lang.reflect.Type;
 import java.net.CookieManager;
@@ -258,6 +259,98 @@ class RealtimeCommandIntegrationTest {
         }
     }
 
+    @Test
+    void should_publishPostLeaveSnapshotToHostOnly_when_guestLeavesWaitingRoom()
+            throws Exception {
+        AuthenticatedSession host =
+                login("leavehost");
+        AuthenticatedSession guest =
+                login("leaveguest");
+        ClientConnection hostSocket = connect(host);
+        ClientConnection guestSocket = connect(guest);
+        try {
+            String roomCode = createRoom(host);
+            joinRoom(guest, roomCode);
+            hostSocket.events().clear();
+            guestSocket.events().clear();
+
+            HttpResponse<String> response =
+                    leaveRoom(guest, roomCode);
+
+            assertEquals(204, response.statusCode());
+            JsonNode snapshot =
+                    awaitEvent(
+                            hostSocket.events(),
+                            "ROOM_SNAPSHOT");
+            assertEquals(
+                    "WAITING_FOR_OPPONENT",
+                    snapshot.get("payload")
+                            .get("status")
+                            .stringValue());
+            assertEquals(
+                    3,
+                    snapshot.get("stateVersion").asLong());
+            assertTrue(
+                    snapshot.get("payload")
+                            .get("opponent")
+                            .isNull());
+            assertTrue(
+                    guestSocket.events()
+                            .poll(
+                                    300,
+                                    TimeUnit.MILLISECONDS)
+                            == null);
+        } finally {
+            disconnect(hostSocket);
+            disconnect(guestSocket);
+        }
+    }
+
+    @Test
+    void should_publishRoomClosedToGuestOnly_when_hostLeavesWaitingRoom()
+            throws Exception {
+        AuthenticatedSession host =
+                login("closehost");
+        AuthenticatedSession guest =
+                login("closeguest");
+        ClientConnection hostSocket = connect(host);
+        ClientConnection guestSocket = connect(guest);
+        try {
+            String roomCode = createRoom(host);
+            joinRoom(guest, roomCode);
+            hostSocket.events().clear();
+            guestSocket.events().clear();
+
+            HttpResponse<String> response =
+                    leaveRoom(host, roomCode);
+
+            assertEquals(204, response.statusCode());
+            JsonNode roomClosed =
+                    awaitEvent(
+                            guestSocket.events(),
+                            "ROOM_CLOSED");
+            assertEquals(
+                    "HOST_LEFT",
+                    roomClosed.get("payload")
+                            .get("reason")
+                            .stringValue());
+            assertEquals(
+                    host.userId().toString(),
+                    roomClosed.get("payload")
+                            .get("leftUserId")
+                            .stringValue());
+            assertTrue(
+                    hostSocket.events()
+                            .poll(
+                                    300,
+                                    TimeUnit.MILLISECONDS)
+                            == null);
+        } finally {
+            disconnect(hostSocket);
+            disconnect(guestSocket);
+        }
+    }
+
     private ClientConnection connect(
             AuthenticatedSession authenticated)
             throws Exception {
@@ -389,6 +482,29 @@ class RealtimeCommandIntegrationTest {
         assertEquals(200, response.statusCode());
     }
 
+    private HttpResponse<String> leaveRoom(
+            AuthenticatedSession authenticated,
+            String roomCode)
+            throws Exception {
+        return authenticated.httpClient()
+                .send(
+                        HttpRequest.newBuilder(
+                                        URI.create(
+                                                "http://localhost:"
+                                                        + port
+                                                        + "/api/v1/rooms/"
+                                                        + roomCode
+                                                        + "/members/me"))
+                                .header(
+                                        authenticated
+                                                .csrfHeaderName(),
+                                        authenticated
+                                                .csrfToken())
+                                .DELETE()
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
+    }
+
     private HttpResponse<String> sendRest(
             AuthenticatedSession authenticated,
             String path,
@@ -419,10 +535,11 @@ class RealtimeCommandIntegrationTest {
                         .replace("-", "")
                         .substring(0, 8);
         String loginId = prefix + "_" + suffix;
-        userRegistrationService.register(
-                loginId,
-                PASSWORD,
-                prefix.substring(0, 1) + suffix);
+        AppUser user =
+                userRegistrationService.register(
+                        loginId,
+                        PASSWORD,
+                        prefix.substring(0, 1) + suffix);
         CookieManager cookieManager = new CookieManager();
         HttpClient httpClient =
                 HttpClient.newBuilder()
@@ -474,6 +591,7 @@ class RealtimeCommandIntegrationTest {
                         .orElseThrow();
         return new AuthenticatedSession(
                 httpClient,
+                user.getId(),
                 sessionId,
                 authenticatedCsrf.headerName(),
                 authenticatedCsrf.token());
@@ -557,6 +675,7 @@ class RealtimeCommandIntegrationTest {
 
     private record AuthenticatedSession(
             HttpClient httpClient,
+            UUID userId,
             String sessionId,
             String csrfHeaderName,
             String csrfToken) {

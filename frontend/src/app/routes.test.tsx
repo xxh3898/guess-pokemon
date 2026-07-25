@@ -65,6 +65,25 @@ describe("application routes", () => {
     expect(router.state.location.state).toEqual({ from: "/lobby" });
   });
 
+  it("should_preserveRoomPath_when_anonymousUserOpensRoomDirectly", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/rooms/AB3K7M"],
+    });
+
+    renderRouter(router, createAuthContextValue());
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "로그인",
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.state).toEqual({
+      from: "/rooms/AB3K7M",
+    });
+  });
+
   it("should_redirectToLobby_when_authenticatedUserOpensSignup", async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ["/signup"],

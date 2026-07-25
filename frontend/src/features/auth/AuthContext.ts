@@ -20,6 +20,7 @@ export interface AuthContextValue {
   login(request: LoginRequest): Promise<CurrentUser>;
   logout(): Promise<void>;
   restoreSession(): Promise<void>;
+  setActiveRoomCode(roomCode: string | null): void;
   signup(request: SignupRequest): Promise<UserSummary>;
   status: AuthStatus;
 }

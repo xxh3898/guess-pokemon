@@ -7,14 +7,14 @@ type Fetcher = (
 
 type SessionExpiredListener = () => void;
 
-interface CsrfHeader {
-  name: string;
-  token: string;
+export interface CsrfCredential {
+  readonly headerName: string;
+  readonly token: string;
 }
 
 interface RequestOptions {
   body?: unknown;
-  method: "GET" | "POST";
+  method: "DELETE" | "GET" | "POST";
   signal?: AbortSignal;
 }
 
@@ -65,8 +65,8 @@ export class ApiError extends Error {
 export class HttpClient {
   private readonly fetcher: Fetcher;
   private readonly sessionExpiredListeners = new Set<SessionExpiredListener>();
-  private csrfHeader: CsrfHeader | null = null;
-  private csrfRequest: Promise<CsrfHeader> | null = null;
+  private csrfHeader: CsrfCredential | null = null;
+  private csrfRequest: Promise<CsrfCredential> | null = null;
 
   constructor(fetcher?: Fetcher) {
     this.fetcher =
@@ -77,12 +77,22 @@ export class HttpClient {
     return this.request(path, { method: "GET", signal }, true);
   }
 
+  delete(path: ApiPath, signal?: AbortSignal): Promise<unknown> {
+    return this.request(path, { method: "DELETE", signal }, true);
+  }
+
   post(
     path: ApiPath,
     body?: unknown,
     signal?: AbortSignal,
   ): Promise<unknown> {
     return this.request(path, { body, method: "POST", signal }, true);
+  }
+
+  getCsrfCredential(
+    signal?: AbortSignal,
+  ): Promise<CsrfCredential> {
+    return this.getCsrfHeader(signal);
   }
 
   clearSessionSecurity(): void {
@@ -113,7 +123,7 @@ export class HttpClient {
 
       if (options.method !== "GET") {
         const csrfHeader = await this.getCsrfHeader(options.signal);
-        headers.set(csrfHeader.name, csrfHeader.token);
+        headers.set(csrfHeader.headerName, csrfHeader.token);
       }
 
       const response = await this.fetcher(path, {
@@ -155,7 +165,9 @@ export class HttpClient {
     }
   }
 
-  private async getCsrfHeader(signal?: AbortSignal): Promise<CsrfHeader> {
+  private async getCsrfHeader(
+    signal?: AbortSignal,
+  ): Promise<CsrfCredential> {
     if (this.csrfHeader) {
       return this.csrfHeader;
     }
@@ -172,7 +184,9 @@ export class HttpClient {
     }
   }
 
-  private async fetchCsrfHeader(signal?: AbortSignal): Promise<CsrfHeader> {
+  private async fetchCsrfHeader(
+    signal?: AbortSignal,
+  ): Promise<CsrfCredential> {
     let response: Response;
     try {
       response = await this.fetcher("/api/v1/auth/csrf", {
@@ -204,7 +218,7 @@ export class HttpClient {
     if (!headerName || !token) {
       throw ApiError.invalidResponse();
     }
-    return { name: headerName, token };
+    return { headerName, token };
   }
 }
 
