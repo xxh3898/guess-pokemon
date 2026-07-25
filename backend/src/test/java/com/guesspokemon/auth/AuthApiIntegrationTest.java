@@ -16,12 +16,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.guesspokemon.PostgreSqlTestContainerConfiguration;
+import com.guesspokemon.room.RoomApplicationService;
+import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.user.AppUser;
 import com.guesspokemon.user.AppUserRepository;
 import com.guesspokemon.user.UserRegistrationService;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,12 +54,18 @@ class AuthApiIntegrationTest {
     private UserRegistrationService userRegistrationService;
 
     @Autowired
+    private RoomApplicationService roomApplicationService;
+
+    @Autowired
     private JdbcClient jdbcClient;
 
     @BeforeEach
     void setUp() {
         jdbcClient.sql("DELETE FROM spring_session_attributes").update();
         jdbcClient.sql("DELETE FROM spring_session").update();
+        jdbcClient.sql("DELETE FROM game_action").update();
+        jdbcClient.sql("DELETE FROM game_participant").update();
+        jdbcClient.sql("DELETE FROM game").update();
         appUserRepository.deleteAll();
     }
 
@@ -510,6 +519,106 @@ class AuthApiIntegrationTest {
                         .query(Long.class)
                         .single();
         assertEquals(0L, storedSessionCount);
+    }
+
+    @Test
+    void should_keepSession_when_authenticatedUserLogsOutDuringActiveGame()
+            throws Exception {
+        AppUser appUser =
+                userRegistrationService.register(
+                        "active_game_red",
+                        VALID_PASSWORD,
+                        "게임레드");
+        AppUser guest =
+                userRegistrationService.register(
+                        "active_game_green",
+                        VALID_PASSWORD,
+                        "게임그린");
+        String clientIp = "192.0.2.13";
+        CsrfSession csrfSession = csrfSession(clientIp);
+        MvcResult loginResult =
+                mockMvc.perform(
+                                jsonPost(
+                                        "/api/v1/auth/login",
+                                        csrfSession,
+                                        clientIp,
+                                        loginJson(
+                                                "active_game_red",
+                                                VALID_PASSWORD)))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        Cookie authenticatedCookie =
+                loginResult.getResponse().getCookie("SESSION");
+        assertNotNull(authenticatedCookie);
+
+        RoomSnapshot created =
+                roomApplicationService.create(
+                        appUser.getId(),
+                        appUser.getNickname());
+        roomApplicationService.join(
+                created.roomCode(),
+                guest.getId(),
+                guest.getNickname());
+        roomApplicationService.selectPokemon(
+                created.roomCode(),
+                appUser.getId(),
+                UUID.randomUUID(),
+                2,
+                25);
+
+        try {
+            mockMvc.perform(
+                            post("/api/v1/auth/logout")
+                                    .cookie(authenticatedCookie)
+                                    .header(
+                                            "X-XSRF-TOKEN",
+                                            csrfSession.token())
+                                    .with(
+                                            request ->
+                                                    withRemoteAddress(
+                                                            request,
+                                                            clientIp)))
+                    .andExpect(status().isConflict())
+                    .andExpect(
+                            jsonPath("$.code")
+                                    .value(
+                                            "ACTIVE_GAME_MUST_BE_LEFT_FIRST"));
+
+            mockMvc.perform(
+                            get("/api/v1/auth/me")
+                                    .cookie(authenticatedCookie)
+                                    .with(
+                                            request ->
+                                                    withRemoteAddress(
+                                                            request,
+                                                            clientIp)))
+                    .andExpect(status().isOk())
+                    .andExpect(
+                            jsonPath("$.user.id")
+                                    .value(appUser.getId().toString()))
+                    .andExpect(
+                            jsonPath("$.activeRoomCode")
+                                    .value(created.roomCode()));
+
+            Long storedSessionCount =
+                    jdbcClient
+                            .sql(
+                                    """
+                                    SELECT COUNT(*)
+                                    FROM spring_session
+                                    WHERE principal_name = :principalName
+                                    """)
+                            .param(
+                                    "principalName",
+                                    appUser.getId().toString())
+                            .query(Long.class)
+                            .single();
+            assertEquals(1L, storedSessionCount);
+        } finally {
+            roomApplicationService.leave(
+                    created.roomCode(),
+                    appUser.getId());
+        }
     }
 
     @Test

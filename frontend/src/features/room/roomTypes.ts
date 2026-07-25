@@ -1,11 +1,44 @@
 import { ApiError } from "../../shared/api/HttpClient";
+import {
+  hasOwn,
+  requireBoolean,
+  requireDateTime,
+  requireInteger,
+  requireNullableDateTime,
+  requireNullableUuid,
+  requireRecord,
+  requireString,
+  requireUuid,
+} from "../../shared/api/responseParsing";
+import {
+  parsePokemonSummary,
+  type PokemonSummary,
+} from "../pokemon/pokemonTypes";
 import { isValidRoomCode, normalizeRoomCode } from "./roomCode";
+
+export const MAX_GAME_ACTION_COUNT = 20;
+
+export type RoomStatus =
+  | "WAITING_FOR_OPPONENT"
+  | "WAITING_FOR_SELECTION"
+  | "PLAYING"
+  | "PAUSED"
+  | "RESULT";
 
 export type WaitingRoomStatus =
   | "WAITING_FOR_OPPONENT"
   | "WAITING_FOR_SELECTION";
 
 export type RoomRole = "QUESTIONER" | "SELECTOR";
+export type GameStatus = "IN_PROGRESS" | "COMPLETED" | "ABORTED";
+export type GameAnswer = "YES" | "NO" | "UNKNOWN";
+export type GameEndReason =
+  | "CORRECT_GUESS"
+  | "QUESTION_LIMIT"
+  | "PLAYER_LEFT"
+  | "RECONNECT_TIMEOUT"
+  | "BOTH_DISCONNECTED"
+  | "SERVER_RESTART";
 
 export interface RoomMember {
   readonly connected: boolean;
@@ -15,92 +48,442 @@ export interface RoomMember {
   readonly userId: string;
 }
 
-export interface WaitingRoomSnapshot {
-  readonly game: null;
+interface GameActionBase {
+  readonly createdAt: string;
+  readonly sequenceNumber: number;
+}
+
+export interface QuestionGameAction extends GameActionBase {
+  readonly answer: GameAnswer | null;
+  readonly answeredAt: string | null;
+  readonly question: string;
+  readonly type: "QUESTION";
+}
+
+export interface GuessGameAction extends GameActionBase {
+  readonly correct: boolean;
+  readonly guessedPokemon: PokemonSummary | null;
+  readonly guessedPokemonNationalDexId: number;
+  readonly type: "GUESS";
+}
+
+export type GameAction = GuessGameAction | QuestionGameAction;
+
+interface GameSnapshotBase {
+  readonly actions: readonly GameAction[];
+  readonly gameId: string;
+  readonly remainingActionCount: number;
+  readonly usedActionCount: number;
+}
+
+export interface SelectorGameSnapshot extends GameSnapshotBase {
+  readonly selectedPokemon: PokemonSummary;
+  readonly status: "IN_PROGRESS";
+}
+
+export interface QuestionerGameSnapshot extends GameSnapshotBase {
+  readonly status: "IN_PROGRESS";
+}
+
+export interface ResultGameSnapshot extends GameSnapshotBase {
+  readonly answerPokemon: PokemonSummary;
+  readonly endReason: GameEndReason;
+  readonly loserUserId: string | null;
+  readonly status: "ABORTED" | "COMPLETED";
+  readonly winnerUserId: string | null;
+}
+
+export interface RematchState {
+  readonly meReady: boolean;
+  readonly opponentReady: boolean;
+}
+
+interface RoomSnapshotBase {
   readonly me: RoomMember;
-  readonly opponent: RoomMember | null;
-  readonly rematch: null;
   readonly roomCode: string;
   readonly roundNumber: number;
   readonly stateVersion: number;
-  readonly status: WaitingRoomStatus;
 }
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export interface WaitingForOpponentSnapshot
+  extends RoomSnapshotBase {
+  readonly game: null;
+  readonly opponent: null;
+  readonly rematch: null;
+  readonly status: "WAITING_FOR_OPPONENT";
+}
 
-export function parseWaitingRoomSnapshot(
-  payload: unknown,
-): WaitingRoomSnapshot {
+export interface WaitingForSelectionSnapshot
+  extends RoomSnapshotBase {
+  readonly game: null;
+  readonly opponent: RoomMember;
+  readonly rematch: null;
+  readonly status: "WAITING_FOR_SELECTION";
+}
+
+export interface SelectorActiveRoomSnapshot
+  extends RoomSnapshotBase {
+  readonly game: SelectorGameSnapshot;
+  readonly opponent: RoomMember;
+  readonly rematch: null;
+  readonly status: "PAUSED" | "PLAYING";
+}
+
+export interface QuestionerActiveRoomSnapshot
+  extends RoomSnapshotBase {
+  readonly game: QuestionerGameSnapshot;
+  readonly opponent: RoomMember;
+  readonly rematch: null;
+  readonly status: "PAUSED" | "PLAYING";
+}
+
+export interface ResultRoomSnapshot extends RoomSnapshotBase {
+  readonly game: ResultGameSnapshot;
+  readonly opponent: RoomMember;
+  readonly rematch: RematchState;
+  readonly status: "RESULT";
+}
+
+export type ActiveRoomSnapshot =
+  | QuestionerActiveRoomSnapshot
+  | SelectorActiveRoomSnapshot;
+
+export type WaitingRoomSnapshot =
+  | WaitingForOpponentSnapshot
+  | WaitingForSelectionSnapshot;
+
+export type RoomSnapshot =
+  | ActiveRoomSnapshot
+  | ResultRoomSnapshot
+  | WaitingRoomSnapshot;
+
+export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
   const response = requireRecord(payload);
-  const roomCode = normalizeRoomCode(requireString(response, "roomCode"));
-  const status = requireWaitingStatus(response.status);
+  const roomCode = normalizeRoomCode(
+    requireString(response, "roomCode"),
+  );
+  const status = requireRoomStatus(response.status);
   const me = parseRoomMember(response.me);
   const opponent =
     response.opponent === null
       ? null
       : parseRoomMember(response.opponent);
+  const base = {
+    me,
+    roomCode,
+    roundNumber: requireInteger(response, "roundNumber", 1),
+    stateVersion: requireInteger(response, "stateVersion", 1),
+  };
+
+  if (!isValidRoomCode(roomCode)) {
+    throw ApiError.invalidResponse();
+  }
+  validateParticipants(me, opponent);
+
+  if (status === "WAITING_FOR_OPPONENT") {
+    requireEmptyGameState(response);
+    if (opponent !== null) {
+      throw ApiError.invalidResponse();
+    }
+    return {
+      ...base,
+      game: null,
+      opponent: null,
+      rematch: null,
+      status,
+    };
+  }
+
+  if (status === "WAITING_FOR_SELECTION") {
+    requireEmptyGameState(response);
+    if (opponent === null) {
+      throw ApiError.invalidResponse();
+    }
+    return {
+      ...base,
+      game: null,
+      opponent,
+      rematch: null,
+      status,
+    };
+  }
+
+  if (opponent === null) {
+    throw ApiError.invalidResponse();
+  }
+
+  if (status === "RESULT") {
+    return {
+      ...base,
+      game: parseResultGameSnapshot(response.game),
+      opponent,
+      rematch: parseRematchState(response.rematch),
+      status,
+    };
+  }
+
+  if (response.rematch !== null) {
+    throw ApiError.invalidResponse();
+  }
+  const game =
+    me.role === "SELECTOR"
+      ? parseSelectorGameSnapshot(response.game)
+      : parseQuestionerGameSnapshot(response.game);
+  return {
+    ...base,
+    game,
+    opponent,
+    rematch: null,
+    status,
+  };
+}
+
+export function parseWaitingRoomSnapshot(
+  payload: unknown,
+): WaitingRoomSnapshot {
+  const snapshot = parseRoomSnapshot(payload);
+  if (
+    snapshot.status !== "WAITING_FOR_OPPONENT" &&
+    snapshot.status !== "WAITING_FOR_SELECTION"
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return snapshot;
+}
+
+function parseRoomMember(payload: unknown): RoomMember {
+  const member = requireRecord(payload);
+  return {
+    connected: requireBoolean(member, "connected"),
+    nickname: requireString(member, "nickname"),
+    reconnectDeadline: requireNullableDateTime(
+      member,
+      "reconnectDeadline",
+    ),
+    role: requireRoomRole(member.role),
+    userId: requireUuid(member, "userId"),
+  };
+}
+
+function parseSelectorGameSnapshot(
+  payload: unknown,
+): SelectorGameSnapshot {
+  const game = requireRecord(payload);
+  if (hasOwn(game, "answerPokemon")) {
+    throw ApiError.invalidResponse();
+  }
+  const base = parseGameSnapshotBase(game);
+  if (requireGameStatus(game.status) !== "IN_PROGRESS") {
+    throw ApiError.invalidResponse();
+  }
+  return {
+    ...base,
+    selectedPokemon: parsePokemonSummary(game.selectedPokemon),
+    status: "IN_PROGRESS",
+  };
+}
+
+function parseQuestionerGameSnapshot(
+  payload: unknown,
+): QuestionerGameSnapshot {
+  const game = requireRecord(payload);
+  if (
+    hasOwn(game, "selectedPokemon") ||
+    hasOwn(game, "answerPokemon")
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  const base = parseGameSnapshotBase(game);
+  if (requireGameStatus(game.status) !== "IN_PROGRESS") {
+    throw ApiError.invalidResponse();
+  }
+  return {
+    ...base,
+    status: "IN_PROGRESS",
+  };
+}
+
+function parseResultGameSnapshot(
+  payload: unknown,
+): ResultGameSnapshot {
+  const game = requireRecord(payload);
+  if (hasOwn(game, "selectedPokemon")) {
+    throw ApiError.invalidResponse();
+  }
+  const base = parseGameSnapshotBase(game);
+  const status = requireGameStatus(game.status);
+  const winnerUserId = requireNullableUuid(game, "winnerUserId");
+  const loserUserId = requireNullableUuid(game, "loserUserId");
+  const endReason = requireGameEndReason(game.endReason);
 
   if (
-    !isValidRoomCode(roomCode) ||
+    status === "IN_PROGRESS" ||
+    (status === "COMPLETED" &&
+      (winnerUserId === null ||
+        loserUserId === null ||
+        winnerUserId === loserUserId ||
+        endReason === "BOTH_DISCONNECTED" ||
+        endReason === "SERVER_RESTART")) ||
+    (status === "ABORTED" &&
+      (winnerUserId !== null ||
+        loserUserId !== null ||
+        (endReason !== "BOTH_DISCONNECTED" &&
+          endReason !== "SERVER_RESTART")))
+  ) {
+    throw ApiError.invalidResponse();
+  }
+
+  return {
+    ...base,
+    answerPokemon: parsePokemonSummary(game.answerPokemon),
+    endReason,
+    loserUserId,
+    status,
+    winnerUserId,
+  };
+}
+
+function parseGameSnapshotBase(
+  game: Record<string, unknown>,
+): GameSnapshotBase {
+  if (!Array.isArray(game.actions)) {
+    throw ApiError.invalidResponse();
+  }
+  const usedActionCount = requireInteger(
+    game,
+    "usedActionCount",
+    0,
+    MAX_GAME_ACTION_COUNT,
+  );
+  const remainingActionCount = requireInteger(
+    game,
+    "remainingActionCount",
+    0,
+    MAX_GAME_ACTION_COUNT,
+  );
+  const actions = game.actions.map((action, index) =>
+    parseGameAction(action, index + 1),
+  );
+  if (
+    usedActionCount + remainingActionCount !==
+      MAX_GAME_ACTION_COUNT ||
+    actions.length !== usedActionCount
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return {
+    actions,
+    gameId: requireUuid(game, "gameId"),
+    remainingActionCount,
+    usedActionCount,
+  };
+}
+
+function parseGameAction(
+  payload: unknown,
+  expectedSequence: number,
+): GameAction {
+  const action = requireRecord(payload);
+  const sequenceNumber = requireInteger(
+    action,
+    "sequenceNumber",
+    1,
+    MAX_GAME_ACTION_COUNT,
+  );
+  if (sequenceNumber !== expectedSequence) {
+    throw ApiError.invalidResponse();
+  }
+  const type = requireGameActionType(action.type);
+  const createdAt = requireDateTime(action, "createdAt");
+
+  if (type === "QUESTION") {
+    const answer =
+      action.answer === null
+        ? null
+        : requireGameAnswer(action.answer);
+    const answeredAt = requireNullableDateTime(
+      action,
+      "answeredAt",
+    );
+    if (
+      action.guessedPokemonNationalDexId !== null ||
+      action.correct !== null ||
+      (answer === null) !== (answeredAt === null)
+    ) {
+      throw ApiError.invalidResponse();
+    }
+    return {
+      answer,
+      answeredAt,
+      createdAt,
+      question: requireString(action, "question"),
+      sequenceNumber,
+      type,
+    };
+  }
+
+  if (
+    action.question !== null ||
+    action.answer !== null ||
+    action.answeredAt !== null
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return {
+    correct: requireBoolean(action, "correct"),
+    createdAt,
+    guessedPokemon: null,
+    guessedPokemonNationalDexId: requireInteger(
+      action,
+      "guessedPokemonNationalDexId",
+      1,
+      1_025,
+    ),
+    sequenceNumber,
+    type,
+  };
+}
+
+function parseRematchState(payload: unknown): RematchState {
+  const rematch = requireRecord(payload);
+  return {
+    meReady: requireBoolean(rematch, "meReady"),
+    opponentReady: requireBoolean(rematch, "opponentReady"),
+  };
+}
+
+function requireEmptyGameState(
+  response: Record<string, unknown>,
+): void {
+  if (
     response.game !== null ||
     response.rematch !== null ||
-    "selectedPokemon" in response
+    hasOwn(response, "selectedPokemon") ||
+    hasOwn(response, "answerPokemon")
   ) {
     throw ApiError.invalidResponse();
   }
-  if (
-    (status === "WAITING_FOR_OPPONENT" && opponent !== null) ||
-    (status === "WAITING_FOR_SELECTION" && opponent === null)
-  ) {
-    throw ApiError.invalidResponse();
-  }
+}
+
+function validateParticipants(
+  me: RoomMember,
+  opponent: RoomMember | null,
+): void {
   if (
     opponent &&
     (opponent.userId === me.userId || opponent.role === me.role)
   ) {
     throw ApiError.invalidResponse();
   }
-
-  return {
-    game: null,
-    me,
-    opponent,
-    rematch: null,
-    roomCode,
-    roundNumber: requireInteger(response, "roundNumber", 1),
-    stateVersion: requireInteger(response, "stateVersion", 0),
-    status,
-  };
 }
 
-function parseRoomMember(payload: unknown): RoomMember {
-  const member = requireRecord(payload);
-  const userId = requireString(member, "userId");
-  const reconnectDeadline = member.reconnectDeadline;
-
-  if (
-    !UUID_PATTERN.test(userId) ||
-    (reconnectDeadline !== null &&
-      (typeof reconnectDeadline !== "string" ||
-        Number.isNaN(Date.parse(reconnectDeadline))))
-  ) {
-    throw ApiError.invalidResponse();
-  }
-
-  return {
-    connected: requireBoolean(member, "connected"),
-    nickname: requireString(member, "nickname"),
-    reconnectDeadline,
-    role: requireRoomRole(member.role),
-    userId,
-  };
-}
-
-function requireWaitingStatus(value: unknown): WaitingRoomStatus {
+function requireRoomStatus(value: unknown): RoomStatus {
   if (
     value !== "WAITING_FOR_OPPONENT" &&
-    value !== "WAITING_FOR_SELECTION"
+    value !== "WAITING_FOR_SELECTION" &&
+    value !== "PLAYING" &&
+    value !== "PAUSED" &&
+    value !== "RESULT"
   ) {
     throw ApiError.invalidResponse();
   }
@@ -114,47 +497,45 @@ function requireRoomRole(value: unknown): RoomRole {
   return value;
 }
 
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
-    throw ApiError.invalidResponse();
-  }
-  return value as Record<string, unknown>;
-}
-
-function requireString(
-  value: Record<string, unknown>,
-  key: string,
-): string {
-  const candidate = value[key];
-  if (typeof candidate !== "string" || candidate.length === 0) {
-    throw ApiError.invalidResponse();
-  }
-  return candidate;
-}
-
-function requireBoolean(
-  value: Record<string, unknown>,
-  key: string,
-): boolean {
-  const candidate = value[key];
-  if (typeof candidate !== "boolean") {
-    throw ApiError.invalidResponse();
-  }
-  return candidate;
-}
-
-function requireInteger(
-  value: Record<string, unknown>,
-  key: string,
-  minimum: number,
-): number {
-  const candidate = value[key];
+function requireGameStatus(value: unknown): GameStatus {
   if (
-    typeof candidate !== "number" ||
-    !Number.isInteger(candidate) ||
-    candidate < minimum
+    value !== "IN_PROGRESS" &&
+    value !== "COMPLETED" &&
+    value !== "ABORTED"
   ) {
     throw ApiError.invalidResponse();
   }
-  return candidate;
+  return value;
+}
+
+function requireGameAnswer(value: unknown): GameAnswer {
+  if (value !== "YES" && value !== "NO" && value !== "UNKNOWN") {
+    throw ApiError.invalidResponse();
+  }
+  return value;
+}
+
+function requireGameActionType(
+  value: unknown,
+): GameAction["type"] {
+  if (value !== "QUESTION" && value !== "GUESS") {
+    throw ApiError.invalidResponse();
+  }
+  return value;
+}
+
+function requireGameEndReason(
+  value: unknown,
+): GameEndReason {
+  if (
+    value !== "CORRECT_GUESS" &&
+    value !== "QUESTION_LIMIT" &&
+    value !== "PLAYER_LEFT" &&
+    value !== "RECONNECT_TIMEOUT" &&
+    value !== "BOTH_DISCONNECTED" &&
+    value !== "SERVER_RESTART"
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return value;
 }

@@ -28,6 +28,10 @@ public enum ApiErrorCode {
             HttpStatus.UNAUTHORIZED,
             "로그인 필요",
             "로그인이 필요한 요청입니다."),
+    ACTIVE_GAME_MUST_BE_LEFT_FIRST(
+            HttpStatus.CONFLICT,
+            "로그아웃 보류",
+            "진행 중인 게임에서 먼저 나가 주세요."),
     ACCESS_DENIED(
             HttpStatus.FORBIDDEN,
             "접근 거부",

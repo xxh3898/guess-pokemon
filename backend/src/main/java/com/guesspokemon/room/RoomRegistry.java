@@ -256,6 +256,24 @@ public class RoomRegistry {
         }
     }
 
+    public boolean hasGameInProgress(UUID userId) {
+        Objects.requireNonNull(userId);
+        mutationLock.lock();
+        try {
+            cleanExpiredState(clock.instant());
+            String roomCode = activeRoomByUser.get(userId);
+            if (roomCode == null) {
+                return false;
+            }
+            Room room = rooms.get(roomCode);
+            return room != null
+                    && room.isParticipant(userId)
+                    && room.hasGameInProgress();
+        } finally {
+            mutationLock.unlock();
+        }
+    }
+
     <T> T executeLocked(
             String roomCodeInput,
             UUID userId,

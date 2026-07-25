@@ -8,6 +8,8 @@ import static com.guesspokemon.common.error.ApiErrorCode.ROOM_MEMBERSHIP_REQUIRE
 import static com.guesspokemon.common.error.ApiErrorCode.ROOM_NOT_FOUND;
 import static com.guesspokemon.common.error.ApiErrorCode.USER_ALREADY_IN_ACTIVE_ROOM;
 import static com.guesspokemon.common.error.ApiErrorCode.VALIDATION_FAILED;
+import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
+import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_OPPONENT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.common.error.ApiErrorCode;
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.game.GameViews.SelectorGameView;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Duration;
 import java.time.Instant;
@@ -223,6 +226,50 @@ class RoomRegistryTest {
         assertEquals(1, roomRegistry.activeRoomCount());
         assertFalse(roomRegistry.findActiveRoomCode(host.id()).isEmpty());
         assertFalse(roomRegistry.findActiveRoomCode(guest.id()).isEmpty());
+    }
+
+    @Test
+    void should_reportActiveGame_when_roomStatusIsPlaying() {
+        TestUser host = user(1, "레드");
+        TestUser guest = user(2, "그린");
+        TestUser outsider = user(3, "블루");
+        String roomCode =
+                roomRegistry.create(host.id(), host.nickname()).roomCode();
+        roomRegistry.join(roomCode, guest.id(), guest.nickname());
+
+        assertFalse(roomRegistry.hasGameInProgress(host.id()));
+        assertFalse(roomRegistry.hasGameInProgress(guest.id()));
+        assertFalse(roomRegistry.hasGameInProgress(outsider.id()));
+
+        UUID commandId = UUID.randomUUID();
+        roomRegistry.executeLocked(
+                roomCode,
+                host.id(),
+                room -> {
+                    room.applyGameView(
+                            commandId,
+                            new SelectorGameView(
+                                    UUID.randomUUID(),
+                                    IN_PROGRESS,
+                                    3,
+                                    0,
+                                    20,
+                                    SELECTOR,
+                                    25,
+                                    null,
+                                    null,
+                                    null,
+                                    List.of()));
+                    return null;
+                });
+
+        assertTrue(roomRegistry.hasGameInProgress(host.id()));
+        assertTrue(roomRegistry.hasGameInProgress(guest.id()));
+
+        roomRegistry.leave(roomCode, host.id());
+
+        assertFalse(roomRegistry.hasGameInProgress(host.id()));
+        assertFalse(roomRegistry.hasGameInProgress(guest.id()));
     }
 
     @Test

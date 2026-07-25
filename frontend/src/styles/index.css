@@ -6,5 +6,7 @@
 @import "../features/auth/auth.css";
 @import "../pages/lobby.css";
 @import "../features/room/room.css";
+@import "../features/pokemon/pokemon.css";
+@import "../features/game/game.css";
 @import "../pages/system-status.css";
 @import "./accessibility.css";

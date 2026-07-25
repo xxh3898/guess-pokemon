@@ -170,9 +170,9 @@ src/
 │   └── routes.tsx
 ├── features/
 │   ├── auth/
-│   ├── room/        # 방 REST 계약, 대기방 화면, room state
-│   ├── game/        # 후속 화면 단위
-│   ├── pokemon/     # 후속 화면 단위
+│   ├── room/        # 방 REST 계약, route orchestration, room state
+│   ├── game/        # 역할별 게임, 결과, 재접속·이탈 화면
+│   ├── pokemon/     # 전국도감 gateway, picker, artwork fallback
 │   └── history/     # 후속 화면 단위
 ├── pages/
 │   ├── HomePage.tsx
@@ -207,9 +207,13 @@ src/
 - `@stomp/stompjs` client는 앱 전체에 하나만 활성화하고 room route 수명주기에 맞춰 `activate`·`deactivate`한다.
 - room route는 연결할 때마다 CSRF credential을 넣고 사용자별 queue를 구독한 뒤 `resume`을 보내 authoritative snapshot을 복구한다.
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.
-- server snapshot을 기준으로 UI store를 재구성한다. 이전 version은 무시하고 같은 version의 `ROOM_SNAPSHOT`만 authoritative replacement로 허용한다.
+- server snapshot을 기준으로 UI store를 재구성한다. 이전 version은 무시하고 같은 version의 `ROOM_SNAPSHOT`은 authoritative replacement로 허용한다.
+- 답변·추측으로 경기가 끝날 때 행동 event와 `GAME_ENDED`는 같은 version을 공유할 수 있다. reducer는 action sequence가 아직 없거나 현재 상태가 아직 `RESULT`가 아닐 때만 같은 version의 상호 보완 event를 적용해 중복과 누락을 함께 막는다.
 - `ROOM_CLOSED`를 받으면 local active room을 비우고 닫힌 방 안내와 로비 복귀 경로를 제공한다.
 - 정답 포켓몬 type을 selector 전용 snapshot에만 둔다.
+- STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
+- 포켓몬 추측 modal은 route search parameter로 열어 브라우저 뒤로가기로 닫는다. room pathname 이탈은 React Router blocker로 명시적 leave 완료 뒤에만 진행한다.
+- 진행 중 경기의 hard reload·tab 닫기는 `beforeunload` 기본 경고만 사용한다. unload 과정에서는 신뢰할 수 없는 REST leave를 보내지 않고 server의 disconnect·60초 재접속 규칙에 맡긴다.
 - Lucide icon은 named import만 사용하고 장식 icon은 screen reader에서 숨긴다. icon-only control은 부모 control에 접근 가능한 이름을 제공한다.
 
 ## 7. 인증과 session 흐름
@@ -223,9 +227,10 @@ src/
 7. 브라우저는 `HttpOnly` session cookie를 같은 출처 REST와 WebSocket handshake에 자동 첨부한다.
 8. login 성공 뒤 `/auth/me`를 다시 조회해 사용자와 `activeRoomCode`를 session snapshot으로 저장한다.
 9. 공통 client가 `AUTHENTICATION_REQUIRED`를 받으면 auth state와 CSRF cache를 비우고 protected route를 `/login`으로 전환한다.
-10. STOMP `CONNECT` frame에도 CSRF token을 넣는다.
-11. backend는 HTTP request와 STOMP message의 `Principal`에서 사용자 UUID를 찾는다.
-12. client payload의 user ID나 role은 신뢰하지 않는다.
+10. `PLAYING` 또는 `PAUSED` room에 참가 중인 사용자의 logout은 server가 `409 ACTIVE_GAME_MUST_BE_LEFT_FIRST`로 거부하며 기존 session을 유지한다.
+11. STOMP `CONNECT` frame에도 CSRF token을 넣는다.
+12. backend는 HTTP request와 STOMP message의 `Principal`에서 사용자 UUID를 찾는다.
+13. client payload의 user ID나 role은 신뢰하지 않는다.
 
 운영 session cookie는 `Secure`, `HttpOnly`, `SameSite=Lax`다. 개발 환경의 HTTP cookie 차이는 profile로 제한하고 운영 설정을 약화하지 않는다.
 session idle timeout은 30분이다.

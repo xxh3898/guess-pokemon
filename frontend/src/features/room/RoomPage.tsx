@@ -6,6 +6,8 @@ import {
   DoorOpen,
   Info,
   LoaderCircle,
+  LockKeyhole,
+  LogOut,
   Radio,
   UserRound,
   UsersRound,
@@ -13,17 +15,49 @@ import {
   WifiOff,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 import {
   Link,
+  useBeforeUnload,
+  useBlocker,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router";
 
 import { useAuth } from "../auth/AuthContext";
+import { GameInterruptionDialogs } from "../game/GameInterruptionDialogs";
+import { GameResultScreen } from "../game/GameResultScreen";
+import { GameScreen } from "../game/GameScreen";
+import {
+  PokemonArtwork,
+  formatNationalDexId,
+} from "../pokemon/PokemonArtwork";
+import { PokemonCatalogPicker } from "../pokemon/PokemonCatalogPicker";
+import {
+  type PokemonCatalogGateway,
+  pokemonCatalogGateway,
+} from "../pokemon/pokemonApi";
+import type { PokemonSummary } from "../pokemon/pokemonTypes";
+import {
+  ApiError,
+} from "../../shared/api/HttpClient";
+import {
+  type RealtimeConnectionStatus,
+  type RoomRealtimeGateway,
+  type RoomRealtimeSession,
+  roomRealtimeGateway,
+} from "../../shared/realtime/RoomRealtimeGateway";
+import type {
+  RoomClosedReason,
+  RoomRealtimeEvent,
+} from "../../shared/realtime/realtimeTypes";
+import { Modal } from "../../shared/ui/Modal";
+import { PageStatus } from "../../shared/ui/PageStatus";
 import {
   type RoomGateway,
   roomGateway,
@@ -34,45 +68,51 @@ import {
 } from "./roomCode";
 import {
   applyAuthoritativeSnapshot,
-  applyWaitingRoomEvent,
+  applyRoomEvent,
 } from "./roomState";
 import type {
+  ActiveRoomSnapshot,
   RoomMember,
+  RoomSnapshot,
   WaitingRoomSnapshot,
 } from "./roomTypes";
-import {
-  ApiError,
-} from "../../shared/api/HttpClient";
-import {
-  type RealtimeConnectionStatus,
-  type RoomRealtimeGateway,
-  type RoomRealtimeSession,
-  roomRealtimeGateway,
-} from "../../shared/realtime/RoomRealtimeGateway";
-import type { WaitingRoomEvent } from "../../shared/realtime/realtimeTypes";
-import type { RoomClosedReason } from "../../shared/realtime/realtimeTypes";
-import { PageStatus } from "../../shared/ui/PageStatus";
 
 type ClipboardWriter = (value: string) => Promise<void>;
+type PendingCommandKind =
+  | "answer"
+  | "ask"
+  | "guess"
+  | "rematch"
+  | "select";
+
+interface PendingCommand {
+  readonly commandId: string;
+  readonly expectedStateVersion: number;
+  readonly kind: PendingCommandKind;
+}
 
 interface RoomPageProps {
   gateway?: RoomGateway;
+  pokemonGateway?: PokemonCatalogGateway;
   realtimeGateway?: RoomRealtimeGateway;
   writeClipboard?: ClipboardWriter;
 }
 
 export function RoomPage({
   gateway = roomGateway,
+  pokemonGateway = pokemonCatalogGateway,
   realtimeGateway = roomRealtimeGateway,
   writeClipboard = defaultClipboardWriter,
 }: RoomPageProps) {
   const auth = useAuth();
   const navigate = useNavigate();
   const { roomCode: routeRoomCode = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const roomCode = normalizeRoomCode(routeRoomCode);
   const validRoomCode = isValidRoomCode(roomCode);
-  const [snapshot, setSnapshot] =
-    useState<WaitingRoomSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(
+    null,
+  );
   const [loading, setLoading] = useState(validRoomCode);
   const [loadError, setLoadError] = useState<string | null>(
     validRoomCode ? null : "방 코드 6자리를 다시 확인해 주세요.",
@@ -86,14 +126,59 @@ export function RoomPage({
   const [copyFeedback, setCopyFeedback] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [explicitLeaveOpen, setExplicitLeaveOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const [roomClosedReason, setRoomClosedReason] =
     useState<RoomClosedReason | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [pendingCommand, setPendingCommandState] =
+    useState<PendingCommand | null>(null);
+  const pendingCommandRef = useRef<PendingCommand | null>(null);
+  const realtimeSessionRef = useRef<RoomRealtimeSession | null>(
+    null,
+  );
+  const allowNavigationRef = useRef(false);
   const previousOpponentRef = useRef<{
     member: RoomMember | null;
     roomCode: string;
   } | null>(null);
+  const previousRoomStatusRef = useRef<RoomSnapshot["status"] | null>(
+    null,
+  );
   const setActiveRoomCode = auth.setActiveRoomCode;
+  const activeSnapshot = isActiveSnapshot(snapshot)
+    ? snapshot
+    : null;
+  const guessModalOpen =
+    searchParams.get("guess") === "1" &&
+    activeSnapshot?.me.role === "QUESTIONER";
+
+  const setPendingCommand = useCallback(
+    (command: PendingCommand | null) => {
+      pendingCommandRef.current = command;
+      setPendingCommandState(command);
+    },
+    [],
+  );
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !allowNavigationRef.current &&
+      hasRoomMembership(snapshot) &&
+      roomClosedReason === null &&
+      currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (activeSnapshot && !allowNavigationRef.current) {
+          event.preventDefault();
+        }
+      },
+      [activeSnapshot],
+    ),
+  );
 
   useEffect(() => {
     if (!snapshot) {
@@ -116,6 +201,36 @@ export function RoomPage({
   }, [snapshot]);
 
   useEffect(() => {
+    const currentStatus = snapshot?.status ?? null;
+    if (
+      currentStatus === "RESULT" &&
+      previousRoomStatusRef.current !== null &&
+      previousRoomStatusRef.current !== "RESULT"
+    ) {
+      window.scrollTo(0, 0);
+    }
+    previousRoomStatusRef.current = currentStatus;
+  }, [snapshot?.status]);
+
+  useEffect(() => {
+    if (
+      snapshot &&
+      (!isActiveSnapshot(snapshot) ||
+        snapshot.me.role !== "QUESTIONER") &&
+      searchParams.get("guess") === "1"
+    ) {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.delete("guess");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, setSearchParams, snapshot]);
+
+  useEffect(() => {
     if (!validRoomCode) {
       return;
     }
@@ -128,7 +243,7 @@ export function RoomPage({
     setLoadError(null);
     setRealtimeError(null);
 
-    const handleEvent = (event: WaitingRoomEvent) => {
+    const handleEvent = (event: RoomRealtimeEvent) => {
       if (!active || event.roomCode !== roomCode) {
         return;
       }
@@ -140,21 +255,45 @@ export function RoomPage({
       if (event.eventType === "ROOM_CLOSED") {
         closedByServer = true;
         abortController.abort();
+        allowNavigationRef.current = true;
         setActiveRoomCode(null);
         setRoomClosedReason(event.payload.reason);
+        setPendingCommand(null);
         return;
       }
-      setSnapshot((current) =>
-        applyWaitingRoomEvent(current, event),
-      );
+      if (
+        event.eventType === "GAME_ENDED" &&
+        event.payload.endReason === "PLAYER_LEFT"
+      ) {
+        setActiveRoomCode(null);
+      }
+      if (completesPendingCommand(pendingCommandRef.current, event)) {
+        setPendingCommand(null);
+      }
+      setSnapshot((current) => applyRoomEvent(current, event));
     };
 
     try {
       realtimeSession = realtimeGateway.open(roomCode, {
         onEvent: handleEvent,
         onRealtimeError: (error) => {
-          if (active) {
-            setRealtimeError(error.message);
+          if (!active) {
+            return;
+          }
+          if (
+            error.commandId === null ||
+            error.commandId ===
+              pendingCommandRef.current?.commandId
+          ) {
+            setPendingCommand(null);
+          }
+          setRealtimeError(error.message);
+          if (error.recoverable) {
+            try {
+              realtimeSessionRef.current?.requestSnapshot();
+            } catch {
+              // 재연결 시 자동 resume가 최신 snapshot을 요청한다.
+            }
           }
         },
         onStatusChange: (status) => {
@@ -172,6 +311,7 @@ export function RoomPage({
           }
         },
       });
+      realtimeSessionRef.current = realtimeSession;
     } catch (error) {
       setRealtimeError(toSafeDetail(error));
     }
@@ -199,6 +339,9 @@ export function RoomPage({
     return () => {
       active = false;
       abortController.abort();
+      if (realtimeSessionRef.current === realtimeSession) {
+        realtimeSessionRef.current = null;
+      }
       if (realtimeSession) {
         void realtimeSession.close();
       }
@@ -209,6 +352,7 @@ export function RoomPage({
     reloadKey,
     roomCode,
     setActiveRoomCode,
+    setPendingCommand,
     validRoomCode,
   ]);
 
@@ -232,11 +376,45 @@ export function RoomPage({
     setLeaveError(null);
     try {
       await gateway.leave(roomCode);
+      allowNavigationRef.current = true;
       setActiveRoomCode(null);
-      navigate("/lobby", { replace: true });
+      setExplicitLeaveOpen(false);
+      setLogoutOpen(false);
+      if (blocker.state === "blocked") {
+        blocker.proceed();
+      } else {
+        navigate("/lobby", { replace: true });
+      }
     } catch (error) {
       setLeaveError(toSafeDetail(error));
       setLeaving(false);
+    }
+  };
+
+  const sendCommand = (
+    kind: PendingCommandKind,
+    expectedStateVersion: number,
+    publish: (session: RoomRealtimeSession) => string,
+  ): boolean => {
+    if (pendingCommandRef.current) {
+      return false;
+    }
+    setRealtimeError(null);
+    try {
+      const session = realtimeSessionRef.current;
+      if (!session) {
+        throw realtimeUnavailableError();
+      }
+      const commandId = publish(session);
+      setPendingCommand({
+        commandId,
+        expectedStateVersion,
+        kind,
+      });
+      return true;
+    } catch (error) {
+      setRealtimeError(toSafeDetail(error));
+      return false;
     }
   };
 
@@ -293,163 +471,665 @@ export function RoomPage({
     );
   }
 
-  const selector = memberByRole(snapshot, "SELECTOR");
-  const questioner = memberByRole(snapshot, "QUESTIONER");
-  const waitingForOpponent =
-    snapshot.status === "WAITING_FOR_OPPONENT";
-
   return (
     <main className="site-page room-page">
       <div className="site-frame room-frame">
-        <header className="room-header">
-          <Link className="brand-link" to="/">
-            <span className="brand-link-mark" aria-hidden="true">
-              <CircleHelp size={24} strokeWidth={2.4} />
-            </span>
-            Guess Pokémon
-          </Link>
+        <RoomHeader
+          active={isActiveSnapshot(snapshot)}
+          connectionStatus={connectionStatus}
+          onCopy={() => {
+            void copyRoomCode();
+          }}
+          onLeave={() => {
+            setExplicitLeaveOpen(true);
+          }}
+          onLogout={() => {
+            setLogoutOpen(true);
+          }}
+          roomCode={roomCode}
+          snapshot={snapshot}
+        />
 
-          <div className="room-header-code">
-            <span>방 코드</span>
-            <strong className="room-code">{roomCode}</strong>
-            <button
-              aria-label="방 코드 복사"
-              onClick={() => {
-                void copyRoomCode();
+        <p aria-live="polite" className="room-live-region">
+          {announcement}
+        </p>
+        {realtimeError || leaveError ? (
+          <div className="room-inline-alert" role="alert">
+            <WifiOff aria-hidden="true" size={18} />
+            <span>{leaveError ?? realtimeError}</span>
+          </div>
+        ) : null}
+
+        {snapshot.status === "WAITING_FOR_OPPONENT" ? (
+          <WaitingForOpponentView
+            copyFeedback={copyFeedback}
+            leaving={leaving}
+            onCopy={() => {
+              void copyRoomCode();
+            }}
+            onLeave={() => {
+              void leaveRoom();
+            }}
+            roomCode={roomCode}
+            snapshot={snapshot}
+          />
+        ) : null}
+
+        {snapshot.status === "WAITING_FOR_SELECTION" ? (
+          snapshot.me.role === "SELECTOR" ? (
+            <SelectorSelectionView
+              commandPending={pendingCommand !== null}
+              connected={
+                connectionStatus === "connected" &&
+                snapshot.opponent.connected
+              }
+              gateway={pokemonGateway}
+              onConfirm={(pokemon) => {
+                sendCommand(
+                  "select",
+                  snapshot.stateVersion,
+                  (session) =>
+                    session.selectPokemon(
+                      pokemon.nationalDexId,
+                      snapshot.stateVersion,
+                    ),
+                );
               }}
-              type="button"
-            >
-              <Copy aria-hidden="true" size={17} />
-            </button>
-          </div>
+            />
+          ) : (
+            <QuestionerSelectionWaitView snapshot={snapshot} />
+          )
+        ) : null}
 
-          <ConnectionBadge status={connectionStatus} />
-        </header>
+        {isActiveSnapshot(snapshot) ? (
+          <>
+            <GameScreen
+              commandPending={pendingCommand !== null}
+              onAnswer={(answer) => {
+                sendCommand(
+                  "answer",
+                  snapshot.stateVersion,
+                  (session) =>
+                    session.answerQuestion(
+                      answer,
+                      snapshot.stateVersion,
+                    ),
+                );
+              }}
+              onAsk={(question) => {
+                sendCommand(
+                  "ask",
+                  snapshot.stateVersion,
+                  (session) =>
+                    session.askQuestion(
+                      question,
+                      snapshot.stateVersion,
+                    ),
+                );
+              }}
+              onOpenGuess={() => {
+                setSearchParams(
+                  (current) => {
+                    const next = new URLSearchParams(current);
+                    next.set("guess", "1");
+                    return next;
+                  },
+                  { replace: false },
+                );
+              }}
+              snapshot={snapshot}
+            />
+            <GameInterruptionDialogs
+              leaveOpen={
+                explicitLeaveOpen || blocker.state === "blocked"
+              }
+              leaving={leaving}
+              logoutOpen={logoutOpen}
+              onCancelLeave={() => {
+                setExplicitLeaveOpen(false);
+                if (blocker.state === "blocked") {
+                  blocker.reset();
+                }
+              }}
+              onCancelLogout={() => {
+                setLogoutOpen(false);
+              }}
+              onConfirmLeave={() => {
+                void leaveRoom();
+              }}
+              snapshot={snapshot}
+            />
+          </>
+        ) : null}
 
-        <section className="room-content" aria-labelledby="room-title">
-          <div className="room-status-heading">
-            <span className="room-status-icon" aria-hidden="true">
-              <Clock3 size={25} />
-            </span>
-            <div>
-              <p className="section-kicker">
-                ROUND {snapshot.roundNumber}
-              </p>
-              <h1 id="room-title">
-                {waitingForOpponent
-                  ? "상대를 기다리는 중"
-                  : "정답 선택을 준비하고 있어요"}
-              </h1>
-              <p>
-                {waitingForOpponent
-                  ? "친구가 입장하면 정답 포켓몬 선택 단계로 이동해요."
-                  : selectionWaitingCopy(snapshot.me.role)}
-              </p>
-            </div>
-          </div>
+        {snapshot.status === "RESULT" ? (
+          <GameResultScreen
+            commandPending={pendingCommand !== null}
+            onLeave={() => {
+              if (snapshot.game.endReason === "PLAYER_LEFT") {
+                allowNavigationRef.current = true;
+                setActiveRoomCode(null);
+                navigate("/lobby", { replace: true });
+              } else {
+                void leaveRoom();
+              }
+            }}
+            onRematch={(ready) => {
+              sendCommand(
+                "rematch",
+                snapshot.stateVersion,
+                (session) =>
+                  session.changeRematchReady(
+                    ready,
+                    snapshot.stateVersion,
+                  ),
+              );
+            }}
+            snapshot={snapshot}
+          />
+        ) : null}
 
-          <p
-            aria-live="polite"
-            className="room-live-region"
+        {blocker.state === "blocked" &&
+        !isActiveSnapshot(snapshot) ? (
+          <Modal
+            className="interruption-modal"
+            onClose={() => {
+              blocker.reset();
+            }}
+            title="방에서 나갈까요?"
           >
-            {announcement}
-          </p>
-
-          {realtimeError ? (
-            <div className="room-inline-alert" role="alert">
-              <WifiOff aria-hidden="true" size={18} />
-              <span>{realtimeError}</span>
-            </div>
-          ) : null}
-
-          <div className="participant-grid">
-            <ParticipantCard
-              index="1"
-              isMe={selector?.userId === snapshot.me.userId}
-              member={selector}
-              role="출제자"
-              tone="blue"
+            <DoorOpen
+              aria-hidden="true"
+              className="interruption-icon danger-icon"
+              size={42}
             />
-            <ParticipantCard
-              index="2"
-              isMe={questioner?.userId === snapshot.me.userId}
-              member={questioner}
-              role="질문자"
-              tone="mint"
-            />
-          </div>
-
-          <div className="room-share-card">
-            <span className="room-share-icon" aria-hidden="true">
-              <UsersRound size={27} />
-            </span>
-            <div>
-              <h2>방 코드를 친구에게 알려 주세요</h2>
-              <p>같은 방에 입장하면 역할을 나눠 대전을 시작해요.</p>
-            </div>
-            <div className="room-copy-box">
-              <span>방 코드</span>
-              <strong className="room-code">{roomCode}</strong>
+            <p>
+              {snapshot.status === "RESULT"
+                ? "결과 화면에서 나가면 이 방은 종료돼요."
+                : "방을 나간 뒤에는 같은 방 코드로 돌아올 수 없어요."}
+            </p>
+            <div className="modal-actions">
               <button
-                aria-label="친구에게 보낼 방 코드 복사"
+                className="secondary-game-button"
                 onClick={() => {
-                  void copyRoomCode();
+                  blocker.reset();
                 }}
                 type="button"
               >
-                <Copy aria-hidden="true" size={18} />
+                계속하기
+              </button>
+              <button
+                className="danger-game-button"
+                disabled={leaving}
+                onClick={() => {
+                  void leaveRoom();
+                }}
+                type="button"
+              >
+                방 나가기
               </button>
             </div>
-          </div>
+          </Modal>
+        ) : null}
 
-          <p
-            aria-live="polite"
-            className="room-copy-feedback"
-          >
-            {copyFeedback ? (
-              <>
-                <Check aria-hidden="true" size={16} />
-                {copyFeedback}
-              </>
-            ) : null}
+        {guessModalOpen && activeSnapshot ? (
+          <GuessPokemonModal
+            commandPending={pendingCommand !== null}
+            gateway={pokemonGateway}
+            onClose={() => {
+              setSearchParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.delete("guess");
+                  return next;
+                },
+                { replace: true },
+              );
+            }}
+            onGuess={(pokemon) => {
+              const published = sendCommand(
+                "guess",
+                activeSnapshot.stateVersion,
+                (session) =>
+                  session.guessPokemon(
+                    pokemon.nationalDexId,
+                    activeSnapshot.stateVersion,
+                  ),
+              );
+              if (published) {
+                setSearchParams(
+                  (current) => {
+                    const next = new URLSearchParams(current);
+                    next.delete("guess");
+                    return next;
+                  },
+                  { replace: true },
+                );
+              }
+            }}
+            remainingActionCount={
+              activeSnapshot.game.remainingActionCount
+            }
+          />
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+interface RoomHeaderProps {
+  active: boolean;
+  connectionStatus: RealtimeConnectionStatus;
+  onCopy(): void;
+  onLeave(): void;
+  onLogout(): void;
+  roomCode: string;
+  snapshot: RoomSnapshot;
+}
+
+function RoomHeader({
+  active,
+  connectionStatus,
+  onCopy,
+  onLeave,
+  onLogout,
+  roomCode,
+  snapshot,
+}: RoomHeaderProps) {
+  return (
+    <header className="room-header">
+      <Link className="brand-link" to="/">
+        <span className="brand-link-mark" aria-hidden="true">
+          <CircleHelp size={24} strokeWidth={2.4} />
+        </span>
+        Guess Pokémon
+      </Link>
+      <div className="room-header-code">
+        <span>방 코드</span>
+        <strong className="room-code">{roomCode}</strong>
+        <button
+          aria-label="방 코드 복사"
+          onClick={onCopy}
+          type="button"
+        >
+          <Copy aria-hidden="true" size={17} />
+        </button>
+      </div>
+      {snapshot.opponent ? (
+        <div className="room-role-badges">
+          <span className="questioner-badge">
+            <UserRound aria-hidden="true" size={16} />
+            질문자
+          </span>
+          <span className="selector-badge">
+            <UserRound aria-hidden="true" size={16} />
+            출제자
+          </span>
+        </div>
+      ) : null}
+      <ConnectionBadge status={connectionStatus} />
+      {active ? (
+        <div className="room-header-actions">
+          <button onClick={onLeave} type="button">
+            <DoorOpen aria-hidden="true" size={17} />
+            게임 나가기
+          </button>
+          <button onClick={onLogout} type="button">
+            <LogOut aria-hidden="true" size={17} />
+            로그아웃
+          </button>
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+interface WaitingForOpponentViewProps {
+  copyFeedback: string;
+  leaving: boolean;
+  onCopy(): void;
+  onLeave(): void;
+  roomCode: string;
+  snapshot: WaitingRoomSnapshot;
+}
+
+function WaitingForOpponentView({
+  copyFeedback,
+  leaving,
+  onCopy,
+  onLeave,
+  roomCode,
+  snapshot,
+}: WaitingForOpponentViewProps) {
+  return (
+    <section className="room-content" aria-labelledby="room-title">
+      <div className="room-status-heading">
+        <span className="room-status-icon" aria-hidden="true">
+          <Clock3 size={25} />
+        </span>
+        <div>
+          <p className="section-kicker">
+            ROUND {snapshot.roundNumber}
           </p>
+          <h1 id="room-title">상대를 기다리는 중</h1>
+          <p>
+            친구가 입장하면 정답 포켓몬 선택 단계로 이동해요.
+          </p>
+        </div>
+      </div>
 
-          <div className="room-expiry-note">
-            <Info aria-hidden="true" size={18} />
-            {waitingForOpponent
-              ? "30분 동안 상대가 입장하지 않으면 방이 닫혀요."
-              : "두 참가자가 모두 입장했어요. 다음 단계에서 포켓몬을 선택합니다."}
-          </div>
+      <div className="participant-grid">
+        <ParticipantCard
+          index="1"
+          isMe
+          member={snapshot.me}
+          role="출제자"
+          tone="mint"
+        />
+        <ParticipantCard
+          index="2"
+          isMe={false}
+          member={null}
+          role="질문자"
+          tone="blue"
+        />
+      </div>
 
-          {leaveError ? (
-            <div className="room-inline-alert" role="alert">
-              <Info aria-hidden="true" size={18} />
-              <span>{leaveError}</span>
-            </div>
-          ) : null}
-
+      <div className="room-share-card">
+        <span className="room-share-icon" aria-hidden="true">
+          <UsersRound size={27} />
+        </span>
+        <div>
+          <h2>방 코드를 친구에게 알려 주세요</h2>
+          <p>같은 방에 입장하면 역할을 나눠 대전을 시작해요.</p>
+        </div>
+        <div className="room-copy-box">
+          <span>방 코드</span>
+          <strong className="room-code">{roomCode}</strong>
           <button
-            className="room-leave-button"
-            disabled={leaving}
+            aria-label="친구에게 보낼 방 코드 복사"
+            onClick={onCopy}
+            type="button"
+          >
+            <Copy aria-hidden="true" size={18} />
+          </button>
+        </div>
+      </div>
+      <p aria-live="polite" className="room-copy-feedback">
+        {copyFeedback ? (
+          <>
+            <Check aria-hidden="true" size={16} />
+            {copyFeedback}
+          </>
+        ) : null}
+      </p>
+      <div className="room-expiry-note">
+        <Info aria-hidden="true" size={18} />
+        30분 동안 상대가 입장하지 않으면 방이 닫혀요.
+      </div>
+      <button
+        className="room-leave-button"
+        disabled={leaving}
+        onClick={onLeave}
+        type="button"
+      >
+        {leaving ? (
+          <LoaderCircle
+            aria-hidden="true"
+            className="spin-icon"
+            size={19}
+          />
+        ) : (
+          <DoorOpen aria-hidden="true" size={19} />
+        )}
+        {leaving ? "방 나가는 중..." : "방 나가기"}
+      </button>
+    </section>
+  );
+}
+
+interface SelectorSelectionViewProps {
+  commandPending: boolean;
+  connected: boolean;
+  gateway: PokemonCatalogGateway;
+  onConfirm(pokemon: PokemonSummary): void;
+}
+
+function SelectorSelectionView({
+  commandPending,
+  connected,
+  gateway,
+  onConfirm,
+}: SelectorSelectionViewProps) {
+  const [selectedPokemon, setSelectedPokemon] =
+    useState<PokemonSummary | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <section className="selection-view">
+      <header>
+        <h1>정답 포켓몬 선택</h1>
+        <p>
+          <LockKeyhole aria-hidden="true" size={16} />
+          선택한 포켓몬은 상대에게 보이지 않아요.
+        </p>
+      </header>
+      <div className="selection-layout">
+        <PokemonCatalogPicker
+          gateway={gateway}
+          onSelect={setSelectedPokemon}
+          selectedPokemon={selectedPokemon}
+        />
+        <aside className="selection-preview panel-card">
+          <h2>선택한 포켓몬</h2>
+          {selectedPokemon ? (
+            <>
+              <PokemonArtwork pokemon={selectedPokemon} />
+              <span>
+                {formatNationalDexId(
+                  selectedPokemon.nationalDexId,
+                )}
+              </span>
+              <strong>{selectedPokemon.koreanName}</strong>
+            </>
+          ) : (
+            <p>도감에서 정답으로 사용할 포켓몬을 골라 주세요.</p>
+          )}
+          <div>
+            <LockKeyhole aria-hidden="true" size={17} />
+            상대에게는 포켓몬 정보가 공개되지 않아요.
+          </div>
+          <button
+            className="selection-confirm-button"
+            disabled={
+              !selectedPokemon || !connected || commandPending
+            }
             onClick={() => {
-              void leaveRoom();
+              setConfirming(true);
             }}
             type="button"
           >
-            {leaving ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="spin-icon"
-                size={19}
-              />
-            ) : (
-              <DoorOpen aria-hidden="true" size={19} />
-            )}
-            {leaving ? "방 나가는 중..." : "방 나가기"}
+            <Check aria-hidden="true" size={19} />이 포켓몬 선택
           </button>
-        </section>
+        </aside>
       </div>
-    </main>
+      {!connected ? (
+        <div className="selection-connection-notice" role="status">
+          상대와 실시간 연결을 확인한 뒤 선택할 수 있어요.
+        </div>
+      ) : null}
+      {confirming && selectedPokemon ? (
+        <Modal
+          className="pokemon-confirm-modal"
+          onClose={() => {
+            setConfirming(false);
+          }}
+          title={`${selectedPokemon.koreanName}를 정답으로 선택할까요?`}
+        >
+          <PokemonArtwork pokemon={selectedPokemon} />
+          <strong>
+            {formatNationalDexId(
+              selectedPokemon.nationalDexId,
+            )}{" "}
+            {selectedPokemon.koreanName}
+          </strong>
+          <div className="modal-actions">
+            <button
+              className="secondary-game-button"
+              onClick={() => {
+                setConfirming(false);
+              }}
+              type="button"
+            >
+              취소
+            </button>
+            <button
+              className="selection-confirm-button"
+              disabled={commandPending}
+              onClick={() => {
+                onConfirm(selectedPokemon);
+              }}
+              type="button"
+            >
+              선택하기
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+    </section>
+  );
+}
+
+function QuestionerSelectionWaitView({
+  snapshot,
+}: {
+  snapshot: Extract<
+    WaitingRoomSnapshot,
+    { status: "WAITING_FOR_SELECTION" }
+  >;
+}) {
+  return (
+    <section className="selection-wait-view">
+      <p className="role-pill blue-pill">질문자</p>
+      <LoaderCircle
+        aria-hidden="true"
+        className="spin-icon"
+        size={42}
+      />
+      <h1>출제자가 포켓몬을 고르고 있어요</h1>
+      <p>선택이 완료되면 자동으로 게임을 시작합니다.</p>
+      <div>
+        <Wifi aria-hidden="true" size={17} />
+        {snapshot.opponent.connected
+          ? "상대가 연결되어 있습니다."
+          : "상대의 재연결을 기다리고 있습니다."}
+      </div>
+    </section>
+  );
+}
+
+interface GuessPokemonModalProps {
+  commandPending: boolean;
+  gateway: PokemonCatalogGateway;
+  onClose(): void;
+  onGuess(pokemon: PokemonSummary): void;
+  remainingActionCount: number;
+}
+
+function GuessPokemonModal({
+  commandPending,
+  gateway,
+  onClose,
+  onGuess,
+  remainingActionCount,
+}: GuessPokemonModalProps) {
+  const [selectedPokemon, setSelectedPokemon] =
+    useState<PokemonSummary | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <Modal
+      className="guess-pokemon-modal"
+      closeLabel="포켓몬 추측 닫기"
+      onClose={onClose}
+      title="정답 포켓몬 추측"
+    >
+      <div className="guess-warning">
+        추측도 남은 기회 1회를 사용해요. 현재{" "}
+        <strong>{remainingActionCount}회</strong> 남았어요.
+      </div>
+      <PokemonCatalogPicker
+        gateway={gateway}
+        onSelect={setSelectedPokemon}
+        selectedPokemon={selectedPokemon}
+      />
+      <footer>
+        <div>
+          <span>선택한 포켓몬</span>
+          <strong>
+            {selectedPokemon
+              ? `${formatNationalDexId(
+                  selectedPokemon.nationalDexId,
+                )} ${selectedPokemon.koreanName}`
+              : "아직 선택하지 않았어요"}
+          </strong>
+        </div>
+        <button
+          className="secondary-game-button"
+          onClick={onClose}
+          type="button"
+        >
+          취소
+        </button>
+        <button
+          className="primary-game-button"
+          disabled={!selectedPokemon || commandPending}
+          onClick={() => {
+            setConfirming(true);
+          }}
+          type="button"
+        >
+          이 포켓몬 추측
+        </button>
+      </footer>
+      {confirming && selectedPokemon ? (
+        <Modal
+          className="pokemon-confirm-modal"
+          onClose={() => {
+            setConfirming(false);
+          }}
+          title={`${selectedPokemon.koreanName}로 추측할까요?`}
+        >
+          <CircleHelp
+            aria-hidden="true"
+            className="warning-icon"
+            size={40}
+          />
+          <p>틀리면 남은 기회가 줄어들어요.</p>
+          <div className="modal-actions">
+            <button
+              className="secondary-game-button"
+              onClick={() => {
+                setConfirming(false);
+              }}
+              type="button"
+            >
+              돌아가기
+            </button>
+            <button
+              className="primary-game-button"
+              disabled={commandPending}
+              onClick={() => {
+                onGuess(selectedPokemon);
+              }}
+              type="button"
+            >
+              추측하기
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -536,29 +1216,68 @@ function ConnectionBadge({
   );
 }
 
-function memberByRole(
-  snapshot: WaitingRoomSnapshot,
-  role: RoomMember["role"],
-): RoomMember | null {
-  if (snapshot.me.role === role) {
-    return snapshot.me;
-  }
-  if (snapshot.opponent?.role === role) {
-    return snapshot.opponent;
-  }
-  return null;
+function isActiveSnapshot(
+  snapshot: RoomSnapshot | null,
+): snapshot is ActiveRoomSnapshot {
+  return (
+    snapshot?.status === "PLAYING" ||
+    snapshot?.status === "PAUSED"
+  );
 }
 
-function selectionWaitingCopy(role: RoomMember["role"]): string {
-  return role === "SELECTOR"
-    ? "다음 단계에서 정답 포켓몬을 선택할 수 있어요."
-    : "출제자가 정답 포켓몬을 선택하면 질문을 시작해요.";
+function hasRoomMembership(
+  snapshot: RoomSnapshot | null,
+): boolean {
+  return !(
+    snapshot === null ||
+    (snapshot.status === "RESULT" &&
+      snapshot.game.endReason === "PLAYER_LEFT")
+  );
+}
+
+function completesPendingCommand(
+  pending: PendingCommand | null,
+  event: RoomRealtimeEvent,
+): boolean {
+  if (
+    !pending ||
+    event.stateVersion < pending.expectedStateVersion
+  ) {
+    return false;
+  }
+  if (event.eventType === "ROOM_SNAPSHOT") {
+    return event.stateVersion > pending.expectedStateVersion;
+  }
+  return (
+    (pending.kind === "select" &&
+      event.eventType === "ROUND_STARTED") ||
+    (pending.kind === "ask" &&
+      event.eventType === "QUESTION_ASKED") ||
+    (pending.kind === "answer" &&
+      (event.eventType === "QUESTION_ANSWERED" ||
+        event.eventType === "GAME_ENDED")) ||
+    (pending.kind === "guess" &&
+      (event.eventType === "GUESS_RESOLVED" ||
+        event.eventType === "GAME_ENDED")) ||
+    (pending.kind === "rematch" &&
+      event.eventType === "REMATCH_STATE_CHANGED")
+  );
 }
 
 function toSafeDetail(error: unknown): string {
   return error instanceof ApiError
     ? error.detail
     : "요청을 처리하지 못했습니다. 다시 시도해 주세요.";
+}
+
+function realtimeUnavailableError(): ApiError {
+  return new ApiError({
+    code: "REALTIME_NOT_CONNECTED",
+    detail:
+      "실시간 연결을 확인하고 있어요. 연결된 뒤 다시 시도해 주세요.",
+    status: 0,
+    title: "실시간 연결 확인",
+  });
 }
 
 function isAbortError(error: unknown): boolean {

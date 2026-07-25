@@ -1,5 +1,6 @@
 package com.guesspokemon.auth;
 
+import static com.guesspokemon.common.error.ApiErrorCode.ACTIVE_GAME_MUST_BE_LEFT_FIRST;
 import static com.guesspokemon.common.error.ApiErrorCode.SIGNUP_RATE_LIMITED;
 
 import com.guesspokemon.auth.AuthDtos.AuthResponse;
@@ -103,6 +104,10 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response,
             Authentication authentication) {
+        UserSummary userSummary = authService.currentUser(authentication);
+        if (roomRegistry.hasGameInProgress(userSummary.id())) {
+            throw new ApiException(ACTIVE_GAME_MUST_BE_LEFT_FIRST);
+        }
         logoutHandler.logout(request, response, authentication);
         return ResponseEntity.noContent().build();
     }

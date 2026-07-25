@@ -8,7 +8,9 @@ import {
   normalizeRoomCode,
 } from "./roomCode";
 import {
+  parseRoomSnapshot,
   parseWaitingRoomSnapshot,
+  type RoomSnapshot,
   type WaitingRoomSnapshot,
 } from "./roomTypes";
 
@@ -17,7 +19,7 @@ export interface RoomGateway {
   get(
     roomCode: string,
     signal?: AbortSignal,
-  ): Promise<WaitingRoomSnapshot>;
+  ): Promise<RoomSnapshot>;
   join(
     roomCode: string,
     signal?: AbortSignal,
@@ -41,7 +43,7 @@ export function createRoomGateway(client: HttpClient): RoomGateway {
         `/api/v1/rooms/${normalizedCode}`,
         signal,
       );
-      return parseWaitingRoomSnapshot(payload);
+      return parseRoomSnapshot(payload);
     },
     async join(roomCode, signal) {
       const normalizedCode = requireRoomCode(roomCode);

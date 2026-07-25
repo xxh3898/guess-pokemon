@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import type { WaitingRoomEvent } from "../../shared/realtime/realtimeTypes";
+import type { RoomRealtimeEvent } from "../../shared/realtime/realtimeTypes";
 import {
   applyAuthoritativeSnapshot,
-  applyWaitingRoomEvent,
+  applyRoomEvent,
 } from "./roomState";
-import type { WaitingRoomSnapshot } from "./roomTypes";
+import type {
+  ActiveRoomSnapshot,
+  WaitingRoomSnapshot,
+} from "./roomTypes";
 
+const GAME_ID = "3f249b3c-f0a6-4054-8bcf-e6284eec5f3e";
+const PIKACHU = {
+  artworkEnabled: true,
+  artworkUrl:
+    "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
+  generation: 1,
+  koreanName: "피카츄",
+  nationalDexId: 25,
+};
 const HOST_SNAPSHOT: WaitingRoomSnapshot = {
   game: null,
   me: {
@@ -27,10 +39,20 @@ const HOST_SNAPSHOT: WaitingRoomSnapshot = {
 describe("roomState", () => {
   it("should_acceptSameVersionSnapshot_when_joinNoticeArrivedFirst", () => {
     const joined = twoPlayerSnapshot();
+    const notified = applyRoomEvent(HOST_SNAPSHOT, {
+      ...baseEvent(2, null),
+      eventType: "PLAYER_JOINED",
+      payload: {
+        player: {
+          nickname: "그린",
+          userId: joined.opponent?.userId ?? "",
+        },
+      },
+    });
 
     expect(
-      applyWaitingRoomEvent(HOST_SNAPSHOT, {
-        ...baseEvent(2),
+      applyRoomEvent(notified, {
+        ...baseEvent(2, null),
         eventType: "ROOM_SNAPSHOT",
         payload: joined,
       }),
@@ -45,37 +67,226 @@ describe("roomState", () => {
     ).toEqual(joined);
   });
 
-  it("should_updateOpponentConnection_when_newerEventArrives", () => {
-    const joined = twoPlayerSnapshot();
-    const event: WaitingRoomEvent = {
-      ...baseEvent(3),
-      eventType: "PLAYER_CONNECTION_CHANGED",
+  it("should_createRoleSpecificGame_when_roundStarts", () => {
+    const result = applyRoomEvent(twoPlayerSnapshot(), {
+      ...baseEvent(3, GAME_ID),
+      eventType: "ROUND_STARTED",
+      gameId: GAME_ID,
       payload: {
-        connected: false,
-        reconnectDeadline: null,
-        userId: joined.opponent?.userId ?? "",
+        myRole: "SELECTOR",
+        opponentRole: "QUESTIONER",
+        remainingActionCount: 20,
+        roundNumber: 1,
+        selectedPokemon: PIKACHU,
+        usedActionCount: 0,
       },
-    };
+    });
 
-    const result = applyWaitingRoomEvent(joined, event);
-
-    expect(result?.opponent?.connected).toBe(false);
-    expect(result?.stateVersion).toBe(3);
+    expect(result).toMatchObject({
+      game: {
+        selectedPokemon: PIKACHU,
+        status: "IN_PROGRESS",
+      },
+      status: "PLAYING",
+    });
   });
 
-  it("should_ignoreDuplicateConnectionEvent_when_versionIsNotNewer", () => {
-    const joined = twoPlayerSnapshot();
-    const event: WaitingRoomEvent = {
-      ...baseEvent(2),
+  it("should_appendAndAnswerQuestion_when_eventsArrive", () => {
+    const started = activeSnapshot();
+    const asked = applyRoomEvent(started, {
+      ...baseEvent(4, GAME_ID),
+      eventType: "QUESTION_ASKED",
+      gameId: GAME_ID,
+      payload: {
+        question: "날개가 있나요?",
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    });
+    const answered = applyRoomEvent(asked, {
+      ...baseEvent(5, GAME_ID),
+      eventType: "QUESTION_ANSWERED",
+      gameId: GAME_ID,
+      payload: {
+        answer: "NO",
+        question: "날개가 있나요?",
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    });
+
+    expect(answered?.game?.actions).toEqual([
+      expect.objectContaining({
+        answer: "NO",
+        question: "날개가 있나요?",
+        sequenceNumber: 1,
+      }),
+    ]);
+  });
+
+  it("should_applyAnswer_when_sameVersionCompletesPendingQuestion", () => {
+    const asked = applyRoomEvent(activeSnapshot(), {
+      ...baseEvent(4, GAME_ID),
+      eventType: "QUESTION_ASKED",
+      gameId: GAME_ID,
+      payload: {
+        question: "노란색인가요?",
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    });
+    const answered = applyRoomEvent(asked, {
+      ...baseEvent(4, GAME_ID),
+      eventType: "QUESTION_ANSWERED",
+      gameId: GAME_ID,
+      payload: {
+        answer: "YES",
+        question: "노란색인가요?",
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    });
+
+    expect(answered?.game?.actions[0]).toMatchObject({
+      answer: "YES",
+      sequenceNumber: 1,
+    });
+  });
+
+  it("should_applyTerminalEvent_when_guessSharesStateVersion", () => {
+    const guessed = applyRoomEvent(activeSnapshot(), {
+      ...baseEvent(4, GAME_ID),
+      eventType: "GUESS_RESOLVED",
+      gameId: GAME_ID,
+      payload: {
+        correct: true,
+        guessedPokemon: PIKACHU,
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    });
+    const ended = applyRoomEvent(guessed, {
+      ...baseEvent(4, GAME_ID),
+      eventType: "GAME_ENDED",
+      gameId: GAME_ID,
+      payload: {
+        answerPokemon: PIKACHU,
+        endReason: "CORRECT_GUESS",
+        loserUserId: HOST_SNAPSHOT.me.userId,
+        status: "COMPLETED",
+        usedActionCount: 1,
+        winnerUserId: twoPlayerSnapshot().opponent?.userId ?? "",
+      },
+    });
+
+    expect(ended).toMatchObject({
+      game: {
+        actions: [
+          {
+            correct: true,
+            guessedPokemon: PIKACHU,
+          },
+        ],
+        answerPokemon: PIKACHU,
+      },
+      status: "RESULT",
+    });
+  });
+
+  it("should_ignoreDuplicateActionAndTerminalEvents_when_replayed", () => {
+    const guessEvent: RoomRealtimeEvent = {
+      ...baseEvent(4, GAME_ID),
+      eventType: "GUESS_RESOLVED",
+      gameId: GAME_ID,
+      payload: {
+        correct: true,
+        guessedPokemon: PIKACHU,
+        remainingActionCount: 19,
+        sequenceNo: 1,
+        usedActionCount: 1,
+      },
+    };
+    const guessed = applyRoomEvent(activeSnapshot(), guessEvent);
+
+    expect(applyRoomEvent(guessed, guessEvent)).toBe(guessed);
+  });
+
+  it("should_pauseAndResumeGame_when_connectionChanges", () => {
+    const started = activeSnapshot();
+    const paused = applyRoomEvent(started, {
+      ...baseEvent(4, GAME_ID),
+      eventType: "PLAYER_CONNECTION_CHANGED",
+      payload: {
+        connected: false,
+        reconnectDeadline: "2026-07-25T03:01:00Z",
+        userId: started.opponent.userId,
+      },
+    });
+    const resumed = applyRoomEvent(paused, {
+      ...baseEvent(5, GAME_ID),
+      eventType: "PLAYER_CONNECTION_CHANGED",
+      payload: {
+        connected: true,
+        reconnectDeadline: null,
+        userId: started.opponent.userId,
+      },
+    });
+
+    expect(paused).toMatchObject({ status: "PAUSED" });
+    expect(resumed).toMatchObject({ status: "PLAYING" });
+  });
+
+  it("should_updateRematchState_when_resultRoomReceivesReadiness", () => {
+    const result = applyRoomEvent(activeSnapshot(), {
+      ...baseEvent(4, GAME_ID),
+      eventType: "GAME_ENDED",
+      gameId: GAME_ID,
+      payload: {
+        answerPokemon: PIKACHU,
+        endReason: "QUESTION_LIMIT",
+        loserUserId: twoPlayerSnapshot().opponent?.userId ?? "",
+        status: "COMPLETED",
+        usedActionCount: 0,
+        winnerUserId: HOST_SNAPSHOT.me.userId,
+      },
+    });
+    const ready = applyRoomEvent(result, {
+      ...baseEvent(5, GAME_ID),
+      eventType: "REMATCH_STATE_CHANGED",
+      gameId: GAME_ID,
+      payload: {
+        meReady: true,
+        opponentReady: false,
+      },
+    });
+
+    expect(ready).toMatchObject({
+      rematch: {
+        meReady: true,
+        opponentReady: false,
+      },
+      stateVersion: 5,
+    });
+  });
+
+  it("should_ignoreStaleConnectionEvent_when_newerStateExists", () => {
+    const started = activeSnapshot();
+    const event: RoomRealtimeEvent = {
+      ...baseEvent(2, GAME_ID),
       eventType: "PLAYER_CONNECTION_CHANGED",
       payload: {
         connected: false,
         reconnectDeadline: null,
-        userId: joined.opponent?.userId ?? "",
+        userId: started.opponent.userId,
       },
     };
 
-    expect(applyWaitingRoomEvent(joined, event)).toBe(joined);
+    expect(applyRoomEvent(started, event)).toBe(started);
   });
 });
 
@@ -94,9 +305,31 @@ function twoPlayerSnapshot(): WaitingRoomSnapshot {
   };
 }
 
-function baseEvent(stateVersion: number) {
+function activeSnapshot(): ActiveRoomSnapshot {
+  const waiting = twoPlayerSnapshot();
+  return {
+    ...waiting,
+    game: {
+      actions: [],
+      gameId: GAME_ID,
+      remainingActionCount: 20,
+      selectedPokemon: PIKACHU,
+      status: "IN_PROGRESS",
+      usedActionCount: 0,
+    },
+    opponent: waiting.opponent!,
+    stateVersion: 3,
+    status: "PLAYING",
+  };
+}
+
+function baseEvent(
+  stateVersion: number,
+  gameId: string | null,
+): Omit<RoomRealtimeEvent, "eventType" | "payload"> {
   return {
     eventId: "2069dc9a-624f-48f9-8b2c-65e912006224",
+    gameId,
     occurredAt: "2026-07-25T03:00:00Z",
     roomCode: "AB3K7M",
     stateVersion,

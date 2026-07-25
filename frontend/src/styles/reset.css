@@ -16,12 +16,14 @@ body {
 
 body,
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
 button,
-input {
+input,
+textarea {
   color: inherit;
 }
 

@@ -1,0 +1,723 @@
+.panel-card {
+  background: rgb(255 255 255 / 74%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.game-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(14rem, 0.8fr) minmax(24rem, 1.55fr) minmax(16rem, 0.9fr);
+  padding: 1.15rem;
+}
+
+.game-role-column,
+.game-command-column {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.game-role-card,
+.secret-pokemon-card {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 13rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.blue-role {
+  border-color: rgb(59 142 239 / 45%);
+}
+
+.mint-role,
+.secret-pokemon-card {
+  border-color: rgb(110 208 179 / 60%);
+}
+
+.role-pill {
+  align-self: flex-start;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.3rem 0.65rem;
+}
+
+.blue-pill {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.mint-pill,
+.selector-pill {
+  background: var(--mint-soft);
+  color: var(--mint-dark);
+}
+
+.member-connection-copy,
+.secret-copy {
+  align-items: center;
+  color: var(--mint-dark);
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 0.4rem;
+}
+
+.member-connection-copy span {
+  background: #25b766;
+  border-radius: 50%;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.secret-pokemon-card > span:not(.pokemon-artwork) {
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.secret-pokemon-card .pokemon-artwork {
+  max-width: 10rem;
+}
+
+.secret-pokemon-card h2 {
+  font-size: 1.15rem;
+}
+
+.remaining-actions {
+  align-items: baseline;
+  display: grid;
+  gap: 0.2rem 0.5rem;
+  grid-template-columns: auto auto 1fr;
+  padding: 1rem;
+}
+
+.remaining-actions > strong {
+  color: var(--blue-dark);
+  font-size: 2.3rem;
+  line-height: 1;
+}
+
+.action-dots {
+  display: grid;
+  gap: 0.24rem;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(10, 0.42rem);
+}
+
+.action-dots i {
+  background: #d9dee3;
+  border-radius: 50%;
+  height: 0.42rem;
+}
+
+.action-dots i.is-remaining {
+  background: var(--blue);
+}
+
+.game-timeline {
+  min-height: 28rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.game-panel-heading,
+.answer-panel > header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+}
+
+.game-panel-heading h2,
+.answer-panel h2 {
+  font-size: 1rem;
+}
+
+.game-timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0 1rem;
+}
+
+.game-timeline li {
+  align-items: center;
+  border-bottom: 1px solid rgb(214 222 232 / 70%);
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 2rem 1.8rem minmax(0, 1fr) auto;
+  min-height: 3.6rem;
+}
+
+.action-sequence {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  display: flex;
+  font-size: 0.72rem;
+  height: 1.8rem;
+  justify-content: center;
+  width: 1.8rem;
+}
+
+.action-kind {
+  align-items: center;
+  background: var(--blue-dark);
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  font-size: 0.76rem;
+  font-weight: 900;
+  height: 1.65rem;
+  justify-content: center;
+  width: 1.65rem;
+}
+
+.action-kind.is-guess {
+  background: var(--coral);
+}
+
+.action-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.action-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-copy span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.action-outcome {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  gap: 0.2rem;
+  padding: 0.27rem 0.52rem;
+}
+
+.answer-yes {
+  background: var(--mint-soft);
+  color: var(--mint-dark);
+}
+
+.answer-no {
+  background: var(--coral-soft);
+  color: #db463e;
+}
+
+.answer-unknown,
+.answer-pending {
+  background: var(--yellow-soft);
+  color: #9b6c00;
+}
+
+.game-empty-timeline {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 20rem;
+  text-align: center;
+}
+
+.question-composer {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+}
+
+.question-composer h2 {
+  font-size: 1rem;
+}
+
+.question-composer p {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.question-composer label {
+  position: relative;
+}
+
+.question-composer textarea {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 9rem;
+  padding: 0.8rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.question-composer small {
+  bottom: 0.55rem;
+  color: var(--muted);
+  position: absolute;
+  right: 0.65rem;
+}
+
+.question-actions,
+.rematch-actions,
+.modal-actions {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.primary-game-button,
+.secondary-game-button,
+.danger-game-button,
+.answer-buttons button,
+.result-room-closed button {
+  align-items: center;
+  border-radius: 9px;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 0.45rem;
+  justify-content: center;
+  min-height: 2.85rem;
+  padding: 0 1rem;
+}
+
+.primary-game-button {
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  color: white;
+}
+
+.secondary-game-button {
+  background: var(--paper);
+  border: 1px solid #9aaabd;
+  color: var(--navy);
+}
+
+.danger-game-button {
+  background: var(--coral);
+  border: 1px solid var(--coral);
+  color: white;
+}
+
+.question-actions button {
+  flex: 1;
+}
+
+.primary-game-button:disabled,
+.secondary-game-button:disabled,
+.danger-game-button:disabled,
+.answer-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.answer-panel {
+  border-color: var(--yellow);
+  overflow: hidden;
+}
+
+.answer-panel > span,
+.answer-panel > strong,
+.answer-panel > p {
+  display: block;
+  margin: 1rem;
+}
+
+.answer-panel > strong {
+  font-size: 1.5rem;
+  min-height: 3rem;
+}
+
+.answer-buttons {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0 1rem 1rem;
+}
+
+.answer-buttons button {
+  border: 0;
+  color: white;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.yes-button {
+  background: var(--mint-dark);
+}
+
+.no-button {
+  background: var(--coral);
+}
+
+.unknown-button {
+  background: #f2ad0b;
+}
+
+.result-layout {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: minmax(19rem, 0.85fr) minmax(30rem, 1.4fr);
+  padding: 1.15rem;
+}
+
+.result-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.result-summary > h1 {
+  color: var(--blue-dark);
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+}
+
+.result-lost > h1 {
+  color: var(--coral);
+}
+
+.result-aborted > h1 {
+  color: #d79200;
+}
+
+.answer-reveal-card {
+  align-items: center;
+  border-color: rgb(59 142 239 / 55%);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1.15fr;
+  padding: 1rem;
+}
+
+.answer-reveal-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.answer-reveal-card > div > span {
+  background: var(--blue);
+  border-radius: 6px;
+  color: white;
+  font-size: 0.74rem;
+  padding: 0.25rem 0.45rem;
+  width: fit-content;
+}
+
+.answer-reveal-card strong {
+  font-size: 1.55rem;
+}
+
+.used-action-summary {
+  align-items: baseline;
+  display: flex;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.used-action-summary strong {
+  color: var(--blue);
+  font-size: 2.2rem;
+  margin-left: auto;
+}
+
+.result-detail-column {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.result-participants,
+.rematch-panel {
+  padding: 1rem;
+}
+
+.result-participants h2,
+.rematch-panel h2 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.result-participants > article,
+.ready-state,
+.rematch-members > article {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  gap: 0.7rem;
+  margin-top: 0.55rem;
+  padding: 0.7rem;
+}
+
+.result-participants article > div,
+.rematch-members article > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-participants article span,
+.rematch-members article span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.result-participants article em,
+.rematch-members article em {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-style: normal;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.is-winner {
+  color: var(--blue-dark);
+}
+
+.is-loser {
+  color: var(--muted);
+}
+
+.rematch-panel > p {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.rematch-members {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: 1fr 1fr;
+  margin: 0.8rem 0;
+}
+
+.rematch-members article.is-ready {
+  background: var(--mint-soft);
+  border-color: var(--mint);
+}
+
+.rematch-actions button {
+  flex: 1;
+}
+
+.result-room-closed {
+  align-items: center;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto 1fr auto;
+  padding: 1rem;
+}
+
+.result-room-closed h2 {
+  font-size: 1rem;
+}
+
+.result-room-closed p {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.result-room-closed button {
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgb(11 25 39 / 64%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 100;
+}
+
+.modal-dialog {
+  background: var(--paper);
+  border-radius: 15px;
+  box-shadow: var(--shadow);
+  max-height: calc(100vh - 2rem);
+  max-width: 34rem;
+  overflow: auto;
+  padding: 1rem;
+  width: 100%;
+}
+
+.modal-dialog:focus {
+  outline: none;
+}
+
+.modal-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.modal-heading h2 {
+  font-size: 1.05rem;
+}
+
+.modal-close-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: flex;
+  height: 2.4rem;
+  justify-content: center;
+  width: 2.4rem;
+}
+
+.interruption-modal {
+  text-align: center;
+}
+
+.interruption-modal > p {
+  color: var(--muted);
+  margin: 0.7rem auto 1rem;
+  max-width: 27rem;
+}
+
+.interruption-icon {
+  margin-top: 0.8rem;
+}
+
+.warning-icon {
+  color: #e7a000;
+}
+
+.danger-icon,
+.danger-copy {
+  color: var(--coral) !important;
+}
+
+.reconnect-countdown {
+  display: block;
+  font-size: 2rem;
+  margin-top: 0.4rem;
+}
+
+.connection-state-list {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 1rem 0;
+}
+
+.connection-state-list span {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.65rem;
+}
+
+.connection-state-list span + span {
+  border-top: 1px solid var(--line);
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
+@media (max-width: 980px) {
+  .game-layout,
+  .result-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .game-role-column {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .remaining-actions {
+    grid-column: 1 / -1;
+  }
+
+  .secret-pokemon-card {
+    grid-column: 1 / -1;
+  }
+
+  .game-command-column {
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 580px) {
+  .game-layout,
+  .result-layout {
+    padding: 0.7rem;
+  }
+
+  .questioner-layout .game-timeline {
+    grid-row: 2;
+  }
+
+  .questioner-layout .game-command-column {
+    grid-row: 3;
+  }
+
+  .selector-layout .game-command-column {
+    grid-row: 2;
+  }
+
+  .selector-layout .game-timeline {
+    grid-row: 3;
+  }
+
+  .game-role-column {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .game-role-card {
+    min-height: 10rem;
+    padding: 0.75rem;
+  }
+
+  .game-timeline {
+    min-height: 20rem;
+  }
+
+  .game-timeline li {
+    gap: 0.4rem;
+    grid-template-columns: 1.65rem 1.5rem minmax(0, 1fr) auto;
+  }
+
+  .action-sequence,
+  .action-kind {
+    height: 1.5rem;
+    width: 1.5rem;
+  }
+
+  .question-actions {
+    flex-direction: column-reverse;
+  }
+
+  .answer-reveal-card {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rematch-members {
+    grid-template-columns: 1fr;
+  }
+
+  .rematch-actions {
+    flex-direction: column;
+  }
+
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0.5rem;
+  }
+
+  .modal-dialog {
+    border-radius: 15px 15px 8px 8px;
+    max-height: calc(100vh - 1rem);
+  }
+}

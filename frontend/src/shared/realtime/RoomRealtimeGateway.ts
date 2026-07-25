@@ -16,10 +16,11 @@ import {
 } from "../../features/room/roomCode";
 import {
   parseRealtimeError,
-  parseWaitingRoomEvent,
+  parseRoomRealtimeEvent,
   type RealtimeErrorMessage,
-  type WaitingRoomEvent,
+  type RoomRealtimeEvent,
 } from "./realtimeTypes";
+import type { GameAnswer } from "../../features/room/roomTypes";
 
 const GAME_EVENTS_DESTINATION = "/user/queue/game-events";
 const ERRORS_DESTINATION = "/user/queue/errors";
@@ -33,14 +34,35 @@ export type RealtimeConnectionStatus =
   | "reconnecting";
 
 export interface RoomRealtimeHandlers {
-  onEvent(event: WaitingRoomEvent): void;
+  onEvent(event: RoomRealtimeEvent): void;
   onRealtimeError(error: RealtimeErrorMessage): void;
   onStatusChange(status: RealtimeConnectionStatus): void;
   onTransportError(detail: string): void;
 }
 
 export interface RoomRealtimeSession {
+  answerQuestion(
+    answer: GameAnswer,
+    expectedStateVersion: number,
+  ): string;
+  askQuestion(
+    question: string,
+    expectedStateVersion: number,
+  ): string;
+  changeRematchReady(
+    ready: boolean,
+    expectedStateVersion: number,
+  ): string;
   close(): Promise<void>;
+  guessPokemon(
+    nationalDexId: number,
+    expectedStateVersion: number,
+  ): string;
+  requestSnapshot(): string;
+  selectPokemon(
+    nationalDexId: number,
+    expectedStateVersion: number,
+  ): string;
 }
 
 export interface RoomRealtimeGateway {
@@ -143,6 +165,7 @@ export class StompRoomRealtimeGateway
     const previousSession = this.currentSession;
     let closed = false;
     let closePromise: Promise<void> | null = null;
+    let connected = false;
     let connectedOnce = false;
     let subscriptions: RealtimeSubscription[] = [];
     const abortController = new AbortController();
@@ -179,6 +202,9 @@ export class StompRoomRealtimeGateway
             [credential.headerName]: credential.token,
           };
         } catch (error) {
+          if (closed && abortController.signal.aborted) {
+            return;
+          }
           notifyTransportError(safeConnectionDetail(error));
           throw error;
         }
@@ -197,7 +223,7 @@ export class StompRoomRealtimeGateway
             client.subscribe(GAME_EVENTS_DESTINATION, (message) => {
               try {
                 handlers.onEvent(
-                  parseWaitingRoomEvent(message.body),
+                  parseRoomRealtimeEvent(message.body),
                 );
               } catch {
                 notifyTransportError(
@@ -217,17 +243,8 @@ export class StompRoomRealtimeGateway
               }
             }),
           ];
-          client.publish({
-            body: JSON.stringify({
-              commandId: this.uuidFactory(),
-              expectedStateVersion: 0,
-              payload: {},
-            }),
-            destination: `/app/rooms/${normalizedCode}/resume`,
-            headers: {
-              "content-type": "application/json",
-            },
-          });
+          connected = true;
+          publishCommand("resume", 0, {});
           connectedOnce = true;
           notifyStatus("connected");
         } catch {
@@ -237,15 +254,18 @@ export class StompRoomRealtimeGateway
         }
       },
       onStompError: () => {
+        connected = false;
         notifyTransportError(
           "실시간 방 연결이 거부되었습니다. 로그인 상태를 확인해 주세요.",
         );
       },
       onWebSocketClose: () => {
+        connected = false;
         subscriptions = [];
         notifyStatus("reconnecting");
       },
       onWebSocketError: () => {
+        connected = false;
         notifyTransportError(
           "실시간 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.",
         );
@@ -254,13 +274,75 @@ export class StompRoomRealtimeGateway
       reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
     });
 
+    const publishCommand = (
+      action:
+        | "answer"
+        | "ask"
+        | "guess"
+        | "rematch-ready"
+        | "resume"
+        | "select-pokemon",
+      expectedStateVersion: number,
+      payload: Record<string, unknown>,
+    ): string => {
+      if (closed || !connected) {
+        throw realtimeUnavailableError();
+      }
+      requireStateVersion(expectedStateVersion);
+      const commandId = this.uuidFactory();
+      client.publish({
+        body: JSON.stringify({
+          commandId,
+          expectedStateVersion,
+          payload,
+        }),
+        destination: `/app/rooms/${normalizedCode}/${action}`,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+      return commandId;
+    };
+
     let session: InternalRealtimeSession;
     session = {
+      answerQuestion: (answer, expectedStateVersion) => {
+        if (
+          answer !== "YES" &&
+          answer !== "NO" &&
+          answer !== "UNKNOWN"
+        ) {
+          throw commandValidationError();
+        }
+        return publishCommand("answer", expectedStateVersion, {
+          answer,
+        });
+      },
+      askQuestion: (question, expectedStateVersion) => {
+        const normalizedQuestion = question.trim().normalize("NFC");
+        if (
+          normalizedQuestion.length === 0 ||
+          normalizedQuestion.length > 200
+        ) {
+          throw commandValidationError();
+        }
+        return publishCommand("ask", expectedStateVersion, {
+          question: normalizedQuestion,
+        });
+      },
+      changeRematchReady: (ready, expectedStateVersion) => {
+        return publishCommand(
+          "rematch-ready",
+          expectedStateVersion,
+          { ready },
+        );
+      },
       close: () => {
         if (closePromise) {
           return closePromise;
         }
         closed = true;
+        connected = false;
         abortController.abort();
         clearSubscriptions();
         closePromise = (async () => {
@@ -275,6 +357,24 @@ export class StompRoomRealtimeGateway
           }
         })();
         return closePromise;
+      },
+      guessPokemon: (nationalDexId, expectedStateVersion) => {
+        requireNationalDexId(nationalDexId);
+        return publishCommand("guess", expectedStateVersion, {
+          nationalDexId,
+        });
+      },
+      requestSnapshot: () => publishCommand("resume", 0, {}),
+      selectPokemon: (
+        nationalDexId,
+        expectedStateVersion,
+      ) => {
+        requireNationalDexId(nationalDexId);
+        return publishCommand(
+          "select-pokemon",
+          expectedStateVersion,
+          { nationalDexId },
+        );
       },
     };
     this.currentSession = session;
@@ -373,6 +473,37 @@ function safeConnectionDetail(error: unknown): string {
   return error instanceof ApiError
     ? error.detail
     : "실시간 연결을 준비하지 못했습니다. 다시 시도해 주세요.";
+}
+
+function requireStateVersion(value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw commandValidationError();
+  }
+}
+
+function requireNationalDexId(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > 1_025) {
+    throw commandValidationError();
+  }
+}
+
+function commandValidationError(): ApiError {
+  return new ApiError({
+    code: "VALIDATION_FAILED",
+    detail: "게임 요청 내용을 다시 확인해 주세요.",
+    status: 400,
+    title: "게임 요청 확인",
+  });
+}
+
+function realtimeUnavailableError(): ApiError {
+  return new ApiError({
+    code: "REALTIME_NOT_CONNECTED",
+    detail:
+      "실시간 연결을 확인하고 있어요. 연결된 뒤 다시 시도해 주세요.",
+    status: 0,
+    title: "실시간 연결 확인",
+  });
 }
 
 export function createRoomRealtimeGateway(

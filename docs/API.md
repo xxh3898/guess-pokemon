@@ -234,7 +234,11 @@ login ID별 비밀번호 실패는 10분 동안 5개를 처리하고 여섯 번�
 
 응답: `204`
 
-활성 경기 중이면 `409 ACTIVE_GAME_MUST_BE_LEFT_FIRST`를 반환한다. 사용자는 경기 화면의 명시적 나가기를 먼저 실행해야 한다.
+방 상태가 `PLAYING` 또는 `PAUSED`인 활성 경기 중이면
+`409 ACTIVE_GAME_MUST_BE_LEFT_FIRST`를 반환한다. 이 오류에서는 기존
+HTTP session과 방 참가 상태를 유지한다. 사용자는 경기 화면의 명시적
+나가기를 먼저 실행해야 한다. 상대를 기다리는 중이거나 결과 화면에
+머무는 경우에는 기존 로그아웃 동작을 유지한다.
 
 ### 5.5 현재 사용자
 
@@ -813,7 +817,15 @@ payload:
 
 client는 현재 값보다 작은 `stateVersion` event를 무시한다. 같은 version의
 `ROOM_SNAPSHOT`은 직전에 받은 알림 event를 보완하는 authoritative 상태일
-수 있으므로 적용하고, 그 밖의 같은 version event는 중복으로 무시한다.
+수 있으므로 적용한다.
+
+하나의 답변 또는 추측 command가 경기를 끝내면 행동 event
+(`QUESTION_ANSWERED` 또는 `GUESS_RESOLVED`)와 이어지는 `GAME_ENDED`가
+같은 `stateVersion`을 사용한다. client는 action sequence와 현재 room
+status를 기준으로 이 두 event를 상호 보완 event로 한 번씩 적용한다.
+이미 반영한 action sequence나 `RESULT` 전이는 같은 version으로 다시 와도
+무시한다. 이 예외에 해당하지 않는 같은 version event도 중복 event로 보고
+무시한다.
 
 ## 14. STOMP event
 

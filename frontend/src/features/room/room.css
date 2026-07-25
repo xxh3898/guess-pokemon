@@ -5,7 +5,7 @@
 .room-header {
   display: grid;
   min-height: 78px;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center;
   gap: 24px;
   padding: 0 34px;
@@ -75,6 +75,49 @@
   border-color: rgba(213, 154, 0, 0.32);
   color: #896200;
   background: var(--yellow-soft);
+}
+
+.room-role-badges,
+.room-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.room-role-badges span {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  gap: 5px;
+  padding: 7px 10px;
+}
+
+.questioner-badge {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.selector-badge {
+  background: var(--mint-soft);
+  color: var(--mint-dark);
+}
+
+.room-header-actions button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.74rem;
+  gap: 5px;
+  padding: 7px;
+}
+
+.room-header-actions button:hover {
+  color: var(--coral);
 }
 
 .room-content {
@@ -388,6 +431,202 @@
   background: #f2f4f6;
 }
 
+.room-frame > .room-inline-alert {
+  margin-right: auto;
+  margin-left: auto;
+  width: min(calc(100% - 2rem), 980px);
+}
+
+.selection-view {
+  padding: 1.4rem;
+}
+
+.selection-view > header {
+  margin: 0 auto 1rem;
+  max-width: 78rem;
+}
+
+.selection-view > header h1 {
+  font-size: clamp(1.55rem, 3vw, 2.1rem);
+  margin: 0;
+}
+
+.selection-view > header p {
+  align-items: center;
+  color: var(--mint-dark);
+  display: flex;
+  font-size: 0.82rem;
+  gap: 0.4rem;
+  margin: 0.45rem 0 0;
+}
+
+.selection-layout {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.28fr);
+  margin: 0 auto;
+  max-width: 78rem;
+}
+
+.selection-preview {
+  align-items: center;
+  align-self: start;
+  background: linear-gradient(145deg, #fff, var(--mint-soft));
+  border-color: rgb(110 208 179 / 65%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 26rem;
+  padding: 1.1rem;
+  position: sticky;
+  text-align: center;
+  top: 1rem;
+}
+
+.selection-preview h2 {
+  font-size: 1rem;
+}
+
+.selection-preview .pokemon-artwork {
+  max-width: 12rem;
+}
+
+.selection-preview > p {
+  color: var(--muted);
+  margin: auto;
+}
+
+.selection-preview > div {
+  align-items: center;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid rgb(110 208 179 / 45%);
+  border-radius: 9px;
+  color: var(--mint-dark);
+  display: flex;
+  font-size: 0.77rem;
+  gap: 0.4rem;
+  padding: 0.75rem;
+}
+
+.selection-confirm-button {
+  align-items: center;
+  background: var(--mint-dark);
+  border: 1px solid var(--mint-dark);
+  border-radius: 9px;
+  color: white;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 0.45rem;
+  justify-content: center;
+  min-height: 2.9rem;
+  padding: 0 1rem;
+  width: 100%;
+}
+
+.selection-confirm-button:disabled {
+  background: #cdd5dc;
+  border-color: #cdd5dc;
+}
+
+.selection-connection-notice {
+  color: #926800;
+  font-size: 0.8rem;
+  margin: 0.8rem auto;
+  max-width: 78rem;
+  text-align: center;
+}
+
+.pokemon-confirm-modal {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  max-width: 27rem;
+  text-align: center;
+}
+
+.pokemon-confirm-modal .modal-heading {
+  width: 100%;
+}
+
+.pokemon-confirm-modal .pokemon-artwork {
+  max-width: 10rem;
+}
+
+.pokemon-confirm-modal .modal-actions {
+  width: 100%;
+}
+
+.selection-wait-view {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 12rem);
+  padding: 2rem;
+  text-align: center;
+}
+
+.selection-wait-view h1 {
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  margin: 1rem 0 0.4rem;
+}
+
+.selection-wait-view > p:not(.role-pill) {
+  color: var(--muted);
+}
+
+.selection-wait-view > div {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.82rem;
+  gap: 0.4rem;
+  margin-top: 2.5rem;
+  padding: 0.7rem 1rem;
+}
+
+.guess-pokemon-modal {
+  max-width: 64rem;
+}
+
+.guess-warning {
+  background: var(--yellow-soft);
+  border: 1px solid rgb(255 200 67 / 70%);
+  border-radius: 8px;
+  color: #7c5a09;
+  font-size: 0.8rem;
+  margin: 0.8rem 0;
+  padding: 0.65rem;
+  text-align: center;
+}
+
+.guess-pokemon-modal > footer {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr auto auto;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+}
+
+.guess-pokemon-modal > footer > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.guess-pokemon-modal > footer span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.guess-pokemon-modal > footer strong {
+  color: var(--blue-dark);
+}
+
 @media (max-width: 760px) {
   .room-header {
     grid-template-columns: 1fr auto;
@@ -409,6 +648,15 @@
     justify-self: center;
   }
 
+  .room-role-badges {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .room-header-actions {
+    grid-column: 1 / -1;
+  }
+
   .room-content {
     padding: 34px 20px 28px;
   }
@@ -424,6 +672,44 @@
   .room-copy-box {
     grid-column: 1 / -1;
     min-width: 0;
+  }
+
+  .selection-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .selection-preview {
+    bottom: 0;
+    min-height: auto;
+    position: sticky;
+    top: auto;
+    z-index: 5;
+  }
+
+  .selection-preview .pokemon-artwork,
+  .selection-preview > div {
+    display: none;
+  }
+
+  .selection-preview > p {
+    margin: 0;
+  }
+
+  .guess-pokemon-modal {
+    border-radius: 0;
+    height: 100vh;
+    max-height: 100vh;
+  }
+
+  .guess-pokemon-modal > footer {
+    background: var(--paper);
+    bottom: 0;
+    grid-template-columns: 1fr 1fr;
+    position: sticky;
+  }
+
+  .guess-pokemon-modal > footer > div {
+    grid-column: 1 / -1;
   }
 }
 
@@ -458,9 +744,23 @@
     justify-content: center;
   }
 
+  .room-role-badges {
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  .room-header-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
   .room-content {
     padding-right: 16px;
     padding-left: 16px;
+  }
+
+  .selection-view {
+    padding: 1rem 0.75rem;
   }
 
   .room-status-heading {

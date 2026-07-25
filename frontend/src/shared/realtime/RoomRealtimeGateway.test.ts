@@ -91,6 +91,7 @@ describe("StompRoomRealtimeGateway", () => {
       JSON.stringify({
         eventId: "2069dc9a-624f-48f9-8b2c-65e912006224",
         eventType: "PLAYER_JOINED",
+        gameId: null,
         occurredAt: "2026-07-25T03:00:00Z",
         payload: {
           player: {
@@ -111,6 +112,73 @@ describe("StompRoomRealtimeGateway", () => {
     );
   });
 
+  it("should_publishAllGameCommands_when_sessionIsConnected", async () => {
+    const fake = new FakeStompClient();
+    const session = createGateway(fake).open("AB3K7M", {
+      onEvent: vi.fn(),
+      onRealtimeError: vi.fn(),
+      onStatusChange: vi.fn(),
+      onTransportError: vi.fn(),
+    });
+    await flushPromises();
+    fake.connect();
+    fake.publish.mockClear();
+
+    session.selectPokemon(25, 2);
+    session.askQuestion("  날개가 있나요?  ", 3);
+    session.answerQuestion("NO", 4);
+    session.guessPokemon(6, 5);
+    session.changeRematchReady(true, 6);
+    session.requestSnapshot();
+
+    expect(fake.publish.mock.calls).toEqual([
+      [
+        command(
+          "/app/rooms/AB3K7M/select-pokemon",
+          2,
+          { nationalDexId: 25 },
+        ),
+      ],
+      [
+        command("/app/rooms/AB3K7M/ask", 3, {
+          question: "날개가 있나요?",
+        }),
+      ],
+      [
+        command("/app/rooms/AB3K7M/answer", 4, {
+          answer: "NO",
+        }),
+      ],
+      [
+        command("/app/rooms/AB3K7M/guess", 5, {
+          nationalDexId: 6,
+        }),
+      ],
+      [
+        command("/app/rooms/AB3K7M/rematch-ready", 6, {
+          ready: true,
+        }),
+      ],
+      [command("/app/rooms/AB3K7M/resume", 0, {})],
+    ]);
+  });
+
+  it("should_rejectCommand_when_sessionIsNotConnected", async () => {
+    const fake = new FakeStompClient();
+    const session = createGateway(fake).open("AB3K7M", {
+      onEvent: vi.fn(),
+      onRealtimeError: vi.fn(),
+      onStatusChange: vi.fn(),
+      onTransportError: vi.fn(),
+    });
+    await flushPromises();
+
+    expect(() => session.askQuestion("질문", 1)).toThrow(
+      "실시간 연결을 확인하고 있어요. 연결된 뒤 다시 시도해 주세요.",
+    );
+    expect(fake.publish).not.toHaveBeenCalled();
+  });
+
   it("should_unsubscribeAndDeactivate_when_sessionCloses", async () => {
     const fake = new FakeStompClient();
     const session = createGateway(fake).open("AB3K7M", {
@@ -126,6 +194,42 @@ describe("StompRoomRealtimeGateway", () => {
 
     expect(fake.unsubscribe).toHaveBeenCalledTimes(2);
     expect(fake.deactivate).toHaveBeenCalledOnce();
+  });
+
+  it("should_ignoreCredentialAbort_when_sessionClosesDuringConnect", async () => {
+    const fake = new FakeStompClient();
+    const onTransportError = vi.fn();
+    const gateway = new StompRoomRealtimeGateway(
+      (signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => {
+              reject(
+                new DOMException(
+                  "signal is aborted without reason",
+                  "AbortError",
+                ),
+              );
+            },
+            { once: true },
+          );
+        }),
+      createFactory(fake),
+    );
+    const session = gateway.open("AB3K7M", {
+      onEvent: vi.fn(),
+      onRealtimeError: vi.fn(),
+      onStatusChange: vi.fn(),
+      onTransportError,
+    });
+    await flushPromises();
+    const connecting = fake.beforeConnect();
+
+    await session.close();
+
+    await expect(connecting).resolves.toBeUndefined();
+    expect(onTransportError).not.toHaveBeenCalled();
   });
 
   it("should_replacePreviousSession_when_newRoomSessionOpens", async () => {
@@ -272,4 +376,22 @@ class FakeStompClient implements RealtimeStompClient {
 async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function command(
+  destination: string,
+  expectedStateVersion: number,
+  payload: Record<string, unknown>,
+) {
+  return {
+    body: JSON.stringify({
+      commandId: "98835cf8-c6f2-4576-a900-b26519ddbbed",
+      expectedStateVersion,
+      payload,
+    }),
+    destination,
+    headers: {
+      "content-type": "application/json",
+    },
+  };
 }

@@ -74,21 +74,34 @@ describe("roomApi", () => {
     expect(fetcher.mock.calls[1]?.[1]?.method).toBe("DELETE");
   });
 
-  it("should_rejectSecretGamePayload_when_waitingSnapshotContainsGame", async () => {
+  it("should_parseQuestionerGame_when_activeSnapshotContainsNoSecret", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(
       jsonResponse({
         ...HOST_SNAPSHOT,
-        game: {
-          selectedPokemon: {
-            nationalDexId: 25,
-          },
+        me: {
+          ...HOST_SNAPSHOT.me,
+          role: "QUESTIONER",
         },
+        opponent: {
+          ...HOST_SNAPSHOT.me,
+          role: "SELECTOR",
+          userId: "70226fe2-cdee-4261-a3cb-fbd87a4df783",
+        },
+        game: {
+          actions: [],
+          gameId: "3f249b3c-f0a6-4054-8bcf-e6284eec5f3e",
+          remainingActionCount: 20,
+          status: "IN_PROGRESS",
+          usedActionCount: 0,
+        },
+        stateVersion: 3,
+        status: "PLAYING",
       }),
     );
     const gateway = createRoomGateway(new HttpClient(fetcher));
 
-    await expect(gateway.get("AB3K7M")).rejects.toMatchObject({
-      code: "INVALID_RESPONSE",
+    await expect(gateway.get("AB3K7M")).resolves.toMatchObject({
+      status: "PLAYING",
     });
   });
 
