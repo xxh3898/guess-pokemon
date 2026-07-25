@@ -184,7 +184,7 @@ describe("GameScreen", () => {
   });
 
   it("should_sendSelectedAnswer_when_selectorHasPendingQuestion", () => {
-    const onAnswer = vi.fn();
+    const onAnswer = vi.fn().mockReturnValue(true);
     const base = selectorSnapshot();
     const snapshot: SelectorActiveRoomSnapshot = {
       ...base,
@@ -205,9 +205,139 @@ describe("GameScreen", () => {
         snapshot={snapshot}
       />,
     );
+    const comment = screen.getByLabelText(
+      "답변 코멘트 (선택)",
+    );
+    fireEvent.change(comment, {
+      target: {
+        value: "  날개처럼 보이지만 팔이에요.  ",
+      },
+    });
     fireEvent.click(screen.getByRole("button", { name: "아니요" }));
 
-    expect(onAnswer).toHaveBeenCalledWith("NO");
+    expect(onAnswer).toHaveBeenCalledWith(
+      "NO",
+      "  날개처럼 보이지만 팔이에요.  ",
+    );
+    expect(comment).toHaveValue("");
+  });
+
+  it("should_disableAnswers_when_commentExceedsLimit", () => {
+    const base = selectorSnapshot();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...base,
+          game: {
+            ...base.game,
+            actions: [pendingQuestion()],
+            remainingActionCount: 19,
+            usedActionCount: 1,
+          },
+        }}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByLabelText("답변 코멘트 (선택)"),
+      {
+        target: { value: "😀".repeat(201) },
+      },
+    );
+
+    expect(screen.getByText("201/200")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "예" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "아니요" }),
+    ).toBeDisabled();
+  });
+
+  it("should_clearCommentDraft_when_pendingQuestionChanges", () => {
+    const base = selectorSnapshot();
+    const firstSnapshot: SelectorActiveRoomSnapshot = {
+      ...base,
+      game: {
+        ...base.game,
+        actions: [pendingQuestion()],
+        remainingActionCount: 19,
+        usedActionCount: 1,
+      },
+    };
+    const { rerender } = render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={firstSnapshot}
+      />,
+    );
+    fireEvent.change(
+      screen.getByLabelText("답변 코멘트 (선택)"),
+      {
+        target: { value: "첫 질문 설명" },
+      },
+    );
+
+    rerender(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...firstSnapshot,
+          game: {
+            ...firstSnapshot.game,
+            actions: [pendingQuestion(2, "꼬리가 있나요?")],
+          },
+          stateVersion: 5,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("답변 코멘트 (선택)"),
+    ).toHaveValue("");
+  });
+
+  it("should_renderCommentAsText_when_questionWasAnswered", () => {
+    const base = questionerSnapshot();
+    const { container } = render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...base,
+          game: {
+            ...base.game,
+            actions: [
+              {
+                ...pendingQuestion(),
+                answer: "YES",
+                answeredAt: "2026-07-25T03:00:03Z",
+                comment: "<script>alert('위험')</script>",
+              },
+            ],
+            remainingActionCount: 19,
+            usedActionCount: 1,
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("<script>alert('위험')</script>"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("script")).toBeNull();
   });
 });
 
@@ -259,13 +389,17 @@ function selectorSnapshot(): SelectorActiveRoomSnapshot {
   };
 }
 
-function pendingQuestion() {
+function pendingQuestion(
+  sequenceNumber = 1,
+  question = "날개가 있나요?",
+) {
   return {
     answer: null,
     answeredAt: null,
+    comment: null,
     createdAt: "2026-07-25T03:00:00Z",
-    question: "날개가 있나요?",
-    sequenceNumber: 1,
+    question,
+    sequenceNumber,
     type: "QUESTION" as const,
   };
 }

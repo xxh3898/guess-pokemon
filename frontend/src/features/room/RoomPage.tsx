@@ -591,17 +591,18 @@ export function RoomPage({
           <>
             <GameScreen
               commandPending={pendingCommand !== null}
-              onAnswer={(answer) => {
+              onAnswer={(answer, comment) =>
                 sendCommand(
                   "answer",
                   snapshot.stateVersion,
                   (session) =>
                     session.answerQuestion(
                       answer,
+                      comment,
                       snapshot.stateVersion,
                     ),
-                );
-              }}
+                )
+              }
               onAsk={(question) => {
                 sendCommand(
                   "ask",

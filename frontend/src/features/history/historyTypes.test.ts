@@ -64,6 +64,7 @@ describe("historyTypes", () => {
             {
               answer: null,
               answeredAt: null,
+              comment: null,
               correct: null,
               createdAt: "2026-07-25T05:01:00Z",
               guessedPokemon: null,
@@ -92,6 +93,7 @@ describe("historyTypes", () => {
     ).toMatchObject({
       answer: null,
       answeredAt: null,
+      comment: null,
       question: "날개가 있나요?",
     });
   });
@@ -128,6 +130,7 @@ describe("historyTypes", () => {
             {
               answer: "YES",
               answeredAt: "2026-07-25T05:01:02Z",
+              comment: "전기 타입이에요.",
               correct: true,
               createdAt: "2026-07-25T05:01:00Z",
               guessedPokemon: PIKACHU,
@@ -139,6 +142,32 @@ describe("historyTypes", () => {
         }),
       ),
     ).toThrow();
+  });
+
+  it("should_parseAnswerComment_when_historyDetailIsValid", () => {
+    expect(
+      parseHistoryDetail(
+        historyDetail({
+          actionCount: 1,
+          actions: [
+            {
+              answer: "UNKNOWN",
+              answeredAt: "2026-07-25T05:01:02Z",
+              comment: "정확히 확인하기 어려워요.",
+              correct: null,
+              createdAt: "2026-07-25T05:01:00Z",
+              guessedPokemon: null,
+              question: "밤에만 나타나나요?",
+              sequenceNo: 1,
+              type: "QUESTION",
+            },
+          ],
+        }),
+      ).actions[0],
+    ).toMatchObject({
+      answer: "UNKNOWN",
+      comment: "정확히 확인하기 어려워요.",
+    });
   });
 
   it("should_rejectHistoryPage_when_metadataIsInconsistent", () => {

@@ -111,6 +111,7 @@ describe("roomState", () => {
       gameId: GAME_ID,
       payload: {
         answer: "NO",
+        comment: "날개처럼 보이지만 팔이에요.",
         question: "날개가 있나요?",
         remainingActionCount: 19,
         sequenceNo: 1,
@@ -121,6 +122,7 @@ describe("roomState", () => {
     expect(answered?.game?.actions).toEqual([
       expect.objectContaining({
         answer: "NO",
+        comment: "날개처럼 보이지만 팔이에요.",
         question: "날개가 있나요?",
         sequenceNumber: 1,
       }),
@@ -145,6 +147,7 @@ describe("roomState", () => {
       gameId: GAME_ID,
       payload: {
         answer: "YES",
+        comment: "노란색이에요.",
         question: "노란색인가요?",
         remainingActionCount: 19,
         sequenceNo: 1,
@@ -154,6 +157,7 @@ describe("roomState", () => {
 
     expect(answered?.game?.actions[0]).toMatchObject({
       answer: "YES",
+      comment: "노란색이에요.",
       sequenceNumber: 1,
     });
   });

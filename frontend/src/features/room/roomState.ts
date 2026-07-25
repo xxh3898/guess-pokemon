@@ -181,6 +181,7 @@ function applyQuestionAsked(
   const action: QuestionGameAction = {
     answer: null,
     answeredAt: null,
+    comment: null,
     createdAt: event.occurredAt,
     question: event.payload.question,
     sequenceNumber: event.payload.sequenceNo,
@@ -212,6 +213,7 @@ function applyQuestionAnswered(
     const action: QuestionGameAction = {
       answer: event.payload.answer,
       answeredAt: event.occurredAt,
+      comment: event.payload.comment,
       createdAt: event.occurredAt,
       question: event.payload.question,
       sequenceNumber: event.payload.sequenceNo,
@@ -235,6 +237,7 @@ function applyQuestionAnswered(
     ...existing,
     answer: event.payload.answer,
     answeredAt: event.occurredAt,
+    comment: event.payload.comment,
   };
   return withGameActions(current, event, actions);
 }

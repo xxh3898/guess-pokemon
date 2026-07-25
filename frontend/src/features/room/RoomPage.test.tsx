@@ -481,6 +481,36 @@ describe("RoomPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("should_sendAnswerComment_when_selectorAnswersQuestion", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(SELECTOR_PENDING_SNAPSHOT),
+      }),
+      realtimeGateway: realtime.gateway,
+    });
+    const comment = await screen.findByLabelText(
+      "답변 코멘트 (선택)",
+    );
+    fireEvent.change(comment, {
+      target: { value: "  날개처럼 보이지만 팔이에요.  " },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "아니요" }),
+    );
+
+    expect(realtime.answerQuestion).toHaveBeenCalledWith(
+      "NO",
+      "  날개처럼 보이지만 팔이에요.  ",
+      4,
+    );
+    expect(comment).toHaveValue("");
+    expect(comment).toBeDisabled();
+  });
+
   it("should_allowPokedexBrowsingWithoutGuess_when_questionIsWaitingForAnswer", async () => {
     const realtime = createRealtimeHarness();
     renderRoom({
@@ -1125,6 +1155,7 @@ const QUESTIONER_PENDING_SNAPSHOT: QuestionerActiveRoomSnapshot = {
       {
         answer: null,
         answeredAt: null,
+        comment: null,
         createdAt: "2026-07-25T03:00:00Z",
         question: "날개가 있나요?",
         sequenceNumber: 1,
@@ -1161,6 +1192,26 @@ const SELECTOR_ACTIVE_SNAPSHOT: SelectorActiveRoomSnapshot = {
   roundNumber: 1,
   stateVersion: 3,
   status: "PLAYING",
+};
+const SELECTOR_PENDING_SNAPSHOT: SelectorActiveRoomSnapshot = {
+  ...SELECTOR_ACTIVE_SNAPSHOT,
+  game: {
+    ...SELECTOR_ACTIVE_SNAPSHOT.game,
+    actions: [
+      {
+        answer: null,
+        answeredAt: null,
+        comment: null,
+        createdAt: "2026-07-25T03:00:00Z",
+        question: "날개가 있나요?",
+        sequenceNumber: 1,
+        type: "QUESTION",
+      },
+    ],
+    remainingActionCount: 19,
+    usedActionCount: 1,
+  },
+  stateVersion: 4,
 };
 const RESULT_SNAPSHOT: ResultRoomSnapshot = {
   game: {

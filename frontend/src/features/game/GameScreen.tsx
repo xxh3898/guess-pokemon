@@ -15,6 +15,10 @@ import {
 } from "react";
 
 import {
+  MAX_ANSWER_COMMENT_LENGTH,
+  countAnswerCommentCharacters,
+} from "../../shared/game/answerComment";
+import {
   PokemonArtwork,
   formatNationalDexId,
 } from "../pokemon/PokemonArtwork";
@@ -29,7 +33,7 @@ import { GameActionTimeline } from "./GameActionTimeline";
 
 interface GameScreenProps {
   commandPending: boolean;
-  onAnswer(answer: GameAnswer): void;
+  onAnswer(answer: GameAnswer, comment: string): boolean;
   onAsk(question: string): void;
   onOpenPokedex(): void;
   snapshot: ActiveRoomSnapshot;
@@ -103,6 +107,7 @@ export function GameScreen({
         {isSelector ? (
           <AnswerPanel
             commandPending={commandPending}
+            key={pendingQuestion?.sequenceNumber ?? "waiting"}
             onAnswer={onAnswer}
             pendingQuestion={pendingQuestion}
             paused={snapshot.status === "PAUSED"}
@@ -270,7 +275,7 @@ function QuestionPanel({
 
 interface AnswerPanelProps {
   commandPending: boolean;
-  onAnswer(answer: GameAnswer): void;
+  onAnswer(answer: GameAnswer, comment: string): boolean;
   paused: boolean;
   pendingQuestion: QuestionGameAction | null;
 }
@@ -281,8 +286,22 @@ function AnswerPanel({
   paused,
   pendingQuestion,
 }: AnswerPanelProps) {
-  const disabled =
+  const [comment, setComment] = useState("");
+  const commentLength =
+    countAnswerCommentCharacters(comment);
+  const commentTooLong =
+    commentLength > MAX_ANSWER_COMMENT_LENGTH;
+  const controlsDisabled =
     commandPending || paused || pendingQuestion === null;
+  const answerDisabled = controlsDisabled || commentTooLong;
+  const submitAnswer = (answer: GameAnswer) => {
+    if (answerDisabled) {
+      return;
+    }
+    if (onAnswer(answer, comment)) {
+      setComment("");
+    }
+  };
   return (
     <section className="answer-panel panel-card">
       <header>
@@ -299,12 +318,42 @@ function AnswerPanel({
       ) : (
         <p>질문자가 다음 질문을 준비하고 있어요.</p>
       )}
+      <label className="answer-comment-field">
+        <span>
+          답변 코멘트
+          <em>선택</em>
+        </span>
+        <textarea
+          aria-label="답변 코멘트 (선택)"
+          aria-invalid={commentTooLong}
+          disabled={controlsDisabled}
+          onChange={(event) => {
+            setComment(event.target.value);
+          }}
+          placeholder={
+            pendingQuestion
+              ? "예: 날개처럼 보이지만 팔이에요."
+              : "질문이 오면 짧은 설명을 덧붙일 수 있어요."
+          }
+          value={comment}
+        />
+        <small className={commentTooLong ? "is-over-limit" : ""}>
+          <span>
+            {commentTooLong
+              ? "코멘트는 200자까지 입력할 수 있어요."
+              : "답변에 짧은 설명을 덧붙일 수 있어요."}
+          </span>
+          <span>
+            {commentLength}/{MAX_ANSWER_COMMENT_LENGTH}
+          </span>
+        </small>
+      </label>
       <div className="answer-buttons">
         <button
           className="yes-button"
-          disabled={disabled}
+          disabled={answerDisabled}
           onClick={() => {
-            onAnswer("YES");
+            submitAnswer("YES");
           }}
           type="button"
         >
@@ -312,9 +361,9 @@ function AnswerPanel({
         </button>
         <button
           className="no-button"
-          disabled={disabled}
+          disabled={answerDisabled}
           onClick={() => {
-            onAnswer("NO");
+            submitAnswer("NO");
           }}
           type="button"
         >
@@ -323,9 +372,9 @@ function AnswerPanel({
         </button>
         <button
           className="unknown-button"
-          disabled={disabled}
+          disabled={answerDisabled}
           onClick={() => {
-            onAnswer("UNKNOWN");
+            submitAnswer("UNKNOWN");
           }}
           type="button"
         >

@@ -1,4 +1,5 @@
 import { ApiError } from "../../shared/api/HttpClient";
+import { isAnswerCommentValue } from "../../shared/game/answerComment";
 import {
   hasOwn,
   requireBoolean,
@@ -56,6 +57,7 @@ interface GameActionBase {
 export interface QuestionGameAction extends GameActionBase {
   readonly answer: GameAnswer | null;
   readonly answeredAt: string | null;
+  readonly comment: string | null;
   readonly question: string;
   readonly type: "QUESTION";
 }
@@ -405,9 +407,11 @@ function parseGameAction(
       action,
       "answeredAt",
     );
+    const comment = requireAnswerComment(action.comment);
     if (
       action.guessedPokemonNationalDexId !== null ||
       action.correct !== null ||
+      (answer === null && comment !== null) ||
       (answer === null) !== (answeredAt === null)
     ) {
       throw ApiError.invalidResponse();
@@ -415,6 +419,7 @@ function parseGameAction(
     return {
       answer,
       answeredAt,
+      comment,
       createdAt,
       question: requireString(action, "question"),
       sequenceNumber,
@@ -425,6 +430,7 @@ function parseGameAction(
   if (
     action.question !== null ||
     action.answer !== null ||
+    action.comment !== null ||
     action.answeredAt !== null
   ) {
     throw ApiError.invalidResponse();
@@ -510,6 +516,15 @@ function requireGameStatus(value: unknown): GameStatus {
 
 function requireGameAnswer(value: unknown): GameAnswer {
   if (value !== "YES" && value !== "NO" && value !== "UNKNOWN") {
+    throw ApiError.invalidResponse();
+  }
+  return value;
+}
+
+function requireAnswerComment(
+  value: unknown,
+): string | null {
+  if (!isAnswerCommentValue(value)) {
     throw ApiError.invalidResponse();
   }
   return value;

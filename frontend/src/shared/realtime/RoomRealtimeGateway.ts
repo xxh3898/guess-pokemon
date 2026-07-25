@@ -11,6 +11,11 @@ import {
   httpClient,
 } from "../api/HttpClient";
 import {
+  MAX_ANSWER_COMMENT_LENGTH,
+  countAnswerCommentCharacters,
+  normalizeAnswerComment,
+} from "../game/answerComment";
+import {
   isValidRoomCode,
   normalizeRoomCode,
 } from "../../features/room/roomCode";
@@ -43,6 +48,7 @@ export interface RoomRealtimeHandlers {
 export interface RoomRealtimeSession {
   answerQuestion(
     answer: GameAnswer,
+    comment: string | null,
     expectedStateVersion: number,
   ): string;
   askQuestion(
@@ -306,7 +312,11 @@ export class StompRoomRealtimeGateway
 
     let session: InternalRealtimeSession;
     session = {
-      answerQuestion: (answer, expectedStateVersion) => {
+      answerQuestion: (
+        answer,
+        comment,
+        expectedStateVersion,
+      ) => {
         if (
           answer !== "YES" &&
           answer !== "NO" &&
@@ -314,8 +324,20 @@ export class StompRoomRealtimeGateway
         ) {
           throw commandValidationError();
         }
+        if (comment !== null && typeof comment !== "string") {
+          throw commandValidationError();
+        }
+        const normalizedComment =
+          normalizeAnswerComment(comment);
+        if (
+          countAnswerCommentCharacters(normalizedComment) >
+          MAX_ANSWER_COMMENT_LENGTH
+        ) {
+          throw commandValidationError();
+        }
         return publishCommand("answer", expectedStateVersion, {
           answer,
+          comment: normalizedComment,
         });
       },
       askQuestion: (question, expectedStateVersion) => {

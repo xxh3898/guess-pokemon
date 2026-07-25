@@ -126,7 +126,11 @@ describe("StompRoomRealtimeGateway", () => {
 
     session.selectPokemon(25, 2);
     session.askQuestion("  날개가 있나요?  ", 3);
-    session.answerQuestion("NO", 4);
+    session.answerQuestion(
+      "NO",
+      "  날개처럼 보이지만 팔이에요.  ",
+      4,
+    );
     session.guessPokemon(6, 5);
     session.changeRematchReady(true, 6);
     session.requestSnapshot();
@@ -147,6 +151,7 @@ describe("StompRoomRealtimeGateway", () => {
       [
         command("/app/rooms/AB3K7M/answer", 4, {
           answer: "NO",
+          comment: "날개처럼 보이지만 팔이에요.",
         }),
       ],
       [
@@ -161,6 +166,46 @@ describe("StompRoomRealtimeGateway", () => {
       ],
       [command("/app/rooms/AB3K7M/resume", 0, {})],
     ]);
+  });
+
+  it("should_publishNullComment_when_answerCommentIsBlank", async () => {
+    const fake = new FakeStompClient();
+    const session = createGateway(fake).open("AB3K7M", {
+      onEvent: vi.fn(),
+      onRealtimeError: vi.fn(),
+      onStatusChange: vi.fn(),
+      onTransportError: vi.fn(),
+    });
+    await flushPromises();
+    fake.connect();
+    fake.publish.mockClear();
+
+    session.answerQuestion("YES", " \n ", 4);
+
+    expect(fake.publish).toHaveBeenCalledWith(
+      command("/app/rooms/AB3K7M/answer", 4, {
+        answer: "YES",
+        comment: null,
+      }),
+    );
+  });
+
+  it("should_rejectAnswerComment_when_commentExceedsMaximumLength", async () => {
+    const fake = new FakeStompClient();
+    const session = createGateway(fake).open("AB3K7M", {
+      onEvent: vi.fn(),
+      onRealtimeError: vi.fn(),
+      onStatusChange: vi.fn(),
+      onTransportError: vi.fn(),
+    });
+    await flushPromises();
+    fake.connect();
+    fake.publish.mockClear();
+
+    expect(() =>
+      session.answerQuestion("UNKNOWN", "🙂".repeat(201), 4),
+    ).toThrow("게임 요청 내용을 다시 확인해 주세요.");
+    expect(fake.publish).not.toHaveBeenCalled();
   });
 
   it("should_rejectCommand_when_sessionIsNotConnected", async () => {

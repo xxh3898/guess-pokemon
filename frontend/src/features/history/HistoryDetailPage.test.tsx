@@ -42,6 +42,9 @@ describe("HistoryDetailPage", () => {
     expect(
       screen.getByText("<script>alert('위험')</script>"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("<script>alert('코멘트')</script>"),
+    ).toBeInTheDocument();
     expect(container.querySelector("script")).toBeNull();
     expect(screen.getByText("No.0025 피카츄")).toBeInTheDocument();
   });
@@ -92,6 +95,7 @@ describe("HistoryDetailPage", () => {
         {
           answer: null,
           answeredAt: null,
+          comment: null,
           correct: null,
           createdAt: "2026-07-25T05:01:00Z",
           guessedPokemon: null,

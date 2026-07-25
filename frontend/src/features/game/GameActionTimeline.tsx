@@ -52,6 +52,10 @@ export function GameActionTimeline({
                 </strong>
                 {action.type === "GUESS" ? (
                   <span>포켓몬 추측</span>
+                ) : action.comment ? (
+                  <span className="action-comment">
+                    {action.comment}
+                  </span>
                 ) : null}
               </div>
               <ActionOutcome action={action} />

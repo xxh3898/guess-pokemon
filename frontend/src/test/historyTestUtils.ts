@@ -46,6 +46,7 @@ export const TEST_HISTORY_DETAIL: HistoryDetail = {
     {
       answer: "YES",
       answeredAt: "2026-07-25T05:01:04Z",
+      comment: "<script>alert('코멘트')</script>",
       correct: null,
       createdAt: "2026-07-25T05:01:00Z",
       guessedPokemon: null,
@@ -56,6 +57,7 @@ export const TEST_HISTORY_DETAIL: HistoryDetail = {
     {
       answer: null,
       answeredAt: null,
+      comment: null,
       correct: true,
       createdAt: "2026-07-25T05:05:00Z",
       guessedPokemon: PIKACHU,

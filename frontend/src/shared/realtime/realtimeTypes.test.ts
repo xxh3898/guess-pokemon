@@ -100,6 +100,7 @@ describe("realtimeTypes", () => {
     const answered = parseRoomRealtimeEvent(
       eventBody("QUESTION_ANSWERED", GAME_ID, 5, {
         answer: "NO",
+        comment: "날개처럼 보이지만 팔이에요.",
         question: "날개가 있나요?",
         remainingActionCount: 19,
         sequenceNo: 1,
@@ -122,12 +123,51 @@ describe("realtimeTypes", () => {
     });
     expect(answered).toMatchObject({
       eventType: "QUESTION_ANSWERED",
-      payload: { answer: "NO" },
+      payload: {
+        answer: "NO",
+        comment: "날개처럼 보이지만 팔이에요.",
+      },
     });
     expect(guessed).toMatchObject({
       eventType: "GUESS_RESOLVED",
       payload: { guessedPokemon: PIKACHU },
     });
+  });
+
+  it("should_parseNullComment_when_questionHasNoAnswerComment", () => {
+    expect(
+      parseRoomRealtimeEvent(
+        eventBody("QUESTION_ANSWERED", GAME_ID, 5, {
+          answer: "YES",
+          comment: null,
+          question: "전기 타입인가요?",
+          remainingActionCount: 19,
+          sequenceNo: 1,
+          usedActionCount: 1,
+        }),
+      ),
+    ).toMatchObject({
+      payload: {
+        comment: null,
+      },
+    });
+  });
+
+  it("should_rejectQuestionAnsweredEvent_when_commentIsInvalid", () => {
+    expect(() =>
+      parseRoomRealtimeEvent(
+        eventBody("QUESTION_ANSWERED", GAME_ID, 5, {
+          answer: "YES",
+          comment: " 바깥 공백",
+          question: "전기 타입인가요?",
+          remainingActionCount: 19,
+          sequenceNo: 1,
+          usedActionCount: 1,
+        }),
+      ),
+    ).toThrow(
+      "서버 응답을 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+    );
   });
 
   it("should_parseCompletedGame_when_gameEndedArrives", () => {

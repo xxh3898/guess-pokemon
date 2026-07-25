@@ -203,6 +203,13 @@
   font-size: 0.74rem;
 }
 
+.action-copy .action-comment {
+  line-height: 1.45;
+  margin-top: 0.18rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .action-outcome {
   align-items: center;
   border-radius: 999px;
@@ -340,6 +347,67 @@
 .answer-panel > strong {
   font-size: 1.5rem;
   min-height: 3rem;
+}
+
+.answer-comment-field {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 1rem 1rem;
+}
+
+.answer-comment-field > span {
+  align-items: center;
+  color: var(--navy);
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 800;
+  gap: 0.4rem;
+}
+
+.answer-comment-field em {
+  background: var(--yellow-soft);
+  border-radius: 999px;
+  color: #8a6600;
+  font-size: 0.68rem;
+  font-style: normal;
+  padding: 0.16rem 0.42rem;
+}
+
+.answer-comment-field textarea {
+  background: rgb(255 255 255 / 82%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  line-height: 1.5;
+  min-height: 5.5rem;
+  padding: 0.72rem 0.8rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.answer-comment-field textarea:focus {
+  border-color: var(--yellow);
+  outline: 3px solid rgb(255 196 43 / 22%);
+}
+
+.answer-comment-field textarea:disabled {
+  background: #f2f3f4;
+  cursor: not-allowed;
+}
+
+.answer-comment-field small {
+  color: var(--muted);
+  display: flex;
+  font-size: 0.7rem;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.answer-comment-field small > span:first-child {
+  min-width: 0;
+}
+
+.answer-comment-field small.is-over-limit {
+  color: #d3443c;
 }
 
 .answer-buttons {
@@ -711,6 +779,10 @@
 
   .answer-reveal-card {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .answer-comment-field textarea {
+    min-height: 4.75rem;
   }
 
   .rematch-members {

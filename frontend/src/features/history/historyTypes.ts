@@ -1,4 +1,5 @@
 import { ApiError } from "../../shared/api/HttpClient";
+import { isAnswerCommentValue } from "../../shared/game/answerComment";
 import {
   requireBoolean,
   requireDateTime,
@@ -60,6 +61,7 @@ export interface HistoryParticipant {
 export interface HistoryAction {
   readonly answer: GameAnswer | null;
   readonly answeredAt: string | null;
+  readonly comment: string | null;
   readonly correct: boolean | null;
   readonly createdAt: string;
   readonly guessedPokemon: PokemonSummary | null;
@@ -211,6 +213,7 @@ function parseHistoryAction(payload: unknown): HistoryAction {
   );
   const answer = nullableEnum(action, "answer", GAME_ANSWERS);
   const answeredAt = nullableDateTime(action, "answeredAt");
+  const comment = requireAnswerComment(action.comment);
   const correct = nullableBoolean(action, "correct");
   const guessedPokemon =
     action.guessedPokemon === null
@@ -223,12 +226,15 @@ function parseHistoryAction(payload: unknown): HistoryAction {
     question !== null &&
     guessedPokemon === null &&
     correct === null &&
-    ((answer === null && answeredAt === null) ||
+    ((answer === null &&
+      comment === null &&
+      answeredAt === null) ||
       (answer !== null && answeredAt !== null));
   const validGuess =
     type === "GUESS" &&
     question === null &&
     answer === null &&
+    comment === null &&
     answeredAt === null &&
     guessedPokemon !== null &&
     correct !== null;
@@ -239,6 +245,7 @@ function parseHistoryAction(payload: unknown): HistoryAction {
   return {
     answer,
     answeredAt,
+    comment,
     correct,
     createdAt: requireDateTime(action, "createdAt"),
     guessedPokemon,
@@ -312,4 +319,13 @@ function nullableString(
   return record[key] === null
     ? null
     : requireString(record, key);
+}
+
+function requireAnswerComment(
+  value: unknown,
+): string | null {
+  if (!isAnswerCommentValue(value)) {
+    throw ApiError.invalidResponse();
+  }
+  return value;
 }

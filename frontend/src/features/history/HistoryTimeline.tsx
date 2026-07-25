@@ -63,7 +63,12 @@ function QuestionTimelineItem({
       <span className="timeline-marker question-marker" aria-hidden="true">
         <CircleHelp size={20} />
       </span>
-      <strong className="timeline-primary">{action.question}</strong>
+      <div className="timeline-copy">
+        <strong className="timeline-primary">{action.question}</strong>
+        {action.comment ? (
+          <p className="timeline-comment">{action.comment}</p>
+        ) : null}
+      </div>
       {action.answer === null ? (
         <span className="timeline-answer answer-ended">
           답변 없이 종료

@@ -122,6 +122,7 @@ describe("roomTypes", () => {
             {
               answer: "YES",
               answeredAt: "2026-07-25T05:01:00Z",
+              comment: "노란색 전기 포켓몬이에요.",
               correct: null,
               createdAt: "2026-07-25T05:00:00Z",
               guessedPokemonNationalDexId: null,
@@ -132,6 +133,7 @@ describe("roomTypes", () => {
             {
               answer: null,
               answeredAt: null,
+              comment: null,
               correct: true,
               createdAt: "2026-07-25T05:02:00Z",
               guessedPokemonNationalDexId: 25,
@@ -165,6 +167,7 @@ describe("roomTypes", () => {
         actions: [
           {
             answer: "YES",
+            comment: "노란색 전기 포켓몬이에요.",
             type: "QUESTION",
           },
           {
@@ -176,6 +179,39 @@ describe("roomTypes", () => {
       },
       status: "RESULT",
     });
+  });
+
+  it("should_rejectSnapshot_when_pendingQuestionHasComment", () => {
+    expect(() =>
+      parseRoomSnapshot({
+        game: {
+          actions: [
+            {
+              answer: null,
+              answeredAt: null,
+              comment: "아직 답변 전이에요.",
+              correct: null,
+              createdAt: "2026-07-25T05:00:00Z",
+              guessedPokemonNationalDexId: null,
+              question: "전기 타입인가요?",
+              sequenceNumber: 1,
+              type: "QUESTION",
+            },
+          ],
+          gameId: ACTIVE_GAME.gameId,
+          remainingActionCount: 19,
+          status: "IN_PROGRESS",
+          usedActionCount: 1,
+        },
+        me: QUESTIONER,
+        opponent: SELECTOR,
+        rematch: null,
+        roomCode: "AB3K7M",
+        roundNumber: 1,
+        stateVersion: 4,
+        status: "PLAYING",
+      }),
+    ).toThrow();
   });
 
   it("should_parseAbortedResult_when_bothPlayersDisconnected", () => {

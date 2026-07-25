@@ -1,4 +1,5 @@
 import { ApiError } from "../api/HttpClient";
+import { isAnswerCommentValue } from "../game/answerComment";
 import {
   hasOwn,
   requireBoolean,
@@ -95,6 +96,7 @@ export interface QuestionAnsweredEvent extends RealtimeEventBase {
   readonly gameId: string;
   readonly payload: {
     readonly answer: GameAnswer;
+    readonly comment: string | null;
     readonly question: string;
     readonly remainingActionCount: number;
     readonly sequenceNo: number;
@@ -322,6 +324,7 @@ export function parseRoomRealtimeEvent(
       payload: {
         ...parseActionCounts(payload),
         answer: requireGameAnswer(payload.answer),
+        comment: requireAnswerComment(payload.comment),
         question: requireString(payload, "question"),
         sequenceNo: requireInteger(
           payload,
@@ -521,6 +524,15 @@ function requireRoomRole(value: unknown): RoomRole {
 
 function requireGameAnswer(value: unknown): GameAnswer {
   if (value !== "YES" && value !== "NO" && value !== "UNKNOWN") {
+    throw ApiError.invalidResponse();
+  }
+  return value;
+}
+
+function requireAnswerComment(
+  value: unknown,
+): string | null {
+  if (!isAnswerCommentValue(value)) {
     throw ApiError.invalidResponse();
   }
   return value;
