@@ -1,0 +1,27 @@
+.brand-link:focus-visible,
+.header-text-link:focus-visible,
+.header-primary-link:focus-visible,
+.primary-link:focus-visible,
+.secondary-link:focus-visible,
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.mint-button:focus-visible,
+.logout-button:focus-visible,
+.password-toggle:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .spin-icon {
+    animation: none;
+  }
+}

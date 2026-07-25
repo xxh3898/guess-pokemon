@@ -1,0 +1,15 @@
+body {
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
+code,
+pre,
+.room-code {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.no-wrap {
+  white-space: nowrap;
+}

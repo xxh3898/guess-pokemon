@@ -1,0 +1,351 @@
+.landing-frame {
+  min-height: calc(100vh - 56px);
+}
+
+.landing-hero {
+  position: relative;
+  display: grid;
+  min-height: 455px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  align-items: center;
+  gap: 54px;
+  padding: 58px clamp(42px, 6vw, 86px);
+  overflow: hidden;
+}
+
+.landing-hero::before,
+.landing-hero::after {
+  position: absolute;
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.landing-hero::before {
+  top: -120px;
+  left: -110px;
+  width: 280px;
+  height: 280px;
+  background: rgba(59, 142, 239, 0.1);
+}
+
+.landing-hero::after {
+  right: -95px;
+  bottom: -140px;
+  width: 310px;
+  height: 310px;
+  background: rgba(255, 200, 67, 0.12);
+}
+
+.landing-hero-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-hero h1 {
+  max-width: 720px;
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(2.75rem, 4.2vw, 3.9rem);
+  letter-spacing: -0.06em;
+  line-height: 1.08;
+}
+
+.hero-copy {
+  max-width: 650px;
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.6vw, 1.15rem);
+  line-height: 1.75;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.mystery-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 330px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #9fc5ef;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 24% 25%, #fff 0 2px, transparent 3px) 0 0 / 17px
+      17px,
+    linear-gradient(145deg, #f5faff, #dcecff);
+  box-shadow:
+    inset 0 0 0 6px rgba(255, 255, 255, 0.72),
+    0 15px 34px rgba(59, 142, 239, 0.13);
+}
+
+.mystery-stage-label {
+  position: absolute;
+  top: 20px;
+  left: 22px;
+  border: 1px solid rgba(23, 50, 77, 0.18);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--navy);
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.mystery-halo {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border: 30px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: rgba(59, 142, 239, 0.08);
+}
+
+.mystery-stage-icon {
+  position: relative;
+  color: #71869d;
+  filter: drop-shadow(0 12px 18px rgba(23, 50, 77, 0.18));
+}
+
+.mystery-stage-number {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  color: var(--navy);
+  font-size: 0.86rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.game-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 0 clamp(42px, 6vw, 86px) 26px;
+}
+
+.step-card {
+  position: relative;
+  display: flex;
+  min-height: 132px;
+  align-items: center;
+  gap: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--paper);
+}
+
+.step-card > svg {
+  flex: 0 0 auto;
+  color: var(--blue);
+}
+
+.step-card:nth-child(2) > svg {
+  color: var(--mint-dark);
+}
+
+.step-card:nth-child(3) > svg {
+  color: #d59a00;
+}
+
+.step-card h2 {
+  margin: 0 0 7px;
+  color: var(--navy);
+  font-size: 1.02rem;
+}
+
+.step-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.rule-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 clamp(42px, 6vw, 86px) 50px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  list-style: none;
+}
+
+.rule-strip li {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  color: var(--navy);
+}
+
+.rule-strip li + li:not(.rule-strip-detail) {
+  border-left: 1px solid var(--line);
+}
+
+.rule-strip li:nth-child(1) svg {
+  color: var(--blue);
+}
+
+.rule-strip li:nth-child(2) svg {
+  color: var(--mint-dark);
+}
+
+.rule-strip li:nth-child(3) svg {
+  color: #d59a00;
+}
+
+.rule-strip-detail {
+  grid-column: 1 / -1;
+  min-height: 52px !important;
+  border-top: 1px solid var(--line);
+  color: var(--muted) !important;
+  background: #fbfcfd;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 980px) {
+  .landing-hero {
+    grid-template-columns: 1fr minmax(280px, 0.72fr);
+    gap: 32px;
+    padding-right: 44px;
+    padding-left: 44px;
+  }
+
+  .game-steps,
+  .rule-strip {
+    margin-right: 44px;
+    margin-left: 44px;
+  }
+
+  .game-steps {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .step-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 760px) {
+  .landing-frame {
+    min-height: calc(100vh - 32px);
+  }
+
+  .landing-hero {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 42px 26px 28px;
+    text-align: center;
+  }
+
+  .landing-hero-copy .section-kicker {
+    justify-content: center;
+  }
+
+  .landing-hero h1 {
+    margin-right: auto;
+    margin-left: auto;
+    font-size: clamp(2.35rem, 11vw, 3.4rem);
+  }
+
+  .hero-copy {
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .hero-actions {
+    justify-content: center;
+  }
+
+  .mystery-stage {
+    min-height: 270px;
+  }
+
+  .game-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin: 0;
+    padding: 0 26px 22px;
+  }
+
+  .step-card {
+    min-height: auto;
+    flex-direction: row;
+    padding: 19px;
+  }
+
+  .rule-strip {
+    grid-template-columns: 1fr;
+    margin: 0 26px 34px;
+  }
+
+  .rule-strip li + li:not(.rule-strip-detail) {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .rule-strip-detail {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 460px) {
+  .header-nav {
+    gap: 3px;
+  }
+
+  .landing-hero {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .landing-hero h1 {
+    font-size: 2.55rem;
+  }
+
+  .hero-actions,
+  .hero-actions .primary-link,
+  .hero-actions .secondary-link,
+  .hero-actions .secondary-button {
+    width: 100%;
+  }
+
+  .mystery-stage {
+    min-height: 245px;
+  }
+
+  .mystery-halo {
+    width: 170px;
+    height: 170px;
+  }
+
+  .mystery-stage-icon {
+    width: 132px;
+    height: 132px;
+  }
+
+  .game-steps {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .rule-strip {
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+}

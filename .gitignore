@@ -230,6 +230,11 @@ backups/
 **/coverage/
 playwright-report/
 test-results/
+output/playwright/
+.playwright-cli/
 
 # PokéAPI catalog generator cache
 scripts/.cache/
+
+# Local UI design references
+/ui시안/

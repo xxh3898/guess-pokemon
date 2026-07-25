@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router/dom";
 
 import { router } from "./app/routes";
-import "./styles.css";
+import { AuthProvider } from "./features/auth/AuthProvider";
+import "./styles/index.css";
 
 const rootElement = document.getElementById("root");
 
@@ -13,6 +14,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   </StrictMode>,
 );

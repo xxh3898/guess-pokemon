@@ -2,6 +2,14 @@ import { render, screen } from "@testing-library/react";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 
+import {
+  AuthContext,
+  type AuthContextValue,
+} from "../features/auth/AuthContext";
+import {
+  createAuthContextValue,
+  TEST_CURRENT_USER,
+} from "../test/authTestUtils";
 import { routes } from "./routes";
 
 describe("application routes", () => {
@@ -10,12 +18,12 @@ describe("application routes", () => {
       initialEntries: ["/"],
     });
 
-    render(<RouterProvider router={router} />);
+    renderRouter(router, createAuthContextValue());
 
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "Guess Pokémon",
+        name: "질문으로 찾아내는 포켓몬",
       }),
     ).toBeInTheDocument();
   });
@@ -25,7 +33,7 @@ describe("application routes", () => {
       initialEntries: ["/unknown"],
     });
 
-    render(<RouterProvider router={router} />);
+    renderRouter(router, createAuthContextValue());
 
     expect(
       await screen.findByRole("heading", {
@@ -35,8 +43,75 @@ describe("application routes", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", {
-        name: "처음으로 돌아가기",
+        name: "처음 화면으로",
       }),
     ).toHaveAttribute("href", "/");
   });
+
+  it("should_redirectToLogin_when_anonymousUserOpensLobbyDirectly", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/lobby"],
+    });
+
+    renderRouter(router, createAuthContextValue());
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "로그인",
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.state).toEqual({ from: "/lobby" });
+  });
+
+  it("should_redirectToLobby_when_authenticatedUserOpensSignup", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/signup"],
+    });
+
+    renderRouter(
+      router,
+      createAuthContextValue({
+        currentUser: TEST_CURRENT_USER,
+        status: "authenticated",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "대전 준비",
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/lobby");
+  });
+
+  it("should_linkToLobby_when_authenticatedUserOpensLandingPage", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/"],
+    });
+
+    renderRouter(
+      router,
+      createAuthContextValue({
+        currentUser: TEST_CURRENT_USER,
+        status: "authenticated",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("link", { name: "대전 로비로" }),
+    ).toHaveAttribute("href", "/lobby");
+  });
 });
+
+function renderRouter(
+  router: ReturnType<typeof createMemoryRouter>,
+  value: AuthContextValue,
+): void {
+  render(
+    <AuthContext.Provider value={value}>
+      <RouterProvider router={router} />
+    </AuthContext.Provider>,
+  );
+}

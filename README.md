@@ -44,6 +44,8 @@ docker compose --env-file .env \
 
 개발 환경의 Vite 주소는 `http://localhost:5173`입니다. 해당 포트를 이미 사용 중이면 `.env`의 `FRONTEND_DEV_PORT`를 바꿀 수 있습니다. Vite는 `/api`와 `/ws`를 내부 API 컨테이너로 전달합니다.
 
+브라우저에서 `/signup`으로 계정을 만든 뒤 `/login`에서 로그인합니다. 회원가입은 자동 로그인하지 않으며 로그인에 성공하면 보호 route인 `/lobby`로 이동합니다. 보호 route를 직접 열었다면 로그인 뒤 원래 주소로 돌아갑니다.
+
 개발 환경에서는 Adminer를 `http://127.0.0.1:8081`에서 함께 제공합니다. 포트가 겹치면 `.env`의 `ADMINER_PORT`를 바꿉니다. 로그인 화면에서는 system으로 `PostgreSQL`, server로 `db`를 선택하고 database, username, password에는 `.env`의 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` 값을 각각 입력합니다. Adminer는 개발 환경에만 포함되며, 화면에서 실행한 SQL은 개발 DB 데이터를 변경할 수 있습니다.
 
 개발 환경을 종료할 때도 Adminer가 별도 container로 남지 않도록 실행할 때와 같은 Compose 파일을 지정합니다.
@@ -104,7 +106,7 @@ docker compose --env-file .env down
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
 
-현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 CSRF, 회원가입, 로그인, 로그아웃, 현재 사용자, 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 경기 기록 조회 API와 실제 경기 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
+현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 프런트엔드는 회원가입·로그인·로그아웃, cookie session 복원, CSRF 공통 client, 비회원·회원 route guard와 최소 대전 로비를 제공합니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 방 생성·포켓몬 선택·실제 경기·기록 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
 
 ## 공개 운영 주의
 

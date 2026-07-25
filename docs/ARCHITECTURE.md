@@ -167,26 +167,43 @@ com.guesspokemon
 ```text
 src/
 ├── app/
-│   ├── router/
-│   └── providers/
+│   └── routes.tsx
 ├── features/
 │   ├── auth/
-│   ├── lobby/
-│   ├── room/
-│   ├── game/
-│   ├── pokemon/
-│   └── history/
+│   ├── lobby/       # 후속 화면 단위
+│   ├── room/        # 후속 화면 단위
+│   ├── game/        # 후속 화면 단위
+│   ├── pokemon/     # 후속 화면 단위
+│   └── history/     # 후속 화면 단위
+├── pages/
+│   ├── HomePage.tsx
+│   ├── LobbyPage.tsx
+│   ├── NotFoundPage.tsx
+│   ├── home.css
+│   ├── lobby.css
+│   └── system-status.css
 ├── shared/
 │   ├── api/
-│   ├── realtime/
+│   ├── realtime/    # 후속 화면 단위
 │   ├── ui/
-│   ├── validation/
-│   └── types/
+│   └── validation/
+├── styles/
+│   ├── index.css
+│   ├── tokens.css
+│   ├── reset.css
+│   ├── base.css
+│   ├── shared-components.css
+│   └── accessibility.css
 └── test/
 ```
 
 - route component는 orchestration만 맡고 기능 로직은 `features/**`에 둔다.
-- REST client는 cookie credential과 CSRF header를 공통 처리한다.
+- `styles/index.css`는 전역 CSS 진입점이며 token, reset, base, 공통 component, 화면별 CSS, 접근성 규칙 순서로 불러온다.
+- 전역 design token과 reset은 `styles/**`에 두고 auth·page selector와 반응형 규칙은 해당 feature·page 가까이에 둔다.
+- 한국어 UI는 `word-break: keep-all`을 기본값으로 사용하고 code·room code 같은 기계 문자열만 별도 overflow 규칙을 적용한다.
+- `AuthProvider`는 앱 시작 시 `/auth/me`로 session을 복원하고 `loading`, `anonymous`, `authenticated`, `error` 상태를 구분한다.
+- `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
+- anonymous-only route는 로그인 회원을 `/lobby`로 보내고, protected route는 원래 내부 URL을 보존한 채 비회원을 `/login`으로 보낸다.
 - STOMP client는 앱 전체에 하나만 활성화하고 로그인·로그아웃 수명주기에 맞춰 `activate`·`deactivate`한다.
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.
 - server snapshot을 기준으로 UI store를 재구성하고 event `stateVersion`이 이전 값이면 무시한다.
@@ -195,14 +212,18 @@ src/
 
 ## 7. 인증과 session 흐름
 
-1. SPA가 `GET /api/v1/auth/csrf`로 CSRF token을 준비한다.
-2. signup 또는 login 요청에 CSRF header를 보낸다.
-3. Spring Security가 인증 성공 뒤 session fixation 보호를 적용한다.
-4. Spring Session JDBC가 session과 SecurityContext를 PostgreSQL에 저장한다.
-5. 브라우저는 `HttpOnly` session cookie를 같은 출처 REST와 WebSocket handshake에 자동 첨부한다.
-6. STOMP `CONNECT` frame에도 CSRF token을 넣는다.
-7. backend는 HTTP request와 STOMP message의 `Principal`에서 사용자 UUID를 찾는다.
-8. client payload의 user ID나 role은 신뢰하지 않는다.
+1. SPA 시작 시 `GET /api/v1/auth/me`로 기존 session을 복원한다.
+2. 비회원 `401 AUTHENTICATION_REQUIRED`는 정상 anonymous 상태로 처리하고, network·server 오류는 로그인 여부를 추측하지 않고 재시도 화면을 제공한다.
+3. state-changing REST 직전에 `GET /api/v1/auth/csrf`로 CSRF token을 준비하고 memory에만 cache한다.
+4. signup 또는 login 요청에 CSRF header를 보내며 `CSRF_INVALID`이면 token을 갱신해 한 번만 재시도한다.
+5. Spring Security가 인증 성공 뒤 session fixation 보호를 적용하고 frontend는 CSRF cache를 비운다.
+6. Spring Session JDBC가 session과 SecurityContext를 PostgreSQL에 저장한다.
+7. 브라우저는 `HttpOnly` session cookie를 같은 출처 REST와 WebSocket handshake에 자동 첨부한다.
+8. login 성공 뒤 `/auth/me`를 다시 조회해 사용자와 `activeRoomCode`를 session snapshot으로 저장한다.
+9. 공통 client가 `AUTHENTICATION_REQUIRED`를 받으면 auth state와 CSRF cache를 비우고 protected route를 `/login`으로 전환한다.
+10. STOMP `CONNECT` frame에도 CSRF token을 넣는다.
+11. backend는 HTTP request와 STOMP message의 `Principal`에서 사용자 UUID를 찾는다.
+12. client payload의 user ID나 role은 신뢰하지 않는다.
 
 운영 session cookie는 `Secure`, `HttpOnly`, `SameSite=Lax`다. 개발 환경의 HTTP cookie 차이는 profile로 제한하고 운영 설정을 약화하지 않는다.
 session idle timeout은 30분이다.
