@@ -1,6 +1,6 @@
 # Guess Pokémon REST·STOMP API 명세
 
-- 작성일: 2026-07-24
+- 작성일: 2026-07-26
 - REST base path: `/api/v1`
 - WebSocket endpoint: `/ws`
 - 상태: 공식 계약 기준선
@@ -100,11 +100,16 @@ Spring `ProblemDetail` 기반 `application/problem+json`을 사용한다.
   "koreanName": "피카츄",
   "generation": 1,
   "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-  "artworkEnabled": true
+  "artworkEnabled": true,
+  "types": ["ELECTRIC"]
 }
 ```
 
 `artworkEnabled=false`이면 `artworkUrl`은 null이다.
+`types`는 PokéAPI slot 순서를 보존한 1~2개의 중복 없는 배열이다.
+지원 값은 `BUG`, `DARK`, `DRAGON`, `ELECTRIC`, `FAIRY`,
+`FIGHTING`, `FIRE`, `FLYING`, `GHOST`, `GRASS`, `GROUND`, `ICE`,
+`NORMAL`, `POISON`, `PSYCHIC`, `ROCK`, `STEEL`, `WATER`다.
 
 ### `Page`
 
@@ -292,7 +297,8 @@ query:
       "koreanName": "피카츄",
       "generation": 1,
       "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-      "artworkEnabled": true
+      "artworkEnabled": true,
+      "types": ["ELECTRIC"]
     }
   ],
   "page": 0,
@@ -390,13 +396,14 @@ create·join 직후에는 참가자를 연결 상태로 시작한다. room route
     "koreanName": "피카츄",
     "generation": 1,
     "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-    "artworkEnabled": true
+    "artworkEnabled": true,
+    "types": ["ELECTRIC"]
   },
   "actions": []
 }
 ```
 
-진행 중 질문자 DTO type에는 `selectedPokemon` field 자체를 두지 않는다. 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`, 승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는 `rematch.meReady`, `rematch.opponentReady`로 동의 상태를 복구한다.
+진행 중 질문자 DTO에는 `selectedPokemon` field 자체를 두지 않는다. 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`, 승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는 `rematch.meReady`, `rematch.opponentReady`로 동의 상태를 복구한다.
 
 room status:
 
@@ -556,7 +563,8 @@ query:
         "koreanName": "피카츄",
         "generation": 1,
         "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-        "artworkEnabled": true
+        "artworkEnabled": true,
+        "types": ["ELECTRIC"]
       },
       "endReason": "CORRECT_GUESS",
       "actionCount": 12
@@ -594,7 +602,8 @@ query:
     "koreanName": "피카츄",
     "generation": 1,
     "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-    "artworkEnabled": true
+    "artworkEnabled": true,
+    "types": ["ELECTRIC"]
   },
   "endReason": "CORRECT_GUESS",
   "actionCount": 12,
@@ -633,7 +642,8 @@ query:
         "koreanName": "피카츄",
         "generation": 1,
         "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-        "artworkEnabled": true
+        "artworkEnabled": true,
+        "types": ["ELECTRIC"]
       },
       "correct": true,
       "createdAt": "2026-07-24T11:27:05Z",
@@ -954,7 +964,8 @@ status를 기준으로 이 두 event를 상호 보완 event로 한 번씩 적용
     "koreanName": "리자몽",
     "generation": 1,
     "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png",
-    "artworkEnabled": true
+    "artworkEnabled": true,
+    "types": ["FIRE", "FLYING"]
   },
   "correct": false,
   "usedActionCount": 2,
@@ -1006,7 +1017,8 @@ host에게 `WAITING_FOR_OPPONENT` 상태의 최신 `ROOM_SNAPSHOT`을 보낸다.
     "koreanName": "피카츄",
     "generation": 1,
     "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-    "artworkEnabled": true
+    "artworkEnabled": true,
+    "types": ["ELECTRIC"]
   },
   "winnerUserId": "624f7d62-e328-4ff0-8b90-f6520b81a47f",
   "loserUserId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",

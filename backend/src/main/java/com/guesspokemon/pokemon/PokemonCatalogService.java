@@ -99,6 +99,7 @@ public class PokemonCatalogService {
                 species.getKoreanName(),
                 species.getGeneration(),
                 artworkEnabled ? species.getArtworkUrl() : null,
-                artworkEnabled);
+                artworkEnabled,
+                species.getTypes());
     }
 }

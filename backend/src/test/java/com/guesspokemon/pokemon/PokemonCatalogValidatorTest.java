@@ -43,7 +43,8 @@ class PokemonCatalogValidatorTest {
                         "duplicate-id",
                         "누락검증",
                         1,
-                        artworkUrl(26)));
+                        artworkUrl(26),
+                        List.of(PokemonType.NORMAL)));
         PokemonCatalogSnapshot snapshot =
                 new PokemonCatalogSnapshot(
                         "pokeapi-v2-invalid",
@@ -70,7 +71,8 @@ class PokemonCatalogValidatorTest {
                         second.slug(),
                         first.koreanName(),
                         second.generation(),
-                        second.artworkUrl()));
+                        second.artworkUrl(),
+                        second.types()));
         PokemonCatalogSnapshot snapshot =
                 new PokemonCatalogSnapshot(
                         "pokeapi-v2-invalid",
@@ -91,6 +93,62 @@ class PokemonCatalogValidatorTest {
         PokemonCatalogSnapshot snapshot =
                 new PokemonCatalogSnapshot(
                         "pokeapi-v2-00000000000000000000",
+                        PokemonCatalogValidator.EXPECTED_SOURCE,
+                        Instant.parse("2026-07-25T00:00:00Z"),
+                        PokemonCatalogValidator.EXPECTED_NATIONAL_DEX_MAX,
+                        species);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_rejectSnapshot_when_typeCountIsInvalid() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        PokemonCatalogSnapshot.Species first = species.getFirst();
+        species.set(
+                0,
+                new PokemonCatalogSnapshot.Species(
+                        first.nationalDexId(),
+                        first.slug(),
+                        first.koreanName(),
+                        first.generation(),
+                        first.artworkUrl(),
+                        List.of()));
+        PokemonCatalogSnapshot snapshot =
+                new PokemonCatalogSnapshot(
+                        "pokeapi-v2-invalid",
+                        PokemonCatalogValidator.EXPECTED_SOURCE,
+                        Instant.parse("2026-07-25T00:00:00Z"),
+                        PokemonCatalogValidator.EXPECTED_NATIONAL_DEX_MAX,
+                        species);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_rejectSnapshot_when_typeIsDuplicated() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        PokemonCatalogSnapshot.Species first = species.getFirst();
+        species.set(
+                0,
+                new PokemonCatalogSnapshot.Species(
+                        first.nationalDexId(),
+                        first.slug(),
+                        first.koreanName(),
+                        first.generation(),
+                        first.artworkUrl(),
+                        List.of(
+                                PokemonType.NORMAL,
+                                PokemonType.NORMAL)));
+        PokemonCatalogSnapshot snapshot =
+                new PokemonCatalogSnapshot(
+                        "pokeapi-v2-invalid",
                         PokemonCatalogValidator.EXPECTED_SOURCE,
                         Instant.parse("2026-07-25T00:00:00Z"),
                         PokemonCatalogValidator.EXPECTED_NATIONAL_DEX_MAX,
@@ -126,7 +184,8 @@ class PokemonCatalogValidatorTest {
                             "pokemon-" + nationalDexId,
                             "포켓몬-" + nationalDexId,
                             Math.min(((nationalDexId - 1) / 130) + 1, 9),
-                            artworkUrl(nationalDexId)));
+                            artworkUrl(nationalDexId),
+                            List.of(PokemonType.NORMAL)));
         }
         return species;
     }

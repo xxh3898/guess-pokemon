@@ -32,6 +32,10 @@ public interface GameActionRecordRepository
                             AS guessed_korean_name,
                         guessed_species.generation
                             AS guessed_generation,
+                        guessed_species.primary_type
+                            AS guessed_primary_type,
+                        guessed_species.secondary_type
+                            AS guessed_secondary_type,
                         guessed_species.artwork_url
                             AS guessed_artwork_url,
                         guessed_species.enabled
@@ -65,6 +69,10 @@ public interface GameActionRecordRepository
         String getGuessedKoreanName();
 
         Short getGuessedGeneration();
+
+        String getGuessedPrimaryType();
+
+        String getGuessedSecondaryType();
 
         String getGuessedArtworkUrl();
 

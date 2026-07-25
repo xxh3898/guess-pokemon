@@ -150,6 +150,11 @@ class GameHistoryApiIntegrationTest {
                                         "$.content[0].answerPokemon"
                                                 + ".koreanName")
                                 .value("피카츄"))
+                .andExpect(
+                        jsonPath(
+                                        "$.content[0].answerPokemon"
+                                                + ".types[0]")
+                                .value("ELECTRIC"))
                 .andExpect(jsonPath("$.totalElements").value(3))
                 .andExpect(jsonPath("$.totalPages").value(2));
 
@@ -262,6 +267,9 @@ class GameHistoryApiIntegrationTest {
                         jsonPath("$.answerPokemon.koreanName")
                                 .value("피카츄"))
                 .andExpect(
+                        jsonPath("$.answerPokemon.types[0]")
+                                .value("ELECTRIC"))
+                .andExpect(
                         jsonPath("$.endReason")
                                 .value("CORRECT_GUESS"))
                 .andExpect(jsonPath("$.actionCount").value(2))
@@ -294,6 +302,11 @@ class GameHistoryApiIntegrationTest {
                                         "$.actions[1].guessedPokemon"
                                                 + ".nationalDexId")
                                 .value(25))
+                .andExpect(
+                        jsonPath(
+                                        "$.actions[1].guessedPokemon"
+                                                + ".types[0]")
+                                .value("ELECTRIC"))
                 .andExpect(
                         jsonPath("$.actions[1].correct")
                                 .value(true));
@@ -347,6 +360,9 @@ class GameHistoryApiIntegrationTest {
                 .andExpect(
                         jsonPath("$.answerPokemon.artworkUrl")
                                 .value(nullValue()))
+                .andExpect(
+                        jsonPath("$.answerPokemon.types[0]")
+                                .value("ELECTRIC"))
                 .andExpect(
                         jsonPath("$.participants[0].result")
                                 .value("NONE"))

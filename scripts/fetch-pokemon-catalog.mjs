@@ -21,6 +21,26 @@ const REQUEST_TIMEOUT_MILLISECONDS = 20_000;
 const MAX_REQUEST_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MILLISECONDS = 500;
 const CATALOG_VERSION_HASH_LENGTH = 20;
+const POKEMON_TYPE_CODES = new Set([
+  "BUG",
+  "DARK",
+  "DRAGON",
+  "ELECTRIC",
+  "FAIRY",
+  "FIGHTING",
+  "FIRE",
+  "FLYING",
+  "GHOST",
+  "GRASS",
+  "GROUND",
+  "ICE",
+  "NORMAL",
+  "POISON",
+  "PSYCHIC",
+  "ROCK",
+  "STEEL",
+  "WATER",
+]);
 
 const GENERATIONS = new Map([
   ["generation-i", 1],
@@ -78,6 +98,50 @@ export function validateSpeciesCount(count) {
   assertCondition(
     count === EXPECTED_NATIONAL_DEX_MAX,
     `PokéAPI species count가 승인 범위와 다릅니다: expected=${EXPECTED_NATIONAL_DEX_MAX}, actual=${count}`,
+  );
+}
+
+function validatePokemonTypeCodes(types, fieldName) {
+  assertCondition(
+    Array.isArray(types) && (types.length === 1 || types.length === 2),
+    `${fieldName} 타입은 1개 또는 2개여야 합니다.`,
+  );
+  const uniqueTypes = new Set();
+  types.forEach((type) => {
+    assertCondition(
+      typeof type === "string" && POKEMON_TYPE_CODES.has(type),
+      `${fieldName} 지원하지 않는 타입입니다: ${type}`,
+    );
+    assertCondition(
+      !uniqueTypes.has(type),
+      `${fieldName} 중복 타입입니다: ${type}`,
+    );
+    uniqueTypes.add(type);
+  });
+  return types;
+}
+
+function parsePokemonTypes(types, nationalDexId) {
+  assertCondition(
+    Array.isArray(types) && (types.length === 1 || types.length === 2),
+    `species ${nationalDexId} 타입은 1개 또는 2개여야 합니다.`,
+  );
+  const sortedTypes = [...types].sort((left, right) => left.slot - right.slot);
+  const typeCodes = sortedTypes.map((entry, index) => {
+    const expectedSlot = index + 1;
+    assertCondition(
+      Number.isInteger(entry?.slot) && entry.slot === expectedSlot,
+      `species ${nationalDexId} 타입 slot이 연속적이지 않습니다: expected=${expectedSlot}, actual=${entry?.slot}`,
+    );
+    const typeName = assertNonBlankString(
+      entry?.type?.name,
+      `species ${nationalDexId} type name`,
+    );
+    return typeName.toUpperCase();
+  });
+  return validatePokemonTypeCodes(
+    typeCodes,
+    `species ${nationalDexId}`,
   );
 }
 
@@ -149,6 +213,7 @@ export function buildSpeciesRecord(species, pokemon) {
     koreanName,
     generation: parseGeneration(species.generation?.name),
     artworkUrl,
+    types: parsePokemonTypes(pokemon.types, species.id),
   };
 }
 
@@ -191,6 +256,10 @@ export function validateSpeciesRecords(speciesRecords) {
     assertCondition(
       new URL(record.artworkUrl).protocol === "https:",
       `official artwork URL은 HTTPS여야 합니다: id=${record.nationalDexId}`,
+    );
+    validatePokemonTypeCodes(
+      record.types,
+      `species ${record.nationalDexId}`,
     );
     slugs.add(record.slug);
     koreanNames.add(record.koreanName);

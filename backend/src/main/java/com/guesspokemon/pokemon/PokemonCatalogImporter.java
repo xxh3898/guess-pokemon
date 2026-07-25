@@ -29,19 +29,24 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                 slug,
                 korean_name,
                 generation,
+                primary_type,
+                secondary_type,
                 artwork_url,
                 catalog_version,
                 source_updated_at,
                 enabled
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
             ON CONFLICT (national_dex_id) DO UPDATE
             SET slug = EXCLUDED.slug,
                 korean_name = EXCLUDED.korean_name,
                 generation = EXCLUDED.generation,
+                primary_type = EXCLUDED.primary_type,
+                secondary_type = EXCLUDED.secondary_type,
                 artwork_url = EXCLUDED.artwork_url,
                 catalog_version = EXCLUDED.catalog_version,
-                source_updated_at = EXCLUDED.source_updated_at
+                source_updated_at = EXCLUDED.source_updated_at,
+                enabled = TRUE
             """;
 
     private final Resource snapshotResource;
@@ -88,7 +93,7 @@ public class PokemonCatalogImporter implements ApplicationRunner {
 
     private void importIfRequired(PokemonCatalogSnapshot snapshot) {
         long currentVersionCount =
-                countRowsByVersion(snapshot.catalogVersion());
+                countCompleteRowsByVersion(snapshot.catalogVersion());
         long enabledOutdatedRowCount =
                 countEnabledRowsOutsideVersion(snapshot.catalogVersion());
         if (currentVersionCount == snapshot.species().size()
@@ -106,7 +111,7 @@ public class PokemonCatalogImporter implements ApplicationRunner {
         disableRowsOutsideVersion(snapshot.catalogVersion());
 
         long importedCount =
-                countRowsByVersion(snapshot.catalogVersion());
+                countCompleteRowsByVersion(snapshot.catalogVersion());
         if (importedCount != snapshot.species().size()) {
             throw new IllegalStateException(
                     "catalog import row 수가 snapshot과 다릅니다.");
@@ -130,23 +135,32 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                     preparedStatement.setShort(
                             4,
                             (short) item.generation());
-                    preparedStatement.setString(5, item.artworkUrl());
+                    preparedStatement.setString(
+                            5,
+                            item.types().getFirst().name());
                     preparedStatement.setString(
                             6,
+                            item.types().size() == 2
+                                    ? item.types().get(1).name()
+                                    : null);
+                    preparedStatement.setString(7, item.artworkUrl());
+                    preparedStatement.setString(
+                            8,
                             snapshot.catalogVersion());
                     preparedStatement.setTimestamp(
-                            7,
+                            9,
                             Timestamp.from(snapshot.sourceUpdatedAt()));
                 });
     }
 
-    private long countRowsByVersion(String catalogVersion) {
+    private long countCompleteRowsByVersion(String catalogVersion) {
         Long count =
                 jdbcTemplate.queryForObject(
                         """
                         SELECT COUNT(*)
                         FROM pokemon_species
                         WHERE catalog_version = ?
+                          AND primary_type IS NOT NULL
                         """,
                         Long.class,
                         catalogVersion);

@@ -37,6 +37,8 @@ class PokemonCatalogApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].koreanName").value("이상해씨"))
                 .andExpect(jsonPath("$.content[0].generation").value(1))
                 .andExpect(jsonPath("$.content[0].artworkEnabled").value(true))
+                .andExpect(jsonPath("$.content[0].types[0]").value("GRASS"))
+                .andExpect(jsonPath("$.content[0].types[1]").value("POISON"))
                 .andExpect(jsonPath("$.page").value(0))
                 .andExpect(jsonPath("$.size").value(20))
                 .andExpect(jsonPath("$.totalElements").value(1025))
@@ -53,7 +55,9 @@ class PokemonCatalogApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].nationalDexId").value(25))
-                .andExpect(jsonPath("$.content[0].koreanName").value("피카츄"));
+                .andExpect(jsonPath("$.content[0].koreanName").value("피카츄"))
+                .andExpect(jsonPath("$.content[0].types.length()").value(1))
+                .andExpect(jsonPath("$.content[0].types[0]").value("ELECTRIC"));
     }
 
     @Test

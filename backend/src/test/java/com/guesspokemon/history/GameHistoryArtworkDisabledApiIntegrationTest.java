@@ -96,7 +96,10 @@ class GameHistoryArtworkDisabledApiIntegrationTest {
                                 .value(false))
                 .andExpect(
                         jsonPath("$.answerPokemon.artworkUrl")
-                                .value(nullValue()));
+                                .value(nullValue()))
+                .andExpect(
+                        jsonPath("$.answerPokemon.types[0]")
+                                .value("ELECTRIC"));
     }
 
     private RequestPostProcessor authenticated(

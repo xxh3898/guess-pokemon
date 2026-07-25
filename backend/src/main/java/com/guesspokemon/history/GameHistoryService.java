@@ -30,6 +30,7 @@ import com.guesspokemon.history.GameParticipantRecordRepository.GameParticipantR
 import com.guesspokemon.history.GameRecordRepository.GameDetailRow;
 import com.guesspokemon.history.GameRecordRepository.GameListRow;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
+import com.guesspokemon.pokemon.PokemonType;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -138,6 +139,8 @@ public class GameHistoryService {
                         game.getAnswerNationalDexId(),
                         game.getAnswerKoreanName(),
                         game.getAnswerGeneration(),
+                        game.getAnswerPrimaryType(),
+                        game.getAnswerSecondaryType(),
                         game.getAnswerArtworkUrl(),
                         game.getAnswerCatalogEnabled()),
                 enumValue(
@@ -162,6 +165,8 @@ public class GameHistoryService {
                         row.getAnswerNationalDexId(),
                         row.getAnswerKoreanName(),
                         row.getAnswerGeneration(),
+                        row.getAnswerPrimaryType(),
+                        row.getAnswerSecondaryType(),
                         row.getAnswerArtworkUrl(),
                         row.getAnswerCatalogEnabled()),
                 enumValue(
@@ -195,6 +200,8 @@ public class GameHistoryService {
                                 row.getGuessedNationalDexId(),
                                 row.getGuessedKoreanName(),
                                 row.getGuessedGeneration(),
+                                row.getGuessedPrimaryType(),
+                                row.getGuessedSecondaryType(),
                                 row.getGuessedArtworkUrl(),
                                 row.getGuessedCatalogEnabled());
         return new GameActionItem(
@@ -212,11 +219,25 @@ public class GameHistoryService {
             Integer nationalDexId,
             String koreanName,
             Short generation,
+            String primaryType,
+            String secondaryType,
             String artworkUrl,
             Boolean catalogEnabled) {
         Objects.requireNonNull(nationalDexId);
         Objects.requireNonNull(koreanName);
         Objects.requireNonNull(generation);
+        PokemonType primary =
+                enumValue(
+                        PokemonType.class,
+                        Objects.requireNonNull(primaryType));
+        List<PokemonType> types =
+                secondaryType == null
+                        ? List.of(primary)
+                        : List.of(
+                                primary,
+                                enumValue(
+                                        PokemonType.class,
+                                        secondaryType));
         boolean canUseArtwork =
                 artworkEnabled
                         && Boolean.TRUE.equals(catalogEnabled);
@@ -225,7 +246,8 @@ public class GameHistoryService {
                 koreanName,
                 generation,
                 canUseArtwork ? artworkUrl : null,
-                canUseArtwork);
+                canUseArtwork,
+                types);
     }
 
     private void validateDetail(

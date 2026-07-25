@@ -53,6 +53,14 @@ function createPokemon(overrides = {}) {
         },
       },
     },
+    types: [
+      {
+        slot: 1,
+        type: {
+          name: "electric",
+        },
+      },
+    ],
     ...overrides,
   };
 }
@@ -68,6 +76,7 @@ function createCompleteRecords() {
       artworkUrl:
         `https://raw.githubusercontent.com/PokeAPI/sprites/master/` +
         `sprites/pokemon/other/official-artwork/${index + 1}.png`,
+      types: ["NORMAL"],
     }),
   );
 }
@@ -92,7 +101,102 @@ test("should_buildSpeciesRecord_when_requiredResourcesAreComplete", () => {
     generation: 1,
     artworkUrl:
       "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
+    types: ["ELECTRIC"],
   });
+});
+
+test("should_preserveSlotOrder_when_pokemonHasTwoTypes", () => {
+  const pokemon = createPokemon({
+    types: [
+      {
+        slot: 2,
+        type: {
+          name: "poison",
+        },
+      },
+      {
+        slot: 1,
+        type: {
+          name: "grass",
+        },
+      },
+    ],
+  });
+
+  const record = buildSpeciesRecord(createSpecies(), pokemon);
+
+  assert.deepEqual(record.types, ["GRASS", "POISON"]);
+});
+
+test("should_rejectPokemonTypes_when_typeCountIsInvalid", () => {
+  assert.throws(
+    () =>
+      buildSpeciesRecord(
+        createSpecies(),
+        createPokemon({ types: [] }),
+      ),
+    /타입은 1개 또는 2개여야 합니다/,
+  );
+  assert.throws(
+    () =>
+      buildSpeciesRecord(
+        createSpecies(),
+        createPokemon({
+          types: [
+            { slot: 1, type: { name: "grass" } },
+            { slot: 2, type: { name: "poison" } },
+            { slot: 3, type: { name: "flying" } },
+          ],
+        }),
+      ),
+    /타입은 1개 또는 2개여야 합니다/,
+  );
+});
+
+test("should_rejectPokemonTypes_when_typeIsDuplicated", () => {
+  assert.throws(
+    () =>
+      buildSpeciesRecord(
+        createSpecies(),
+        createPokemon({
+          types: [
+            { slot: 1, type: { name: "electric" } },
+            { slot: 2, type: { name: "electric" } },
+          ],
+        }),
+      ),
+    /중복 타입/,
+  );
+});
+
+test("should_rejectPokemonTypes_when_typeIsUnsupported", () => {
+  assert.throws(
+    () =>
+      buildSpeciesRecord(
+        createSpecies(),
+        createPokemon({
+          types: [
+            { slot: 1, type: { name: "stellar" } },
+          ],
+        }),
+      ),
+    /지원하지 않는 타입/,
+  );
+});
+
+test("should_rejectPokemonTypes_when_slotIsNotConsecutive", () => {
+  assert.throws(
+    () =>
+      buildSpeciesRecord(
+        createSpecies(),
+        createPokemon({
+          types: [
+            { slot: 2, type: { name: "electric" } },
+          ],
+        }),
+      ),
+    /타입 slot이 연속적이지 않습니다/,
+  );
 });
 
 test("should_rejectSpecies_when_koreanNameIsMissing", () => {
@@ -175,6 +279,19 @@ test("should_rejectRecords_when_koreanNameIsDuplicated", () => {
   assert.throws(
     () => validateSpeciesRecords(records),
     /중복 한국어 이름/,
+  );
+});
+
+test("should_rejectRecords_when_typesAreInvalid", () => {
+  const records = createCompleteRecords();
+  records[0] = {
+    ...records[0],
+    types: ["NORMAL", "NORMAL"],
+  };
+
+  assert.throws(
+    () => validateSpeciesRecords(records),
+    /중복 타입/,
   );
 });
 

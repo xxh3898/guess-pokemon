@@ -12,7 +12,8 @@ public final class PokemonDtos {
             String koreanName,
             int generation,
             String artworkUrl,
-            boolean artworkEnabled) {
+            boolean artworkEnabled,
+            List<PokemonType> types) {
     }
 
     public record PokemonPage(

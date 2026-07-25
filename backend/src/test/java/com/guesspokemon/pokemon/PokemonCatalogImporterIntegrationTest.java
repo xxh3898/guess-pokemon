@@ -2,6 +2,7 @@ package com.guesspokemon.pokemon;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.PostgreSqlTestContainerConfiguration;
 import org.junit.jupiter.api.AfterEach;
@@ -31,6 +32,7 @@ class PokemonCatalogImporterIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        pokemonCatalogImporter.run(null);
         enablePikachu();
         deleteOutdatedFixture();
     }
@@ -72,9 +74,21 @@ class PokemonCatalogImporterIntegrationTest {
                                 """)
                         .query(Long.class)
                         .single();
+        Long typedRowCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM pokemon_species
+                                WHERE enabled = TRUE
+                                  AND primary_type IS NOT NULL
+                                """)
+                        .query(Long.class)
+                        .single();
 
         assertEquals(1025L, rowCount);
         assertEquals(1L, versionCount);
+        assertEquals(1025L, typedRowCount);
     }
 
     @Test
@@ -124,6 +138,45 @@ class PokemonCatalogImporterIntegrationTest {
     }
 
     @Test
+    void should_restoreTypeDataAndEnableRow_when_currentVersionIsIncomplete() {
+        jdbcClient
+                .sql(
+                        """
+                        UPDATE pokemon_species
+                        SET enabled = FALSE,
+                            primary_type = NULL,
+                            secondary_type = NULL
+                        WHERE national_dex_id = 25
+                        """)
+                .update();
+
+        pokemonCatalogImporter.run(null);
+
+        Boolean enabled =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT enabled
+                                FROM pokemon_species
+                                WHERE national_dex_id = 25
+                                """)
+                        .query(Boolean.class)
+                        .single();
+        String primaryType =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT primary_type
+                                FROM pokemon_species
+                                WHERE national_dex_id = 25
+                                """)
+                        .query(String.class)
+                        .single();
+        assertTrue(enabled);
+        assertEquals("ELECTRIC", primaryType);
+    }
+
+    @Test
     void should_disableOutdatedRow_when_currentVersionIsComplete() {
         jdbcClient
                 .sql(
@@ -133,6 +186,8 @@ class PokemonCatalogImporterIntegrationTest {
                             slug,
                             korean_name,
                             generation,
+                            primary_type,
+                            secondary_type,
                             artwork_url,
                             catalog_version,
                             source_updated_at,
@@ -143,6 +198,8 @@ class PokemonCatalogImporterIntegrationTest {
                             'outdated-species',
                             '이전도감',
                             9,
+                            'NORMAL',
+                            NULL,
                             'https://example.com/2000.png',
                             'pokeapi-v2-outdated',
                             CURRENT_TIMESTAMP,

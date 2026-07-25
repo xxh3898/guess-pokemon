@@ -30,6 +30,7 @@ class PokemonCatalogArtworkDisabledApiIntegrationTest {
         mockMvc.perform(get("/api/v1/pokemon-species/25"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.artworkEnabled").value(false))
-                .andExpect(jsonPath("$.artworkUrl", nullValue()));
+                .andExpect(jsonPath("$.artworkUrl", nullValue()))
+                .andExpect(jsonPath("$.types[0]").value("ELECTRIC"));
     }
 }

@@ -6,6 +6,8 @@ import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -76,6 +78,7 @@ public class PokemonCatalogValidator {
                             && species.generation() <= 9,
                     "generation 범위가 올바르지 않습니다.");
             requireHttpsUrl(species.artworkUrl());
+            requireTypes(species.types());
         }
 
         require(
@@ -85,7 +88,7 @@ public class PokemonCatalogValidator {
     }
 
     String expectedCatalogVersion(
-            java.util.List<PokemonCatalogSnapshot.Species> species) {
+            List<PokemonCatalogSnapshot.Species> species) {
         try {
             byte[] canonicalJson = jsonMapper.writeValueAsBytes(species);
             byte[] contentHash =
@@ -99,6 +102,19 @@ public class PokemonCatalogValidator {
                     "catalog version을 계산할 수 없습니다.",
                     exception);
         }
+    }
+
+    private void requireTypes(List<PokemonType> types) {
+        require(
+                types != null
+                        && (types.size() == 1 || types.size() == 2),
+                "포켓몬 타입은 1개 또는 2개여야 합니다.");
+        require(
+                types.stream().allMatch(Objects::nonNull),
+                "포켓몬 타입에 null이 있습니다.");
+        require(
+                new HashSet<>(types).size() == types.size(),
+                "중복 포켓몬 타입이 있습니다.");
     }
 
     private void requireHttpsUrl(String artworkUrl) {

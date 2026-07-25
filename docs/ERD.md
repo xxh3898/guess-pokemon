@@ -1,6 +1,6 @@
 # Guess Pokémon ERD
 
-- 작성일: 2026-07-24
+- 작성일: 2026-07-26
 - DB: PostgreSQL 18.x
 - migration: Flyway
 - 상태: 공식 논리 설계 기준선
@@ -45,6 +45,8 @@ erDiagram
         varchar slug UK
         varchar korean_name UK
         smallint generation
+        varchar primary_type
+        varchar secondary_type
         text artwork_url
         varchar catalog_version
         timestamptz source_updated_at
@@ -136,12 +138,16 @@ erDiagram
 | `slug` | `varchar(80)` | N | UK | PokéAPI 영문 resource name |
 | `korean_name` | `varchar(80)` | N | UK | 공식 한국어 이름 |
 | `generation` | `smallint` | N | CHECK 1~9 | 첫 등장 세대 |
+| `primary_type` | `varchar(20)` | Y | CHECK | PokéAPI slot 1 타입, 활성 row는 필수 |
+| `secondary_type` | `varchar(20)` | Y | CHECK | PokéAPI slot 2 타입, 단일 타입이면 null |
 | `artwork_url` | `text` | N | HTTPS validation | 기본 official artwork URL |
 | `catalog_version` | `varchar(40)` | N |  | canonical snapshot content hash 기반 식별자 |
 | `source_updated_at` | `timestamptz` | N |  | snapshot 생성 시각 |
 | `enabled` | `boolean` | N | default true | kill switch·누락 대응 |
 
-catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫 등장 세대 1~9, default variety, HTTPS artwork URL을 import 전에 검증한다. 같은 version 1,025행이 이미 있으면 적재를 건너뛰고, 다른 version은 전체 upsert 뒤 과거 version row를 비활성화한다.
+catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫 등장 세대 1~9, default variety, HTTPS artwork URL과 타입을 import 전에 검증한다. 타입은 `BUG`, `DARK`, `DRAGON`, `ELECTRIC`, `FAIRY`, `FIGHTING`, `FIRE`, `FLYING`, `GHOST`, `GRASS`, `GROUND`, `ICE`, `NORMAL`, `POISON`, `PSYCHIC`, `ROCK`, `STEEL`, `WATER` 중 PokéAPI slot 순서대로 1~2개만 허용한다.
+
+`secondary_type`은 `primary_type` 없이 저장할 수 없고 두 타입은 서로 달라야 한다. `enabled=true`인 row는 `primary_type`이 필수다. V4는 기존 row를 먼저 비활성화하고 새 snapshot importer가 타입과 새 catalog version을 같은 transaction으로 upsert하면서 현재 1,025종을 다시 활성화한다. 같은 완전한 version이면 수동 비활성화 상태를 보존하고, 타입이 누락됐거나 version이 바뀌면 전체 현재 snapshot을 복구한다. 현재 snapshot 밖의 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
 
 ## 5. `game`
 
@@ -257,7 +263,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 ## 10. Transaction 경계
 
 - signup: user insert 한 transaction
-- catalog import: snapshot 전체 검증 뒤 upsert 한 transaction
+- catalog import: 타입을 포함한 snapshot 전체 검증 뒤 upsert 한 transaction
 - game start: game + participant 2건 한 transaction
 - question submit: action insert + game count/version update 한 transaction
 - answer: action answer + game version·종료 여부 update 한 transaction
@@ -280,6 +286,7 @@ game command는 기존 memory aggregate를 직접 바꾸지 않고 immutable can
 | `V1__create_user_and_session_tables.sql` | 사용자, Spring Session |
 | `V2__create_pokemon_catalog.sql` | 포켓몬 catalog |
 | `V3__create_game_history.sql` | 경기, 참가자, 행동 |
+| `V4__add_pokemon_types.sql` | catalog 타입 column·제약과 안전한 재적재 준비 |
 
 각 migration commit은 빈 DB 적용, 재시작, Testcontainers integration test를 통과해야 한다. 이미 적용한 migration 파일은 수정하지 않고 후속 migration을 추가한다.
 같은 migration 파일을 Testcontainers 임시 DB, MacBook 개발 DB, Mac mini 운영 DB 순서로 적용하며 환경별 SQL을 따로 만들지 않는다.

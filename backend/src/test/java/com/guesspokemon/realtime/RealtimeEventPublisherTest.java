@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 
 import com.guesspokemon.pokemon.PokemonCatalogService;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
+import com.guesspokemon.pokemon.PokemonType;
 import com.guesspokemon.realtime.RealtimeDtos.GameEventEnvelope;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
@@ -46,7 +47,8 @@ class RealtimeEventPublisherTest {
                     "피카츄",
                     1,
                     "https://example.test/25.png",
-                    true);
+                    true,
+                    List.of(PokemonType.ELECTRIC));
 
     @Test
     void should_publishResultRoomClosedToRemainingMember_when_resultParticipantLeaves() {

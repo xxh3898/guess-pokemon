@@ -15,6 +15,7 @@ public record PokemonCatalogSnapshot(
             String slug,
             String koreanName,
             int generation,
-            String artworkUrl) {
+            String artworkUrl,
+            List<PokemonType> types) {
     }
 }

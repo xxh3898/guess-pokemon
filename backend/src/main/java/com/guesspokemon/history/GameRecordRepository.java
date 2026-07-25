@@ -33,6 +33,10 @@ public interface GameRecordRepository
                             AS answer_korean_name,
                         answer_species.generation
                             AS answer_generation,
+                        answer_species.primary_type
+                            AS answer_primary_type,
+                        answer_species.secondary_type
+                            AS answer_secondary_type,
                         answer_species.artwork_url
                             AS answer_artwork_url,
                         answer_species.enabled
@@ -91,6 +95,10 @@ public interface GameRecordRepository
                             AS answer_korean_name,
                         answer_species.generation
                             AS answer_generation,
+                        answer_species.primary_type
+                            AS answer_primary_type,
+                        answer_species.secondary_type
+                            AS answer_secondary_type,
                         answer_species.artwork_url
                             AS answer_artwork_url,
                         answer_species.enabled
@@ -137,6 +145,10 @@ public interface GameRecordRepository
 
         Short getAnswerGeneration();
 
+        String getAnswerPrimaryType();
+
+        String getAnswerSecondaryType();
+
         String getAnswerArtworkUrl();
 
         Boolean getAnswerCatalogEnabled();
@@ -161,6 +173,10 @@ public interface GameRecordRepository
         String getAnswerKoreanName();
 
         Short getAnswerGeneration();
+
+        String getAnswerPrimaryType();
+
+        String getAnswerSecondaryType();
 
         String getAnswerArtworkUrl();
 

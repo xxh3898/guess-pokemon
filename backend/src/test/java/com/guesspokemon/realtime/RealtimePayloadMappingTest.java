@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
+import com.guesspokemon.pokemon.PokemonType;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionerRoundStartedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.SelectorRoundStartedPayload;
@@ -37,7 +38,8 @@ class RealtimePayloadMappingTest {
                     "피카츄",
                     1,
                     "https://example.test/25.png",
-                    true);
+                    true,
+                    List.of(PokemonType.ELECTRIC));
     private final JsonMapper jsonMapper =
             JsonMapper.builder()
                     .findAndAddModules()
@@ -95,8 +97,10 @@ class RealtimePayloadMappingTest {
 
         assertTrue(selectorJson.contains("selectedPokemon"));
         assertTrue(selectorJson.contains("피카츄"));
+        assertTrue(selectorJson.contains("ELECTRIC"));
         assertFalse(questionerJson.contains("selectedPokemon"));
         assertFalse(questionerJson.contains("피카츄"));
+        assertFalse(questionerJson.contains("ELECTRIC"));
     }
 
     @Test
@@ -121,8 +125,10 @@ class RealtimePayloadMappingTest {
                                 20));
 
         assertTrue(selectorJson.contains("selectedPokemon"));
+        assertTrue(selectorJson.contains("ELECTRIC"));
         assertFalse(questionerJson.contains("selectedPokemon"));
         assertFalse(questionerJson.contains("피카츄"));
+        assertFalse(questionerJson.contains("ELECTRIC"));
     }
 
     @Test

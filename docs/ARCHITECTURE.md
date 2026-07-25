@@ -1,6 +1,6 @@
 # Guess Pokémon 아키텍처
 
-- 작성일: 2026-07-24
+- 작성일: 2026-07-26
 - 상태: 공식 설계 기준선
 
 ## 1. 설계 목표
@@ -128,6 +128,7 @@ com.guesspokemon
 
 - versioned catalog snapshot 검증
 - `pokemon_species` 초기 적재
+- 기본 폼의 1~2개 타입과 PokéAPI slot 순서 보존
 - 한국어 검색과 세대 filter
 - official artwork kill switch
 
@@ -162,6 +163,8 @@ com.guesspokemon
 - 상세 header, 참가자, action을 고정 세 query로 조회해 N+1 방지
 - catalog row나 global artwork flag를 끈 뒤에도 기록 정보는 유지하고
   artwork URL만 비활성화
+- 정답·추측 포켓몬 타입은 기존 native projection에서 함께 조회해
+  목록 두 query와 상세 세 query 상한을 유지
 
 ### `realtime`
 
@@ -234,7 +237,9 @@ src/
 - server snapshot을 기준으로 UI store를 재구성한다. 이전 version은 무시하고 같은 version의 `ROOM_SNAPSHOT`은 authoritative replacement로 허용한다.
 - 답변·추측으로 경기가 끝날 때 행동 event와 `GAME_ENDED`는 같은 version을 공유할 수 있다. reducer는 action sequence가 아직 없거나 현재 상태가 아직 `RESULT`가 아닐 때만 같은 version의 상호 보완 event를 적용해 중복과 누락을 함께 막는다.
 - `ROOM_CLOSED`를 받으면 local active room을 비우고 닫힌 방 안내와 로비 복귀 경로를 제공한다.
-- 정답 포켓몬 type을 selector 전용 snapshot에만 둔다.
+- 정답 포켓몬 필드를 selector 전용 snapshot에만 둔다. 공용
+  `PokemonSummary.types`를 사용해도 questioner snapshot에는
+  `selectedPokemon` 자체를 두지 않는다.
 - STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
 - 질문자 전국도감 모달은 `?pokedex=1` 라우트 검색 파라미터로 열어 브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와 `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는 파라미터를 제거한다.
 - 도감 검색·필터·페이지 이동·포켓몬 선택은 게임 명령을 만들지 않는다. 질문자의 최종 추측 버튼은 최신 snapshot의 미답변 질문, 처리 중인 명령, 남은 횟수를 확인한 뒤에만 활성화하고 실제 승패와 행동 횟수는 서버의 STOMP 명령 검증을 따른다.
@@ -348,7 +353,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 ## 12. 포켓몬 catalog
 
 - `scripts/fetch-pokemon-catalog.mjs`는 명시적으로 실행하는 개발 도구다.
-- PokéAPI에서 기본 species, 한국어 이름, generation, official artwork URL을 모은다.
+- PokéAPI에서 기본 species, 한국어 이름, generation, official artwork URL과 기본 폼의 타입을 모은다.
 - PokéAPI Fair Use Policy에 맞춰 응답을 `scripts/.cache/pokeapi/`에 저장하고 cache miss만 제한된 동시성으로 요청한다.
 - PokéAPI species count가 승인된 최대 번호 1,025와 다르면 새 종을 자동 포함하지 않고 생성에 실패한다.
 - 1부터 snapshot의 최대 National Dex 번호까지 다음 조건을 검증한다.
@@ -357,10 +362,12 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
   - generation 1~9
   - default variety 정확히 하나
   - HTTPS official artwork URL 존재
+  - PokéAPI slot 순서의 중복 없는 지원 타입 1~2개
 - 결과를 `backend/src/main/resources/catalog/pokemon-species.json`에 저장한다.
 - canonical species content의 SHA-256 일부를 catalog version으로 사용하고 생성 시각은 별도 field로 기록한다.
-- 애플리케이션은 snapshot을 다시 검증한 뒤 같은 catalog version 1,025행이 없을 때 transaction으로 JDBC batch upsert한다.
-- 같은 National Dex ID의 기존 `enabled=false`는 import가 되살리지 않는다. 현재 snapshot에 없는 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
+- V4는 `pokemon_species.primary_type`, `secondary_type`과 지원 코드·순서 구조·중복·활성 row 제약을 추가한다. 기존 row는 migration에서 비활성화하고 타입 없는 활성 row가 노출되지 않게 한다.
+- 애플리케이션은 snapshot을 다시 검증한 뒤 같은 catalog version의 타입 완전한 1,025행이 없을 때 한 transaction으로 JDBC batch upsert한다.
+- 새 version이나 누락 타입을 복구하는 upsert는 현재 1,025종을 활성화한다. 같은 완전한 version에서는 기존 `enabled=false`를 보존한다. 현재 snapshot에 없는 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
 - 운영 시작마다 PokéAPI를 호출하거나 자동으로 종 수를 바꾸지 않는다.
 - catalog 갱신은 독립 commit과 검증 결과를 요구한다.
 
@@ -476,6 +483,6 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - 정답이 질문자 DTO에 컴파일 단계부터 존재하지 않는다.
 - game state machine이 Spring·JPA 없이 단위 테스트 가능하다.
 - REST·STOMP command 모두 같은 application service와 domain 규칙을 호출한다.
-- DB migration, session schema, catalog seed가 빈 PostgreSQL에서 재현된다.
+- DB migration, session schema, 타입을 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade 경로를 Testcontainers에서 검증한다.
 - Docker Compose로 local, test, production-like profile을 구분한다.
 - 향후 이메일 인증과 다중 서버는 현재 dead code 없이 확장 지점만 문서로 남긴다.
