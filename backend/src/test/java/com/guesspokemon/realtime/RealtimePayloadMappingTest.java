@@ -3,15 +3,19 @@ package com.guesspokemon.realtime;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
 import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
+import static com.guesspokemon.game.GameTypes.GameAnswer.YES;
 import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.HOST_LEFT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import com.guesspokemon.pokemon.PokemonType;
+import com.guesspokemon.realtime.RealtimeDtos.AnswerQuestionPayload;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionerRoundStartedPayload;
+import com.guesspokemon.realtime.RealtimeDtos.QuestionAnsweredPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.SelectorRoundStartedPayload;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
@@ -146,5 +150,37 @@ class RealtimePayloadMappingTest {
                 """,
                 payloadJson);
         assertFalse(payloadJson.contains("nickname"));
+    }
+
+    @Test
+    void should_acceptMissingComment_when_oldAnswerPayloadIsDeserialized()
+            throws Exception {
+        AnswerQuestionPayload payload =
+                jsonMapper.readValue(
+                        """
+                        {"answer":"YES"}
+                        """,
+                        AnswerQuestionPayload.class);
+
+        assertEquals(YES, payload.answer());
+        assertNull(payload.comment());
+    }
+
+    @Test
+    void should_serializeComment_when_questionAnsweredEventIsCreated()
+            throws Exception {
+        String payloadJson =
+                jsonMapper.writeValueAsString(
+                        new QuestionAnsweredPayload(
+                                1,
+                                "전기 타입인가요?",
+                                YES,
+                                "노란색 포켓몬이에요.",
+                                1,
+                                19));
+
+        assertTrue(
+                payloadJson.contains(
+                        "\"comment\":\"노란색 포켓몬이에요.\""));
     }
 }

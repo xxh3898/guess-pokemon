@@ -130,6 +130,7 @@ public class RealtimeEventPublisher {
                         action.sequenceNumber(),
                         action.question(),
                         action.answer(),
+                        action.comment(),
                         representative
                                 .game()
                                 .usedActionCount(),

@@ -103,7 +103,8 @@ class GameHistoryStoreIntegrationTest {
                         roomCode,
                         selector.getId(),
                         UUID.randomUUID(),
-                        NO));
+                        NO,
+                        "  확실히 아니에요.  "));
         ParticipantGameView completed =
                 gameCommandService.guessPokemon(
                         new GuessPokemonCommand(
@@ -156,6 +157,9 @@ class GameHistoryStoreIntegrationTest {
         assertEquals(QUESTION, question.getActionType());
         assertEquals("전기 타입인가요?", question.getQuestion());
         assertEquals(NO, question.getAnswer());
+        assertEquals(
+                "확실히 아니에요.",
+                question.getAnswerComment());
         assertEquals(GUESS, guess.getActionType());
         assertEquals(PIKACHU_ID, guess.getGuessedPokemonId());
         assertTrue(guess.getCorrect());

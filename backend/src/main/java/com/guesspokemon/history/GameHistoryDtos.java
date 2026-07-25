@@ -74,6 +74,7 @@ public final class GameHistoryDtos {
             GameActionType type,
             String question,
             GameAnswer answer,
+            String comment,
             PokemonSummary guessedPokemon,
             Boolean correct,
             Instant createdAt,

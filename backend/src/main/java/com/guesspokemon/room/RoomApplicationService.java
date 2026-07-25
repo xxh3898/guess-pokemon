@@ -186,6 +186,22 @@ public class RoomApplicationService {
             UUID commandId,
             long expectedStateVersion,
             GameAnswer answer) {
+        return answerQuestion(
+                roomCode,
+                userId,
+                commandId,
+                expectedStateVersion,
+                answer,
+                null);
+    }
+
+    public CommandOutcome answerQuestion(
+            String roomCode,
+            UUID userId,
+            UUID commandId,
+            long expectedStateVersion,
+            GameAnswer answer,
+            String comment) {
         return roomRegistry.executeLocked(
                 roomCode,
                 userId,
@@ -201,7 +217,8 @@ public class RoomApplicationService {
                                             room.code(),
                                             userId,
                                             commandId,
-                                            answer),
+                                            answer,
+                                            comment),
                                     targetStateVersion);
                     room.applyGameView(commandId, gameView);
                     return commandOutcome(

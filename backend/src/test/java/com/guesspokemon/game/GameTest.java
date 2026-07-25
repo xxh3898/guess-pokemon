@@ -164,6 +164,137 @@ class GameTest {
     }
 
     @Test
+    void should_normalizeAnswerCommentToNfcAndStripWhitespace_when_answerHasComment() {
+        Game pending =
+                newGame()
+                        .ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "몸이 노란색인가요?",
+                                STARTED_AT.plusSeconds(1))
+                        .candidate();
+
+        Game answered =
+                pending.answer(
+                                SELECTOR_USER_ID,
+                                UUID.randomUUID(),
+                                NO,
+                                "  cafe\u0301는 아니에요.  ",
+                                STARTED_AT.plusSeconds(2))
+                        .candidate();
+
+        assertEquals(
+                "café는 아니에요.",
+                answered
+                        .viewFor(QUESTIONER_USER_ID)
+                        .actions()
+                        .getFirst()
+                        .comment());
+    }
+
+    @Test
+    void should_treatAnswerCommentAsNull_when_commentIsMissingOrBlank() {
+        Game missingComment =
+                newGame()
+                        .ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "전기 타입인가요?",
+                                STARTED_AT.plusSeconds(1))
+                        .candidate()
+                        .answer(
+                                SELECTOR_USER_ID,
+                                UUID.randomUUID(),
+                                NO,
+                                STARTED_AT.plusSeconds(2))
+                        .candidate();
+        Game blankComment =
+                newGame()
+                        .ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "날개가 있나요?",
+                                STARTED_AT.plusSeconds(1))
+                        .candidate()
+                        .answer(
+                                SELECTOR_USER_ID,
+                                UUID.randomUUID(),
+                                NO,
+                                " \n ",
+                                STARTED_AT.plusSeconds(2))
+                        .candidate();
+
+        assertNull(
+                missingComment
+                        .viewFor(QUESTIONER_USER_ID)
+                        .actions()
+                        .getFirst()
+                        .comment());
+        assertNull(
+                blankComment
+                        .viewFor(QUESTIONER_USER_ID)
+                        .actions()
+                        .getFirst()
+                        .comment());
+    }
+
+    @Test
+    void should_acceptTwoHundredUnicodeCodePoints_when_answerCommentIsProvided() {
+        Game answered =
+                newGame()
+                        .ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "설명이 필요한가요?",
+                                STARTED_AT.plusSeconds(1))
+                        .candidate()
+                        .answer(
+                                SELECTOR_USER_ID,
+                                UUID.randomUUID(),
+                                NO,
+                                "😀".repeat(200),
+                                STARTED_AT.plusSeconds(2))
+                        .candidate();
+
+        String comment =
+                answered
+                        .viewFor(QUESTIONER_USER_ID)
+                        .actions()
+                        .getFirst()
+                        .comment();
+        assertEquals(
+                200,
+                comment.codePointCount(0, comment.length()));
+    }
+
+    @Test
+    void should_rejectAnswerComment_when_normalizedLengthExceedsLimit() {
+        Game pending =
+                newGame()
+                        .ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "설명이 필요한가요?",
+                                STARTED_AT.plusSeconds(1))
+                        .candidate();
+
+        assertRuleError(
+                VALIDATION_FAILED,
+                () ->
+                        pending.answer(
+                                SELECTOR_USER_ID,
+                                UUID.randomUUID(),
+                                NO,
+                                "가".repeat(201),
+                                STARTED_AT.plusSeconds(2)));
+    }
+
+    @Test
     void should_rejectCommand_when_userHasWrongRole() {
         Game pending =
                 newGame()

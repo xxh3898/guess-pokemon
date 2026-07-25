@@ -80,6 +80,7 @@ public final class GameViews {
             GameActionType type,
             String question,
             GameAnswer answer,
+            String comment,
             Integer guessedPokemonNationalDexId,
             Boolean correct,
             Instant createdAt,

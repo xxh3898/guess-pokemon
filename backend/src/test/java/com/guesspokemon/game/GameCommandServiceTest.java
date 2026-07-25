@@ -91,7 +91,8 @@ class GameCommandServiceTest {
                                 ROOM_CODE,
                                 SELECTOR_USER_ID,
                                 UUID.randomUUID(),
-                                NO));
+                                NO,
+                                "  비슷하지만 달라요.  "));
         ParticipantGameView guessView =
                 gameCommandService.guessPokemon(
                         new GuessPokemonCommand(
@@ -113,6 +114,16 @@ class GameCommandServiceTest {
                         .startedAt());
         assertEquals(2, persistencePort.appendedActions.size());
         assertEquals(1, persistencePort.answeredActions.size());
+        assertEquals(
+                "비슷하지만 달라요.",
+                persistencePort.answeredActions
+                        .getFirst()
+                        .comment());
+        assertEquals(
+                "비슷하지만 달라요.",
+                answerView.actions()
+                        .getFirst()
+                        .comment());
         assertEquals(
                 2,
                 persistencePort.appendedActions

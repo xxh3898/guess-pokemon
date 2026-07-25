@@ -64,6 +64,7 @@ public interface GamePersistencePort {
             GameActionType actionType,
             String question,
             GameAnswer answer,
+            String comment,
             Integer guessedPokemonNationalDexId,
             Boolean correct,
             Instant createdAt,

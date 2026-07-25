@@ -42,6 +42,7 @@ import java.util.UUID;
 final class Game {
 
     static final int MAX_ACTION_COUNT = 20;
+    private static final int MAX_ANSWER_COMMENT_LENGTH = 200;
     private static final int MAX_QUESTION_LENGTH = 200;
 
     private final UUID id;
@@ -196,6 +197,7 @@ final class Game {
                 userId,
                 commandId,
                 answer,
+                null,
                 stateVersion + 1,
                 now);
     }
@@ -204,6 +206,37 @@ final class Game {
             UUID userId,
             UUID commandId,
             GameAnswer answer,
+            String comment,
+            Instant now) {
+        return answer(
+                userId,
+                commandId,
+                answer,
+                comment,
+                stateVersion + 1,
+                now);
+    }
+
+    Transition answer(
+            UUID userId,
+            UUID commandId,
+            GameAnswer answer,
+            long targetStateVersion,
+            Instant now) {
+        return answer(
+                userId,
+                commandId,
+                answer,
+                null,
+                targetStateVersion,
+                now);
+    }
+
+    Transition answer(
+            UUID userId,
+            UUID commandId,
+            GameAnswer answer,
+            String comment,
             long targetStateVersion,
             Instant now) {
         requireInProgress();
@@ -217,6 +250,7 @@ final class Game {
         GameAction answeredAction =
                 pendingQuestion.answered(
                         Objects.requireNonNull(answer),
+                        normalizeAnswerComment(comment),
                         Objects.requireNonNull(now));
         List<GameAction> updatedActions =
                 replaceLastAction(answeredAction);
@@ -637,6 +671,25 @@ final class Game {
         return normalized;
     }
 
+    private String normalizeAnswerComment(String commentInput) {
+        if (commentInput == null) {
+            return null;
+        }
+        String normalized =
+                Normalizer.normalize(
+                        commentInput.strip(),
+                        Normalizer.Form.NFC);
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        int codePointLength =
+                normalized.codePointCount(0, normalized.length());
+        if (codePointLength > MAX_ANSWER_COMMENT_LENGTH) {
+            throw new GameRuleException(VALIDATION_FAILED);
+        }
+        return normalized;
+    }
+
     private void validateLifecycle() {
         if (status == IN_PROGRESS) {
             if (endReason != null
@@ -678,6 +731,7 @@ final class Game {
                 action.type(),
                 action.question(),
                 action.answer(),
+                action.comment(),
                 action.guessedPokemonId(),
                 action.correct(),
                 action.createdAt(),

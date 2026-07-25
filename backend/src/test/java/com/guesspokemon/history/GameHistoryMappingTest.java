@@ -82,6 +82,7 @@ class GameHistoryMappingTest {
                         null,
                         null,
                         null,
+                        null,
                         STARTED_AT.plusSeconds(1),
                         null);
         GameState pendingState =
@@ -110,6 +111,7 @@ class GameHistoryMappingTest {
                         QUESTION,
                         "날개가 있나요?",
                         NO,
+                        "새와 비슷하지만 달라요.",
                         null,
                         null,
                         STARTED_AT.plusSeconds(1),
@@ -159,6 +161,9 @@ class GameHistoryMappingTest {
         assertEquals(NONE, participants.get(selector.getId()).getResult());
         assertEquals(NO, action.getAnswer());
         assertEquals(
+                "새와 비슷하지만 달라요.",
+                action.getAnswerComment());
+        assertEquals(
                 STARTED_AT.plusSeconds(2),
                 action.getAnsweredAt());
     }
@@ -206,6 +211,126 @@ class GameHistoryMappingTest {
                                             NULL,
                                             NULL,
                                             NULL,
+                                            CURRENT_TIMESTAMP,
+                                            NULL
+                                        )
+                                        """)
+                                .param("id", UUID.randomUUID())
+                                .param(
+                                        "commandId",
+                                        UUID.randomUUID())
+                                .param("gameId", gameId)
+                                .param(
+                                        "actorUserId",
+                                        questioner.getId())
+                                .update());
+    }
+
+    @Test
+    @Transactional
+    void should_rejectActionRow_when_pendingQuestionHasComment() {
+        AppUser selector = saveUser("pending_selector");
+        AppUser questioner = saveUser("pending_questioner");
+        UUID gameId = UUID.randomUUID();
+        gameHistoryStore.createGame(
+                startState(
+                        gameId,
+                        selector.getId(),
+                        questioner.getId()));
+
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () ->
+                        jdbcClient
+                                .sql(
+                                        """
+                                        INSERT INTO game_action (
+                                            id,
+                                            command_id,
+                                            game_id,
+                                            actor_user_id,
+                                            sequence_no,
+                                            action_type,
+                                            question_text,
+                                            answer,
+                                            answer_comment,
+                                            guessed_pokemon_id,
+                                            correct,
+                                            created_at,
+                                            answered_at
+                                        )
+                                        VALUES (
+                                            :id,
+                                            :commandId,
+                                            :gameId,
+                                            :actorUserId,
+                                            1,
+                                            'QUESTION',
+                                            '날개가 있나요?',
+                                            NULL,
+                                            '아직 답변하지 않았어요.',
+                                            NULL,
+                                            NULL,
+                                            CURRENT_TIMESTAMP,
+                                            NULL
+                                        )
+                                        """)
+                                .param("id", UUID.randomUUID())
+                                .param(
+                                        "commandId",
+                                        UUID.randomUUID())
+                                .param("gameId", gameId)
+                                .param(
+                                        "actorUserId",
+                                        questioner.getId())
+                                .update());
+    }
+
+    @Test
+    @Transactional
+    void should_rejectActionRow_when_guessHasComment() {
+        AppUser selector = saveUser("guess_selector");
+        AppUser questioner = saveUser("guess_questioner");
+        UUID gameId = UUID.randomUUID();
+        gameHistoryStore.createGame(
+                startState(
+                        gameId,
+                        selector.getId(),
+                        questioner.getId()));
+
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () ->
+                        jdbcClient
+                                .sql(
+                                        """
+                                        INSERT INTO game_action (
+                                            id,
+                                            command_id,
+                                            game_id,
+                                            actor_user_id,
+                                            sequence_no,
+                                            action_type,
+                                            question_text,
+                                            answer,
+                                            answer_comment,
+                                            guessed_pokemon_id,
+                                            correct,
+                                            created_at,
+                                            answered_at
+                                        )
+                                        VALUES (
+                                            :id,
+                                            :commandId,
+                                            :gameId,
+                                            :actorUserId,
+                                            1,
+                                            'GUESS',
+                                            NULL,
+                                            NULL,
+                                            '추측에는 코멘트를 쓸 수 없어요.',
+                                            25,
+                                            FALSE,
                                             CURRENT_TIMESTAMP,
                                             NULL
                                         )

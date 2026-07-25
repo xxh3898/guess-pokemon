@@ -130,6 +130,7 @@ class GameHistoryQueryIntegrationTest {
                 1,
                 "물 타입인가요?",
                 NO,
+                "물에서는 살지 않아요.",
                 BASE_TIME.plusSeconds(10),
                 BASE_TIME.plusSeconds(12));
         fixture.insertGuess(
@@ -156,6 +157,9 @@ class GameHistoryQueryIntegrationTest {
 
         assertEquals(gameId, detail.gameId());
         assertEquals(3, detail.actions().size());
+        assertEquals(
+                "물에서는 살지 않아요.",
+                detail.actions().getFirst().comment());
         assertEquals(
                 3,
                 statistics.getPrepareStatementCount());

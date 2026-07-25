@@ -108,12 +108,23 @@ class RoomApplicationServiceIntegrationTest {
                 UUID.randomUUID(),
                 3,
                 "전기 타입인가요?");
-        roomApplicationService.answerQuestion(
-                testRoom.roomCode(),
-                testRoom.host().getId(),
-                UUID.randomUUID(),
-                4,
-                YES);
+        CommandOutcome answered =
+                roomApplicationService.answerQuestion(
+                        testRoom.roomCode(),
+                        testRoom.host().getId(),
+                        UUID.randomUUID(),
+                        4,
+                        YES,
+                        "  전기 타입이 맞아요.  ");
+        assertEquals(
+                "전기 타입이 맞아요.",
+                answered
+                        .snapshots()
+                        .get(testRoom.guest().getId())
+                        .game()
+                        .actions()
+                        .getFirst()
+                        .comment());
         CommandOutcome ended =
                 roomApplicationService.guessPokemon(
                         testRoom.roomCode(),

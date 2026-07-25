@@ -157,6 +157,7 @@ final class GameHistoryTestFixture {
             int sequenceNumber,
             String question,
             GameAnswer answer,
+            String comment,
             Instant createdAt,
             Instant answeredAt) {
         jdbcClient
@@ -171,6 +172,7 @@ final class GameHistoryTestFixture {
                             action_type,
                             question_text,
                             answer,
+                            answer_comment,
                             guessed_pokemon_id,
                             correct,
                             created_at,
@@ -185,6 +187,7 @@ final class GameHistoryTestFixture {
                             'QUESTION',
                             :question,
                             :answer,
+                            :comment,
                             NULL,
                             NULL,
                             :createdAt,
@@ -202,6 +205,7 @@ final class GameHistoryTestFixture {
                 .param("sequenceNumber", sequenceNumber)
                 .param("question", question)
                 .param("answer", answer.name())
+                .param("comment", comment)
                 .param("createdAt", timestamp(createdAt))
                 .param("answeredAt", timestamp(answeredAt))
                 .update();

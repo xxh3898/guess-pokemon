@@ -53,6 +53,9 @@ public class GameActionRecord {
     @Column(length = 20)
     private GameAnswer answer;
 
+    @Column(name = "answer_comment", length = 200)
+    private String answerComment;
+
     @Column(name = "guessed_pokemon_id")
     private Integer guessedPokemonId;
 
@@ -79,6 +82,7 @@ public class GameActionRecord {
         actionType = state.actionType();
         question = state.question();
         answer = state.answer();
+        answerComment = state.comment();
         guessedPokemonId =
                 state.guessedPokemonNationalDexId();
         correct = state.correct();
@@ -107,6 +111,7 @@ public class GameActionRecord {
                     "answer 대상 action이 다릅니다.");
         }
         answer = state.answer();
+        answerComment = state.comment();
         answeredAt = state.answeredAt();
     }
 
@@ -140,6 +145,10 @@ public class GameActionRecord {
 
     public GameAnswer getAnswer() {
         return answer;
+    }
+
+    public String getAnswerComment() {
+        return answerComment;
     }
 
     public Integer getGuessedPokemonId() {

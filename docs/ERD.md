@@ -84,6 +84,7 @@ erDiagram
         varchar action_type
         varchar question_text
         varchar answer
+        varchar answer_comment
         int guessed_pokemon_id FK
         boolean correct
         timestamptz created_at
@@ -214,6 +215,7 @@ application과 integration test가 다음 invariant를 검증한다.
 | `action_type` | `varchar(20)` | N | CHECK | `QUESTION`, `GUESS` |
 | `question_text` | `varchar(200)` | Y |  | 질문 |
 | `answer` | `varchar(20)` | Y | CHECK | `YES`, `NO`, `UNKNOWN` |
+| `answer_comment` | `varchar(200)` | Y | CHECK | 출제자가 답변에 덧붙인 선택 코멘트 |
 | `guessed_pokemon_id` | `integer` | Y | FK | 추측 포켓몬 |
 | `correct` | `boolean` | Y |  | 추측 정답 여부 |
 | `created_at` | `timestamptz` | N |  | 질문·추측 접수 시각 |
@@ -224,11 +226,12 @@ application과 integration test가 다음 invariant를 검증한다.
 - `QUESTION`
   - `question_text` not null
   - `guessed_pokemon_id`, `correct` null
-  - 답변 전 `answer`, `answered_at` null
+  - 답변 전 `answer`, `answer_comment`, `answered_at` null
   - 답변 뒤 `answer`, `answered_at` not null
+  - 답변 뒤 `answer_comment`는 null 또는 공백이 아닌 1~200자
 - `GUESS`
   - `guessed_pokemon_id`, `correct` not null
-  - `question_text`, `answer`, `answered_at` null
+  - `question_text`, `answer`, `answer_comment`, `answered_at` null
 
 Flyway migration에 위 조건을 표현하는 table-level `CHECK`를 둔다.
 
@@ -266,7 +269,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 - catalog import: 타입을 포함한 snapshot 전체 검증 뒤 upsert 한 transaction
 - game start: game + participant 2건 한 transaction
 - question submit: action insert + game count/version update 한 transaction
-- answer: action answer + game version·종료 여부 update 한 transaction
+- answer: action answer·선택 코멘트 + game version·종료 여부 update 한 transaction
 - guess: action insert + game count/version + participant result·game end update 한 transaction
 - reconnect timeout: participant result + game end update 한 transaction
 

@@ -26,6 +26,7 @@ public interface GameActionRecordRepository
                         action.action_type AS type,
                         action.question_text AS question,
                         action.answer AS answer,
+                        action.answer_comment AS comment,
                         guessed_species.national_dex_id
                             AS guessed_national_dex_id,
                         guessed_species.korean_name
@@ -63,6 +64,8 @@ public interface GameActionRecordRepository
         String getQuestion();
 
         String getAnswer();
+
+        String getComment();
 
         Integer getGuessedNationalDexId();
 

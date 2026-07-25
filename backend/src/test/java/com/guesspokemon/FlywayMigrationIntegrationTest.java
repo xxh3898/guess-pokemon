@@ -18,6 +18,8 @@ class FlywayMigrationIntegrationTest {
 
     private static final String UPGRADE_SCHEMA =
             "pokemon_type_upgrade_test";
+    private static final String ANSWER_COMMENT_UPGRADE_SCHEMA =
+            "answer_comment_upgrade_test";
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -68,7 +70,7 @@ class FlywayMigrationIntegrationTest {
                         .single();
 
         assertEquals(0, migrationsExecuted);
-        assertEquals(4L, historyCount);
+        assertEquals(5L, historyCount);
     }
 
     @Test
@@ -254,6 +256,40 @@ class FlywayMigrationIntegrationTest {
     }
 
     @Test
+    void should_createAnswerCommentColumnAndConstraint_when_v5MigrationRuns() {
+        Long columnCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'game_action'
+                                  AND column_name = 'answer_comment'
+                                  AND is_nullable = 'YES'
+                                  AND character_maximum_length = 200
+                                """)
+                        .query(Long.class)
+                        .single();
+        Boolean constraintValidated =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT convalidated
+                                FROM pg_constraint
+                                WHERE conname =
+                                    'ck_game_action_answer_comment'
+                                  AND connamespace =
+                                    'public'::regnamespace
+                                """)
+                        .query(Boolean.class)
+                        .single();
+
+        assertEquals(1L, columnCount);
+        assertTrue(constraintValidated);
+    }
+
+    @Test
     void should_disableExistingCatalogRows_when_v3DatabaseMigratesToV4() {
         Flyway legacyFlyway =
                 Flyway.configure()
@@ -298,6 +334,7 @@ class FlywayMigrationIntegrationTest {
                         .dataSource(dataSource)
                         .schemas(UPGRADE_SCHEMA)
                         .defaultSchema(UPGRADE_SCHEMA)
+                        .target("4")
                         .load();
         assertEquals(
                 1,
@@ -345,5 +382,239 @@ class FlywayMigrationIntegrationTest {
                                                 .formatted(UPGRADE_SCHEMA))
                                 .query(Boolean.class)
                                 .single());
+    }
+
+    @Test
+    void should_preserveExistingActionWithoutComment_when_v4DatabaseMigratesToV5() {
+        Flyway legacyFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .defaultSchema(ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .target("4")
+                        .load();
+        assertEquals(
+                4,
+                legacyFlyway.migrate().migrationsExecuted);
+        JdbcClient upgradeJdbcClient = JdbcClient.create(dataSource);
+        insertV4AnsweredQuestion(upgradeJdbcClient);
+
+        Flyway currentFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .defaultSchema(ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .load();
+        assertEquals(
+                1,
+                currentFlyway.migrate().migrationsExecuted);
+
+        Long preservedActionCount =
+                upgradeJdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM %s.game_action
+                                WHERE id =
+                                    '55555555-5555-4555-8555-555555555555'
+                                  AND answer = 'NO'
+                                  AND answer_comment IS NULL
+                                """
+                                        .formatted(
+                                                ANSWER_COMMENT_UPGRADE_SCHEMA))
+                        .query(Long.class)
+                        .single();
+        Boolean constraintValidated =
+                upgradeJdbcClient
+                        .sql(
+                                """
+                                SELECT convalidated
+                                FROM pg_constraint
+                                WHERE conname =
+                                    'ck_game_action_answer_comment'
+                                  AND connamespace =
+                                    CAST(:schema AS regnamespace)
+                                """)
+                        .param(
+                                "schema",
+                                ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .query(Boolean.class)
+                        .single();
+
+        assertEquals(1L, preservedActionCount);
+        assertTrue(constraintValidated);
+    }
+
+    private void insertV4AnsweredQuestion(
+            JdbcClient upgradeJdbcClient) {
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.pokemon_species (
+                            national_dex_id,
+                            slug,
+                            korean_name,
+                            generation,
+                            artwork_url,
+                            catalog_version,
+                            source_updated_at,
+                            enabled,
+                            primary_type,
+                            secondary_type
+                        )
+                        VALUES (
+                            25,
+                            'pikachu',
+                            '피카츄',
+                            1,
+                            'https://example.test/25.png',
+                            'pokeapi-v2-upgrade',
+                            CURRENT_TIMESTAMP,
+                            TRUE,
+                            'ELECTRIC',
+                            NULL
+                        )
+                        """
+                                .formatted(
+                                        ANSWER_COMMENT_UPGRADE_SCHEMA))
+                .update();
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.app_user (
+                            id,
+                            login_id,
+                            login_id_key,
+                            nickname,
+                            nickname_key,
+                            password_hash,
+                            status,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES
+                            (
+                                '11111111-1111-4111-8111-111111111111',
+                                'selector_test',
+                                'selector_test',
+                                '출제자',
+                                '출제자',
+                                'test-password-hash',
+                                'ACTIVE',
+                                CURRENT_TIMESTAMP,
+                                CURRENT_TIMESTAMP
+                            ),
+                            (
+                                '22222222-2222-4222-8222-222222222222',
+                                'questioner_test',
+                                'questioner_test',
+                                '질문자',
+                                '질문자',
+                                'test-password-hash',
+                                'ACTIVE',
+                                CURRENT_TIMESTAMP,
+                                CURRENT_TIMESTAMP
+                            )
+                        """
+                                .formatted(
+                                        ANSWER_COMMENT_UPGRADE_SCHEMA))
+                .update();
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.game (
+                            id,
+                            round_group_id,
+                            answer_pokemon_id,
+                            status,
+                            end_reason,
+                            action_count,
+                            state_version,
+                            started_at,
+                            ended_at,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (
+                            '33333333-3333-4333-8333-333333333333',
+                            '44444444-4444-4444-8444-444444444444',
+                            25,
+                            'IN_PROGRESS',
+                            NULL,
+                            1,
+                            5,
+                            CURRENT_TIMESTAMP,
+                            NULL,
+                            CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP
+                        )
+                        """
+                                .formatted(
+                                        ANSWER_COMMENT_UPGRADE_SCHEMA))
+                .update();
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.game_participant (
+                            game_id,
+                            user_id,
+                            role,
+                            result,
+                            created_at
+                        )
+                        VALUES
+                            (
+                                '33333333-3333-4333-8333-333333333333',
+                                '11111111-1111-4111-8111-111111111111',
+                                'SELECTOR',
+                                'NONE',
+                                CURRENT_TIMESTAMP
+                            ),
+                            (
+                                '33333333-3333-4333-8333-333333333333',
+                                '22222222-2222-4222-8222-222222222222',
+                                'QUESTIONER',
+                                'NONE',
+                                CURRENT_TIMESTAMP
+                            )
+                        """
+                                .formatted(
+                                        ANSWER_COMMENT_UPGRADE_SCHEMA))
+                .update();
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.game_action (
+                            id,
+                            command_id,
+                            game_id,
+                            actor_user_id,
+                            sequence_no,
+                            action_type,
+                            question_text,
+                            answer,
+                            guessed_pokemon_id,
+                            correct,
+                            created_at,
+                            answered_at
+                        )
+                        VALUES (
+                            '55555555-5555-4555-8555-555555555555',
+                            '66666666-6666-4666-8666-666666666666',
+                            '33333333-3333-4333-8333-333333333333',
+                            '22222222-2222-4222-8222-222222222222',
+                            1,
+                            'QUESTION',
+                            '전기 타입인가요?',
+                            'NO',
+                            NULL,
+                            NULL,
+                            CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP
+                        )
+                        """
+                                .formatted(
+                                        ANSWER_COMMENT_UPGRADE_SCHEMA))
+                .update();
     }
 }

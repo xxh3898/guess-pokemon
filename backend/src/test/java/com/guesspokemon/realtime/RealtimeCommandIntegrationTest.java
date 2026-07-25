@@ -252,6 +252,47 @@ class RealtimeCommandIntegrationTest {
                     validationError
                             .get("code")
                             .stringValue());
+
+            send(
+                    hostSocket.session(),
+                    "/app/rooms/"
+                            + roomCode
+                            + "/answer",
+                    commandJson(
+                            UUID.randomUUID(),
+                            4,
+                            """
+                            {
+                              "answer":"YES",
+                              "comment":"  노란색 전기 포켓몬이에요.  "
+                            }
+                            """));
+            JsonNode selectorAnswered =
+                    awaitEvent(
+                            hostSocket.events(),
+                            "QUESTION_ANSWERED");
+            JsonNode questionerAnswered =
+                    awaitEvent(
+                            guestSocket.events(),
+                            "QUESTION_ANSWERED");
+
+            assertEquals(
+                    5,
+                    selectorAnswered
+                            .get("stateVersion")
+                            .asLong());
+            assertEquals(
+                    "노란색 전기 포켓몬이에요.",
+                    selectorAnswered
+                            .get("payload")
+                            .get("comment")
+                            .stringValue());
+            assertEquals(
+                    "노란색 전기 포켓몬이에요.",
+                    questionerAnswered
+                            .get("payload")
+                            .get("comment")
+                            .stringValue());
         } finally {
             disconnect(hostSocket);
             disconnect(guestSocket);

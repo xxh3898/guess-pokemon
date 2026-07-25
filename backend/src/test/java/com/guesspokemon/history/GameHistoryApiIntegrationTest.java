@@ -238,6 +238,7 @@ class GameHistoryApiIntegrationTest {
                 1,
                 "전기 타입인가요?",
                 YES,
+                "노란색 전기 포켓몬이에요.",
                 BASE_TIME.plusSeconds(20),
                 BASE_TIME.plusSeconds(24));
         fixture.insertGuess(
@@ -294,6 +295,9 @@ class GameHistoryApiIntegrationTest {
                 .andExpect(
                         jsonPath("$.actions[0].answer")
                                 .value("YES"))
+                .andExpect(
+                        jsonPath("$.actions[0].comment")
+                                .value("노란색 전기 포켓몬이에요."))
                 .andExpect(
                         jsonPath("$.actions[1].type")
                                 .value("GUESS"))
@@ -371,6 +375,9 @@ class GameHistoryApiIntegrationTest {
                                 .value("NONE"))
                 .andExpect(
                         jsonPath("$.actions[0].answer")
+                                .value(nullValue()))
+                .andExpect(
+                        jsonPath("$.actions[0].comment")
                                 .value(nullValue()))
                 .andExpect(
                         jsonPath("$.actions[0].answeredAt")

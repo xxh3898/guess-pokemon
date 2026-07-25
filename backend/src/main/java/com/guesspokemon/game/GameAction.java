@@ -17,6 +17,7 @@ record GameAction(
         GameActionType type,
         String question,
         GameAnswer answer,
+        String comment,
         Integer guessedPokemonId,
         Boolean correct,
         Instant createdAt,
@@ -36,6 +37,7 @@ record GameAction(
                 type,
                 question,
                 answer,
+                comment,
                 guessedPokemonId,
                 correct,
                 answeredAt);
@@ -55,6 +57,7 @@ record GameAction(
                 sequenceNumber,
                 QUESTION,
                 Objects.requireNonNull(question),
+                null,
                 null,
                 null,
                 null,
@@ -78,13 +81,17 @@ record GameAction(
                 GUESS,
                 null,
                 null,
+                null,
                 guessedPokemonId,
                 correct,
                 createdAt,
                 null);
     }
 
-    GameAction answered(GameAnswer newAnswer, Instant newAnsweredAt) {
+    GameAction answered(
+            GameAnswer newAnswer,
+            String newComment,
+            Instant newAnsweredAt) {
         if (type != QUESTION || answer != null) {
             throw new IllegalStateException(
                     "답변할 수 없는 action입니다.");
@@ -97,6 +104,7 @@ record GameAction(
                 type,
                 question,
                 Objects.requireNonNull(newAnswer),
+                newComment,
                 null,
                 null,
                 createdAt,
@@ -111,6 +119,7 @@ record GameAction(
             GameActionType type,
             String question,
             GameAnswer answer,
+            String comment,
             Integer guessedPokemonId,
             Boolean correct,
             Instant answeredAt) {
@@ -118,6 +127,7 @@ record GameAction(
             if (question == null
                     || guessedPokemonId != null
                     || correct != null
+                    || (answer == null && comment != null)
                     || (answer == null) != (answeredAt == null)) {
                 throw new IllegalArgumentException(
                         "QUESTION action 형태가 올바르지 않습니다.");
@@ -126,6 +136,7 @@ record GameAction(
         }
         if (question != null
                 || answer != null
+                || comment != null
                 || answeredAt != null
                 || guessedPokemonId == null
                 || correct == null) {

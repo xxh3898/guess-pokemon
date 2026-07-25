@@ -34,7 +34,8 @@ public final class RealtimeDtos {
     }
 
     public record AnswerQuestionPayload(
-            @NotNull GameAnswer answer) {
+            @NotNull GameAnswer answer,
+            String comment) {
     }
 
     public record GuessPokemonPayload(
@@ -143,6 +144,7 @@ public final class RealtimeDtos {
             int sequenceNo,
             String question,
             GameAnswer answer,
+            String comment,
             int usedActionCount,
             int remainingActionCount) {
     }

@@ -50,7 +50,21 @@ public final class GameCommands {
             String roomCode,
             UUID userId,
             UUID commandId,
-            GameAnswer answer) {
+            GameAnswer answer,
+            String comment) {
+
+        public AnswerQuestionCommand(
+                String roomCode,
+                UUID userId,
+                UUID commandId,
+                GameAnswer answer) {
+            this(
+                    roomCode,
+                    userId,
+                    commandId,
+                    answer,
+                    null);
+        }
 
         public AnswerQuestionCommand {
             requireRoomCode(roomCode);

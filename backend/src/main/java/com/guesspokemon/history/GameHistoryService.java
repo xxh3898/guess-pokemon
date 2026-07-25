@@ -209,6 +209,7 @@ public class GameHistoryService {
                 type,
                 row.getQuestion(),
                 answer,
+                row.getComment(),
                 guessedPokemon,
                 row.getCorrect(),
                 row.getCreatedAt(),
@@ -312,6 +313,7 @@ public class GameHistoryService {
                     && action.guessedPokemon() == null
                     && action.correct() == null
                     && ((action.answer() == null
+                                    && action.comment() == null
                                     && action.answeredAt() == null)
                             || (action.answer() != null
                                     && action.answeredAt() != null));
@@ -319,6 +321,7 @@ public class GameHistoryService {
         if (action.type() == GUESS) {
             return action.question() == null
                     && action.answer() == null
+                    && action.comment() == null
                     && action.guessedPokemon() != null
                     && action.correct() != null
                     && action.answeredAt() == null;

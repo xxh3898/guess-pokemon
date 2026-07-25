@@ -150,7 +150,8 @@ class RealtimeCommandController {
                                             user.id(),
                                             command.commandId(),
                                             command.expectedStateVersion(),
-                                            command.payload().answer());
+                                            command.payload().answer(),
+                                            command.payload().comment());
                     roomConnectionService.associate(
                             sessionId,
                             user.id(),

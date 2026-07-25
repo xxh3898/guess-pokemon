@@ -133,11 +133,13 @@ public class GameCommandService {
                                                 command.userId(),
                                                 command.commandId(),
                                                 command.answer(),
+                                                command.comment(),
                                                 currentTime())
                                         : current.answer(
                                                 command.userId(),
                                                 command.commandId(),
                                                 command.answer(),
+                                                command.comment(),
                                                 targetStateVersion,
                                                 currentTime()),
                         transition ->
@@ -311,6 +313,7 @@ public class GameCommandService {
                 action.type(),
                 action.question(),
                 action.answer(),
+                action.comment(),
                 action.guessedPokemonId(),
                 action.correct(),
                 action.createdAt(),

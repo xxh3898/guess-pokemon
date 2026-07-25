@@ -403,6 +403,9 @@ create·join 직후에는 참가자를 연결 상태로 시작한다. room route
 }
 ```
 
+`game.actions`의 질문 action은 `answer`와 함께 선택 코멘트인 `comment`를
+포함한다. 답변 전이거나 코멘트가 없으면 `comment`는 `null`이다.
+
 진행 중 질문자 DTO에는 `selectedPokemon` field 자체를 두지 않는다. 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`, 승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는 `rematch.meReady`, `rematch.opponentReady`로 동의 상태를 복구한다.
 
 room status:
@@ -627,6 +630,7 @@ query:
       "type": "QUESTION",
       "question": "전기타입인가요?",
       "answer": "YES",
+      "comment": "노란색 전기 포켓몬이에요.",
       "guessedPokemon": null,
       "correct": null,
       "createdAt": "2026-07-24T11:21:00Z",
@@ -637,6 +641,7 @@ query:
       "type": "GUESS",
       "question": null,
       "answer": null,
+      "comment": null,
       "guessedPokemon": {
         "nationalDexId": 25,
         "koreanName": "피카츄",
@@ -654,8 +659,8 @@ query:
 ```
 
 상세도 종료 경기만 조회한다. 중단 시점까지 답하지 못한 `QUESTION`은
-`answer`와 `answeredAt`을 모두 `null`로 반환한다. 화면은 이를 진행 중
-상태가 아닌 “답변 없이 종료”로 표시한다. 성공 응답에는
+`answer`, `comment`, `answeredAt`을 모두 `null`로 반환한다. 화면은 이를
+진행 중 상태가 아닌 “답변 없이 종료”로 표시한다. 성공 응답에는
 `Cache-Control: no-store`를 적용한다.
 
 오류:
@@ -793,12 +798,18 @@ payload:
   "commandId": "992aecaf-19d0-490e-89c5-b8f099f9c4ab",
   "expectedStateVersion": 9,
   "payload": {
-    "answer": "NO"
+    "answer": "NO",
+    "comment": "날개처럼 보이지만 팔이에요."
   }
 }
 ```
 
 `answer`: `YES`, `NO`, `UNKNOWN`
+
+`comment`: 선택 입력. 생략하거나 `null`로 보낼 수 있다. 서버는 앞뒤 공백을
+제거하고 NFC로 정규화한다. 정규화한 값이 비어 있으면 `null`로 처리하며
+Unicode 문자 기준 최대 200자까지 허용한다. 코멘트는 답변에 포함되므로
+행동 횟수를 추가로 사용하지 않는다.
 
 권한: 출제자
 
@@ -947,6 +958,7 @@ status를 기준으로 이 두 event를 상호 보완 event로 한 번씩 적용
   "sequenceNo": 1,
   "question": "날개가 있나요?",
   "answer": "NO",
+  "comment": "날개처럼 보이지만 팔이에요.",
   "usedActionCount": 1,
   "remainingActionCount": 19
 }
@@ -1090,5 +1102,6 @@ destination:
 - selector/questioner DTO 직렬화 test
 - questioner payload의 secret field 부재 test
 - duplicate command와 stale version test
+- 답변 선택 코멘트의 생략 호환성, 정규화, 길이, action 형태 test
 - WebSocket disconnect·resume·timeout integration test
 - 문서 예시와 실제 DTO field가 어긋나지 않는 `ApiDocsTest`

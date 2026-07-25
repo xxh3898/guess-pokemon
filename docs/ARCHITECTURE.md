@@ -226,8 +226,8 @@ src/
   query를 route state에 보관한다.
 - `/history/:gameId`는 직접 URL을 지원하고 목록에서 들어온 경우
   filter·page가 유지된 경로로 돌아간다. 질문 문자열은 React text
-  node로만 렌더링하며 종료된 미답변 질문은 “답변 없이 종료”로
-  표시한다.
+  node로만 렌더링하며 답변 코멘트도 같은 원칙으로 표시한다. 종료된
+  미답변 질문은 “답변 없이 종료”로 표시한다.
 - history API payload는 UUID, 시각, enum, 참가자·action 조합,
   Pokémon artwork 계약을 화면 state에 넣기 전에 검증한다. 시각은
   저장된 UTC 값을 browser 현지 시간으로 표시한다.
@@ -309,9 +309,9 @@ room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든
 7. transaction commit 뒤 game memory와 room 상태 교체
 8. room lock 해제 뒤 participant별 event 생성·전송
 
-질문은 pending 상태를 만든다. 답변을 저장한 뒤 다음 행동을 허용한다. 추측은 서버가 `pokemon_species_id`를 정답과 비교해 즉시 결과를 확정한다.
+질문은 pending 상태를 만든다. 답변 코멘트는 선택 입력이며 domain에서 앞뒤 공백 제거와 NFC 정규화를 적용한다. 정규화한 값이 비어 있으면 null로 저장하고, Unicode code point 기준 200자를 넘으면 거절한다. 답변과 코멘트를 기존 question action에 함께 저장한 뒤 다음 행동을 허용하므로 코멘트는 행동 횟수를 추가로 사용하지 않는다. 추측은 서버가 `pokemon_species_id`를 정답과 비교해 즉시 결과를 확정한다.
 
-game start는 game 1건과 participant 2건을 한 transaction에 저장한다. 질문·답변·추측도 action과 game count·version·필요한 participant result를 같은 transaction에 반영한다. command service는 persistence bean의 transaction이 commit된 뒤에만 immutable candidate를 registry current state로 교체한다. DB 실패 시 이전 memory aggregate를 그대로 유지한다.
+game start는 game 1건과 participant 2건을 한 transaction에 저장한다. 질문·답변·선택 코멘트·추측도 action과 game count·version·필요한 participant result를 같은 transaction에 반영한다. `answer_comment`는 답변이 끝난 `QUESTION`에만 허용하는 DB `CHECK`로 domain 규칙을 한 번 더 지킨다. command service는 persistence bean의 transaction이 commit된 뒤에만 immutable candidate를 registry current state로 교체한다. DB 실패 시 이전 memory aggregate를 그대로 유지한다.
 
 active game은 모든 processed command ID를 memory에 보관한다. 질문·추측 command ID는 `game_action` unique constraint로도 막는다. 답변은 기존 action row를 갱신하므로 command ID를 memory에서 관리한다. 서버 재시작 뒤 active game을 복구하지 않는 동안은 별도 command journal을 두지 않는다.
 
@@ -486,6 +486,6 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - 정답이 질문자 DTO에 컴파일 단계부터 존재하지 않는다.
 - game state machine이 Spring·JPA 없이 단위 테스트 가능하다.
 - REST·STOMP command 모두 같은 application service와 domain 규칙을 호출한다.
-- DB migration, session schema, 타입을 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade 경로를 Testcontainers에서 검증한다.
+- DB migration, session schema, 타입을 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade와 V4 game action의 V5 upgrade 경로를 Testcontainers에서 검증한다.
 - Docker Compose로 local, test, production-like profile을 구분한다.
 - 향후 이메일 인증과 다중 서버는 현재 dead code 없이 확장 지점만 문서로 남긴다.
