@@ -500,6 +500,10 @@ query:
 | `page` | integer | 0 | 0 이상 |
 | `size` | integer | 20 | 1~100 |
 
+목록은 `endedAt`이 있는 종료 경기만 포함한다. 진행 중 경기는 노출하지
+않으며 `endedAt DESC`, `gameId DESC` 순서로 안정 정렬한다. `result`는
+현재 사용자의 참가자 결과에 적용한다.
+
 응답 `200`:
 
 ```json
@@ -532,6 +536,12 @@ query:
   "totalPages": 1
 }
 ```
+
+성공 응답에는 `Cache-Control: no-store`를 적용한다.
+
+오류:
+
+- 유효하지 않은 `result`, `page`, `size`: `400 VALIDATION_FAILED`
 
 ### 8.2 경기 상세
 
@@ -576,12 +586,16 @@ query:
       "type": "QUESTION",
       "question": "전기타입인가요?",
       "answer": "YES",
+      "guessedPokemon": null,
+      "correct": null,
       "createdAt": "2026-07-24T11:21:00Z",
       "answeredAt": "2026-07-24T11:21:04Z"
     },
     {
       "sequenceNo": 12,
       "type": "GUESS",
+      "question": null,
+      "answer": null,
       "guessedPokemon": {
         "nationalDexId": 25,
         "koreanName": "피카츄",
@@ -590,13 +604,26 @@ query:
         "artworkEnabled": true
       },
       "correct": true,
-      "createdAt": "2026-07-24T11:27:05Z"
+      "createdAt": "2026-07-24T11:27:05Z",
+      "answeredAt": null
     }
   ]
 }
 ```
 
-비참가자에게는 resource 존재 여부를 최소 노출하도록 `404 GAME_NOT_FOUND`를 반환한다.
+상세도 종료 경기만 조회한다. 중단 시점까지 답하지 못한 `QUESTION`은
+`answer`와 `answeredAt`을 모두 `null`로 반환한다. 화면은 이를 진행 중
+상태가 아닌 “답변 없이 종료”로 표시한다. 성공 응답에는
+`Cache-Control: no-store`를 적용한다.
+
+오류:
+
+- 잘못된 UUID 형식: `400 VALIDATION_FAILED`
+- 존재하지 않는 경기 또는 비참가자가 요청한 경기:
+  `404 GAME_NOT_FOUND`
+
+존재하지 않는 경기와 비참가자 요청은 같은 오류를 사용해 resource
+존재 여부를 구분할 수 없게 한다.
 
 ## 9. 운영 REST API
 

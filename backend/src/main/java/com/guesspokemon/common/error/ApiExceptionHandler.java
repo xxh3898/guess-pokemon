@@ -14,6 +14,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -33,7 +34,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler({
         MethodArgumentNotValidException.class,
         ConstraintViolationException.class,
-        HttpMessageNotReadableException.class
+        HttpMessageNotReadableException.class,
+        MethodArgumentTypeMismatchException.class
     })
     ResponseEntity<ProblemDetail> handleValidationException(
             Exception exception,

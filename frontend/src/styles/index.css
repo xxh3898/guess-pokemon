@@ -2,11 +2,13 @@
 @import "./reset.css";
 @import "./base.css";
 @import "./shared-components.css";
+@import "../shared/ui/authenticated-site-header.css";
 @import "../pages/home.css";
 @import "../features/auth/auth.css";
 @import "../pages/lobby.css";
 @import "../features/room/room.css";
 @import "../features/pokemon/pokemon.css";
 @import "../features/game/game.css";
+@import "../features/history/history.css";
 @import "../pages/system-status.css";
 @import "./accessibility.css";

@@ -1,15 +1,9 @@
 import {
   AlertCircle,
-  Clock3,
-  CircleHelp,
-  Gamepad2,
-  History,
   LoaderCircle,
-  LogOut,
   Plus,
   Play,
   Search,
-  UserRound,
   UsersRound,
 } from "lucide-react";
 import {
@@ -27,6 +21,7 @@ import {
   validateRoomCode,
 } from "../features/room/roomCode";
 import { ApiError } from "../shared/api/HttpClient";
+import { AuthenticatedSiteHeader } from "../shared/ui/AuthenticatedSiteHeader";
 import { PageStatus } from "../shared/ui/PageStatus";
 
 interface LobbyPageProps {
@@ -40,8 +35,6 @@ export function LobbyPage({
   const navigate = useNavigate();
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -61,23 +54,6 @@ export function LobbyPage({
   const { activeRoomCode, user } = auth.currentUser;
   const roomActionDisabled =
     creatingRoom || joiningRoom || activeRoomCode !== null;
-
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    setLogoutError(null);
-    try {
-      await auth.logout();
-      setLoggingOut(false);
-      navigate("/login", { replace: true });
-    } catch (error) {
-      setLogoutError(
-        error instanceof ApiError
-          ? error.detail
-          : "로그아웃 요청을 처리하지 못했습니다. 다시 시도해 주세요.",
-      );
-      setLoggingOut(false);
-    }
-  };
 
   const handleCreateRoom = async () => {
     if (roomActionDisabled) {
@@ -121,43 +97,7 @@ export function LobbyPage({
   return (
     <main className="site-page lobby-page">
       <div className="site-frame lobby-frame">
-        <header className="site-header">
-          <Link className="brand-link" to="/">
-            <span className="brand-link-mark" aria-hidden="true">
-              <CircleHelp size={24} strokeWidth={2.4} />
-            </span>
-            Guess Pokémon
-          </Link>
-
-          <nav aria-label="주요 메뉴" className="lobby-nav">
-            <span aria-current="page" className="lobby-nav-item is-active">
-              <Gamepad2 aria-hidden="true" size={17} />
-              로비
-            </span>
-            <span className="lobby-nav-item is-disabled">
-              <History aria-hidden="true" size={17} />
-              경기 기록
-            </span>
-          </nav>
-
-          <div className="header-actions">
-            <div className="profile-chip">
-              <UserRound aria-hidden="true" size={18} />
-              <span>{user.nickname}</span>
-            </div>
-            <button
-              className="logout-button"
-              disabled={loggingOut}
-              onClick={() => {
-                void handleLogout();
-              }}
-              type="button"
-            >
-              <LogOut aria-hidden="true" size={18} />
-              {loggingOut ? "로그아웃 중..." : "로그아웃"}
-            </button>
-          </div>
-        </header>
+        <AuthenticatedSiteHeader activePage="lobby" />
 
         <section className="lobby-content" aria-labelledby="lobby-title">
           <div className="lobby-heading">
@@ -168,12 +108,6 @@ export function LobbyPage({
               입장해 대전을 시작해 보세요.
             </p>
           </div>
-
-          {logoutError ? (
-            <div className="form-alert error-alert" role="alert">
-              {logoutError}
-            </div>
-          ) : null}
 
           {activeRoomCode ? (
             <article className="active-room-card">
@@ -299,15 +233,6 @@ export function LobbyPage({
               먼저 확인해 주세요.
             </p>
           ) : null}
-
-          <aside className="lobby-coming-soon">
-            <History aria-hidden="true" size={22} />
-            <div>
-              <strong>경기 기록 화면도 준비하고 있어요.</strong>
-              <p>완료한 경기의 질문과 추측을 다음 화면 작업에서 연결합니다.</p>
-            </div>
-            <Clock3 aria-hidden="true" size={20} />
-          </aside>
 
           <p className="account-note">
             아이디 <strong>{user.loginId}</strong>

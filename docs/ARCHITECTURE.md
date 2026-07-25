@@ -150,8 +150,13 @@ com.guesspokemon
 ### `history`
 
 - game, participant, action 영속화
-- 현재 사용자 기준 목록 projection
-- 참가자 인가 뒤 상세 조회
+- 종료 경기만 현재 사용자 기준으로 조회하는 목록 native projection
+- 목록 content·count 두 query와 `ended_at DESC, game_id DESC` 안정 정렬
+- 상세 header query에서 참가자 존재를 함께 확인하고 비참가자와
+  미존재 경기를 같은 404로 처리
+- 상세 header, 참가자, action을 고정 세 query로 조회해 N+1 방지
+- catalog row나 global artwork flag를 끈 뒤에도 기록 정보는 유지하고
+  artwork URL만 비활성화
 
 ### `realtime`
 
@@ -173,7 +178,7 @@ src/
 │   ├── room/        # 방 REST 계약, route orchestration, room state
 │   ├── game/        # 역할별 게임, 결과, 재접속·이탈 화면
 │   ├── pokemon/     # 전국도감 gateway, picker, artwork fallback
-│   └── history/     # 후속 화면 단위
+│   └── history/     # 기록 목록·상세 gateway, parser, 화면, timeline
 ├── pages/
 │   ├── HomePage.tsx
 │   ├── LobbyPage.tsx
@@ -204,6 +209,18 @@ src/
 - `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
 - anonymous-only route는 로그인 회원을 `/lobby`로 보내고, protected route는 원래 내부 URL을 보존한 채 비회원을 `/login`으로 보낸다.
 - 로비는 방 생성·코드 입장·활성 방 이어하기를 REST API와 연결하고, `/rooms/:roomCode`는 direct URL과 뒤로가기를 지원한다.
+- 로비와 경기 기록 목록은 공통 인증 header를 사용하며 desktop nav와
+  mobile menu에서 `/lobby`, `/history`를 오갈 수 있다.
+- `/history`는 결과 filter와 page를 URL query에 두고 기본값을 생략한다.
+  초과 page는 마지막 유효 page로 보정하며 목록에서 상세로 이동할 때
+  query를 route state에 보관한다.
+- `/history/:gameId`는 직접 URL을 지원하고 목록에서 들어온 경우
+  filter·page가 유지된 경로로 돌아간다. 질문 문자열은 React text
+  node로만 렌더링하며 종료된 미답변 질문은 “답변 없이 종료”로
+  표시한다.
+- history API payload는 UUID, 시각, enum, 참가자·action 조합,
+  Pokémon artwork 계약을 화면 state에 넣기 전에 검증한다. 시각은
+  저장된 UTC 값을 browser 현지 시간으로 표시한다.
 - `@stomp/stompjs` client는 앱 전체에 하나만 활성화하고 room route 수명주기에 맞춰 `activate`·`deactivate`한다.
 - room route는 연결할 때마다 CSRF credential을 넣고 사용자별 queue를 구독한 뒤 `resume`을 보내 authoritative snapshot을 복구한다.
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.

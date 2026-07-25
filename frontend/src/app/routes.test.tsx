@@ -84,6 +84,25 @@ describe("application routes", () => {
     });
   });
 
+  it("should_preserveHistoryLocation_when_anonymousUserOpensHistoryDirectly", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/history?result=WIN&page=2#latest"],
+    });
+
+    renderRouter(router, createAuthContextValue());
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "로그인",
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.state).toEqual({
+      from: "/history?result=WIN&page=2#latest",
+    });
+  });
+
   it("should_redirectToLobby_when_authenticatedUserOpensSignup", async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ["/signup"],

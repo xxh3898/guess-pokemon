@@ -6,6 +6,8 @@ import {
 } from "../features/auth/AuthRouteGuards";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SignupPage } from "../features/auth/SignupPage";
+import { HistoryDetailPage } from "../features/history/HistoryDetailPage";
+import { HistoryListPage } from "../features/history/HistoryListPage";
 import { RoomPage } from "../features/room/RoomPage";
 import { HomePage } from "../pages/HomePage";
 import { LobbyPage } from "../pages/LobbyPage";
@@ -39,6 +41,14 @@ export const routes: RouteObject[] = [
       {
         path: "/rooms/:roomCode",
         Component: RoomPage,
+      },
+      {
+        path: "/history",
+        Component: HistoryListPage,
+      },
+      {
+        path: "/history/:gameId",
+        Component: HistoryDetailPage,
       },
     ],
   },

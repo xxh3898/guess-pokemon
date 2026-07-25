@@ -48,6 +48,9 @@ describe("LobbyPage", () => {
       screen.getByRole("link", { name: "이어서 하기" }),
     ).toHaveAttribute("href", "/rooms/AB3K7M");
     expect(screen.getByText("trainer_red")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "경기 기록" }),
+    ).toHaveAttribute("href", "/history");
   });
 
   it("should_openWaitingRoom_when_roomCreationSucceeds", async () => {

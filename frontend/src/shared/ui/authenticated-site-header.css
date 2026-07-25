@@ -1,0 +1,220 @@
+.authenticated-site-header {
+  position: relative;
+}
+
+.authenticated-brand-link {
+  margin-right: auto;
+}
+
+.authenticated-nav {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+}
+
+.authenticated-nav-item {
+  display: inline-flex;
+  min-height: 100%;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 3px solid transparent;
+  padding: 0 18px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 760;
+  text-decoration: none;
+}
+
+.authenticated-nav-item:hover {
+  color: var(--blue-dark);
+  background: rgba(234, 243, 255, 0.55);
+}
+
+.authenticated-nav-item.is-active {
+  border-bottom-color: var(--blue);
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+}
+
+.authenticated-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.profile-chip,
+.logout-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.profile-chip {
+  min-width: 0;
+  border: 1px solid rgba(34, 154, 122, 0.25);
+  color: #146d57;
+  background: var(--mint-soft);
+}
+
+.profile-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-button {
+  border: 1px solid transparent;
+  color: var(--navy);
+  background: transparent;
+}
+
+.logout-button:hover:not(:disabled) {
+  border-color: rgba(255, 107, 98, 0.3);
+  color: #a9322c;
+  background: var(--coral-soft);
+}
+
+.logout-button:disabled {
+  color: #8d99a6;
+}
+
+.mobile-menu-button,
+.authenticated-mobile-menu {
+  display: none;
+}
+
+.header-logout-error {
+  border-bottom: 1px solid rgba(255, 107, 98, 0.4);
+  padding: 11px 34px;
+  color: #a9322c;
+  background: var(--coral-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 980px) {
+  .authenticated-site-header {
+    justify-content: flex-start;
+  }
+
+  .authenticated-brand-link {
+    margin-right: 0;
+  }
+
+  .authenticated-nav,
+  .desktop-logout-button {
+    display: none;
+  }
+
+  .mobile-menu-button {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--navy);
+    background: transparent;
+  }
+
+  .mobile-menu-button:hover,
+  .mobile-menu-button[aria-expanded="true"] {
+    border-color: var(--line);
+    color: var(--blue-dark);
+    background: var(--blue-soft);
+  }
+
+  .authenticated-header-actions {
+    min-width: 0;
+    margin-left: auto;
+  }
+
+  .authenticated-mobile-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 1px);
+    right: 16px;
+    left: 16px;
+    display: grid;
+    gap: 7px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 10px;
+    background: var(--paper);
+    box-shadow: 0 16px 34px rgba(23, 50, 77, 0.18);
+  }
+
+  .mobile-menu-link,
+  .mobile-menu-logout {
+    display: flex;
+    min-height: 46px;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 0 13px;
+    color: var(--navy);
+    background: transparent;
+    font-size: 0.88rem;
+    font-weight: 760;
+    text-decoration: none;
+  }
+
+  .mobile-menu-link[aria-current="page"] {
+    border-color: rgba(59, 142, 239, 0.25);
+    color: var(--blue-dark);
+    background: var(--blue-soft);
+  }
+
+  .mobile-menu-logout {
+    width: 100%;
+    border-top-color: var(--line);
+    color: #a9322c;
+  }
+}
+
+@media (max-width: 460px) {
+  .authenticated-site-header {
+    gap: 10px;
+  }
+
+  .authenticated-brand-link {
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+
+  .authenticated-brand-link .brand-link-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .authenticated-brand-link .brand-link-mark svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .authenticated-header-actions {
+    max-width: 86px;
+  }
+
+  .profile-chip {
+    max-width: 86px;
+    padding: 0 9px;
+  }
+
+  .profile-chip svg {
+    flex: 0 0 auto;
+  }
+
+  .header-logout-error {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+}

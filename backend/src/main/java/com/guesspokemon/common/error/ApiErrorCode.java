@@ -56,6 +56,10 @@ public enum ApiErrorCode {
             HttpStatus.NOT_FOUND,
             "포켓몬 없음",
             "요청한 포켓몬을 찾을 수 없습니다."),
+    GAME_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "경기 기록 없음",
+            "요청한 경기 기록을 찾을 수 없습니다."),
     USER_ALREADY_IN_ACTIVE_ROOM(
             HttpStatus.CONFLICT,
             "방 참여 실패",
