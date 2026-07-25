@@ -108,6 +108,81 @@ describe("GameScreen", () => {
     ).toBeDisabled();
   });
 
+  it("should_sendQuestion_when_enterIsPressed", () => {
+    const onAsk = vi.fn();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={onAsk}
+        onOpenPokedex={vi.fn()}
+        snapshot={questionerSnapshot()}
+      />,
+    );
+    const question = screen.getByLabelText("질문");
+    fireEvent.change(question, {
+      target: { value: "  날개가 있나요?  " },
+    });
+
+    fireEvent.keyDown(question, { key: "Enter" });
+
+    expect(onAsk).toHaveBeenCalledOnce();
+    expect(onAsk).toHaveBeenCalledWith("날개가 있나요?");
+    expect(question).toHaveValue("");
+  });
+
+  it("should_keepQuestionDraft_when_shiftEnterIsPressed", () => {
+    const onAsk = vi.fn();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={onAsk}
+        onOpenPokedex={vi.fn()}
+        snapshot={questionerSnapshot()}
+      />,
+    );
+    const question = screen.getByLabelText("질문");
+    fireEvent.change(question, {
+      target: { value: "날개가 있나요?" },
+    });
+
+    const dispatched = fireEvent.keyDown(question, {
+      key: "Enter",
+      shiftKey: true,
+    });
+
+    expect(dispatched).toBe(true);
+    expect(onAsk).not.toHaveBeenCalled();
+    expect(question).toHaveValue("날개가 있나요?");
+  });
+
+  it("should_notSendQuestion_when_enterIsPressedDuringComposition", () => {
+    const onAsk = vi.fn();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={onAsk}
+        onOpenPokedex={vi.fn()}
+        snapshot={questionerSnapshot()}
+      />,
+    );
+    const question = screen.getByLabelText("질문");
+    fireEvent.change(question, {
+      target: { value: "날개가 있나요?" },
+    });
+
+    const dispatched = fireEvent.keyDown(question, {
+      isComposing: true,
+      key: "Enter",
+    });
+
+    expect(dispatched).toBe(true);
+    expect(onAsk).not.toHaveBeenCalled();
+    expect(question).toHaveValue("날개가 있나요?");
+  });
+
   it("should_sendSelectedAnswer_when_selectorHasPendingQuestion", () => {
     const onAnswer = vi.fn();
     const base = selectorSnapshot();

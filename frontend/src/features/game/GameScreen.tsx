@@ -11,6 +11,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type KeyboardEvent,
 } from "react";
 
 import {
@@ -193,13 +194,29 @@ function QuestionPanel({
     pendingQuestion !== null ||
     remaining === 0;
   const normalized = question.trim();
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const sendQuestion = () => {
     if (blocked || normalized.length === 0) {
       return;
     }
     onAsk(normalized);
     setQuestion("");
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    sendQuestion();
+  };
+  const handleQuestionKeyDown = (
+    event: KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+    event.preventDefault();
+    sendQuestion();
   };
   return (
     <form className="question-composer panel-card" onSubmit={submit}>
@@ -218,6 +235,7 @@ function QuestionPanel({
           onChange={(event) => {
             setQuestion(event.target.value);
           }}
+          onKeyDown={handleQuestionKeyDown}
           placeholder={
             pendingQuestion
               ? "답변을 기다리는 동안 새 질문을 보낼 수 없어요"
