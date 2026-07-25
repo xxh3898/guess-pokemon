@@ -1,0 +1,79 @@
+services:
+  api:
+    environment:
+      SESSION_COOKIE_SECURE: "true"
+
+  web:
+    ports: !override
+      - "127.0.0.1:${TUNNEL_ORIGIN_PORT:-8080}:80"
+    networks:
+      default:
+      tunnel-origin:
+        ipv4_address: 172.30.77.2
+    volumes:
+      - type: bind
+        source: ./infra/nginx/cloudflare-real-ip.conf
+        target: /etc/nginx/conf.d/00-cloudflare-real-ip.conf
+        read_only: true
+
+  cloudflared-quick:
+    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    profiles:
+      - quick-tunnel
+    command:
+      - tunnel
+      - --url
+      - http://web:80
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    restart: "no"
+    depends_on:
+      web:
+        condition: service_started
+    networks:
+      tunnel-origin:
+        ipv4_address: 172.30.77.3
+
+  cloudflared-named:
+    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    profiles:
+      - named-tunnel
+    command:
+      - tunnel
+      - run
+      - --token-file
+      - /run/secrets/cloudflare_tunnel_token
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    networks:
+      tunnel-origin:
+        ipv4_address: 172.30.77.4
+    secrets:
+      - source: cloudflare_tunnel_token
+        target: cloudflare_tunnel_token
+
+networks:
+  tunnel-origin:
+    ipam:
+      config:
+        - subnet: 172.30.77.0/29
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:-./secrets/cloudflare-tunnel-token}

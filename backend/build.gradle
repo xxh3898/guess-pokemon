@@ -48,4 +48,8 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    outputs.upToDateWhen {
+        System.getenv('QUICK_TUNNEL_URL') == null &&
+            System.getenv('LOCAL_NGINX_URL') == null
+    }
 }

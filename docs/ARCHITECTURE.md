@@ -24,7 +24,7 @@
 | Auth rate limit | Caffeine 3.2.x | 단일 instance의 짧은 수명 요청 제한 |
 | 실시간 server | Spring WebSocket/STOMP simple broker | 단일 API instance |
 | Reverse proxy | Nginx 1.30.4 Alpine multi-arch image | SPA fallback, `/api`, `/ws` proxy |
-| 외부 공개 | Cloudflare Tunnel | 테스트 Quick Tunnel, 운영 named tunnel |
+| 외부 공개 | cloudflared 2026.7.3 multi-arch digest 고정 | 테스트 Quick Tunnel, 운영 remotely-managed named tunnel |
 | 검증 | JUnit, Spring Test, Testcontainers, Vitest, Testing Library, Playwright | 계층별 자동 검증 |
 
 구현 시작 시 patch 버전을 다시 확인하고 lockfile, Gradle Wrapper, Spring Boot dependency management에 고정한다.
@@ -60,6 +60,7 @@ guess-pokemon/
 ├── compose.yaml
 ├── compose.dev.yaml
 ├── compose.test.yaml
+├── compose.tunnel.yaml
 ├── docs/
 │   ├── PRD.md
 │   ├── ARCHITECTURE.md
@@ -80,12 +81,14 @@ guess-pokemon/
 │   ├── gradle/wrapper/
 │   └── src/
 ├── infra/
-│   ├── nginx/
-│   └── cloudflared/
+│   └── nginx/
+│       ├── default.conf
+│       └── cloudflare-real-ip.conf
 └── scripts/
     ├── fetch-pokemon-catalog.mjs
     ├── backup-db.sh
-    └── verify-compose.sh
+    ├── verify-compose.sh
+    └── operations-config.test.mjs
 ```
 
 `docs/**`는 서비스 범위와 기술 명세를 관리하는 공식 프로젝트 문서다. 코드와 공개 계약을 변경할 때 관련 문서를 같은 변경 단위에서 갱신한다.
@@ -374,19 +377,26 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - backend test container의 `/var/run/docker.sock` mount는 Docker daemon 전체 제어 권한에 해당하므로 신뢰할 수 있는 로컬 코드 검증에만 사용한다.
 - 외부 PokéAPI에 의존하지 않고 versioned catalog fixture를 사용한다.
 - Testcontainers DB는 실행마다 임의 port와 credential을 사용하고 test 종료 뒤 폐기한다.
+- `infra-test`는 Nginx·Tunnel·backup·Compose 정적 계약을 검사하고 `nginx-config-test`는 실제 Nginx image에서 `nginx -t`를 실행한다.
+- `QuickTunnelConnectivityTest`는 `QUICK_TUNNEL_URL`을 명시한 경우에만 HTTPS, Secure cookie, 두 REST session과 WSS/STOMP를 외부 통합 검증한다.
 
 ### 운영
 
-- 현재 production-like 구성은 `web`, `api`, `db` 세 service를 사용하고, `tunnel`은 홈서버 배포 단계에서 추가한다.
+- base production-like 구성은 `web`, `api`, `db` 세 service를 유지한다.
+- `compose.tunnel.yaml`은 base 구성에 Quick Tunnel과 remotely-managed named tunnel profile을 추가한다.
+- Quick과 named connector는 동시에 실행하지 않고 profile을 지정하지 않으면 둘 다 생성하지 않는다.
 - `db`는 external port를 publish하지 않고 Docker network에만 expose한다.
 - named volume을 PostgreSQL 18의 `/var/lib/postgresql`에 mount해 data를 보관한다.
-- `web`만 내부 HTTP origin으로 노출하고 Tunnel이 outbound connection을 만든다.
-- Nginx는 `/api`, `/ws`, SPA fallback, request body limit, security header를 담당한다.
-- Nginx는 외부에서 받은 `X-Forwarded-For`를 이어 붙이지 않고 직접 확인한 remote address로 덮어쓴다.
-- `/ws` proxy는 원래 `Host`의 명시적 port를 `X-Forwarded-Port`로 전달한다. Docker port mapping에서도 Spring same-origin 검사가 브라우저 `Origin`과 같은 외부 port를 비교하게 한다.
+- Tunnel override는 `web`의 host port를 loopback에만 bind하고 `SESSION_COOKIE_SECURE=true`를 강제한다.
+- cloudflared는 별도 `tunnel-origin` network에서 `web:80`에만 접근하고 DB·API default network에는 참여하지 않는다.
+- Nginx는 `/api`, `/ws`, SPA fallback, request body limit, security header와 짧은 request burst 제한을 담당한다.
+- Nginx는 고정한 connector 주소에서 받은 `CF-Connecting-IP`만 client IP로 정규화한다. direct origin 요청이 보낸 같은 header는 신뢰하지 않는다.
+- Nginx는 신뢰한 Tunnel의 `X-Forwarded-Proto`와 public Host를 외부 scheme·host·port로 정규화한다. public HTTPS는 Spring에 port 443으로 전달하고 local Host의 명시적 port는 그대로 보존한다.
+- 일반 API는 IP별 초당 20회와 burst 40, login·signup은 분당 30회와 burst 10을 허용하고 초과 요청에 429를 반환한다.
+- HSTS는 외부 scheme을 HTTPS로 확인한 요청에만 보낸다.
 - Nginx가 외부에 전달하는 Actuator 경로는 liveness와 readiness 두 개로 제한한다.
 - API readiness에는 `readinessState`와 `db`를 포함하고 liveness에는 외부 dependency를 포함하지 않는다.
-- Cloudflare가 외부 TLS를 종료하고 `X-Forwarded-*`를 전달한다.
+- Cloudflare가 외부 TLS를 종료하고 Tunnel이 outbound connection을 만든다. router inbound port는 열지 않는다.
 - Spring은 신뢰하는 proxy header만 처리하도록 설정한다.
 - Mac mini 운영 DB는 MacBook 개발 DB와 다른 DB 이름·계정·secret·named volume을 사용한다.
 - 운영 migration은 Testcontainers 검증을 통과한 동일한 Flyway 파일을 backup 뒤 적용한다.
@@ -400,7 +410,8 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - 운영 secret file과 backup directory는 `.gitignore`에 포함한다.
 - application은 login ID별 실패 5회/10분, client IP별 login 30회/10분, signup 5회/10분을 제한한다.
 - 제한 상태는 Caffeine cache 세 개에 각각 최대 10,000개 key만 저장한다. API 재시작 시 초기화되며 여러 API instance가 상태를 공유하지 않는다.
-- Nginx 자체 rate limit과 Cloudflare client IP 신뢰 설정은 홈서버 배포 단위에서 추가한다.
+- Nginx rate limit는 짧은 burst를 줄이고 application의 10분 인증 제한을 대체하지 않는다.
+- named tunnel token은 file secret으로만 전달하고 Quick Tunnel에는 credential을 제공하지 않는다.
 - STOMP `CONNECT`는 HTTP session 인증과 CSRF token을 검사한다.
 - STOMP `SEND`는 `/app/rooms/**`만 허용하고 handler가 room membership을 검사한다.
 - STOMP `SUBSCRIBE`는 사용자별 `/user/queue/game-events`, `/user/queue/errors`만 허용한다. 공개 room subscription은 없다.
@@ -421,7 +432,9 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
   - game start/end와 end reason
   - reconnect start/success/timeout
 - password, CSRF token, session ID, question 본문, 실제 정답은 debug log에도 남기지 않는다.
-- `docs/OPERATIONS.md`에 start, stop, update, backup, restore rehearsal, tunnel 전환, rollback을 적는다.
+- `docs/OPERATIONS.md`는 start, stop, update, backup, restore rehearsal, tunnel 전환, rollback을 관리한다.
+- `scripts/backup-db.sh`는 custom-format dump를 private temporary file에 만든 뒤 `pg_restore --list`를 통과한 archive만 최종 이름으로 공개한다.
+- backup 자동 삭제와 운영 restore는 자동화하지 않는다.
 
 ## 16. 확장 경계
 

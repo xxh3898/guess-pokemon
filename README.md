@@ -95,6 +95,7 @@ Nginx WebSocket 프록시 설정 검증은 다음 명령으로 실행합니다.
 
 ```bash
 docker compose -f compose.test.yaml run --rm infra-test
+docker compose -f compose.test.yaml run --rm nginx-config-test
 ```
 
 서비스를 종료할 때는 PostgreSQL named volume을 보존합니다.
@@ -105,12 +106,31 @@ docker compose --env-file .env down
 
 `docker compose down -v`는 PostgreSQL 데이터를 제거하므로 별도 백업과 명시적 판단 없이 실행하지 않습니다.
 
+## 외부 통합 테스트와 운영
+
+`compose.tunnel.yaml`은 기존 Compose에 Cloudflare Quick Tunnel·named tunnel profile을 추가합니다. Quick Tunnel은 격리된 임시 DB에서만 사용하고, named tunnel token은 Git에서 제외한 file secret으로 전달합니다. Tunnel 구성은 origin port를 loopback으로 제한하고 운영 session cookie의 `Secure` 값을 강제합니다.
+
+service를 시작하지 않고 base·dev·Tunnel 병합 결과를 먼저 확인할 수 있습니다.
+
+```bash
+ENV_FILE=.env ./scripts/verify-compose.sh
+```
+
+Quick Tunnel은 무작위 공개 URL을 만들고 named tunnel은 실제 Cloudflare 계정·domain route를 사용하므로 실행 전에 대상 환경과 데이터 경계를 확인해야 합니다. 실행, backup, restore rehearsal, rollback 절차는 [운영 가이드](docs/OPERATIONS.md)를 따릅니다.
+
+PostgreSQL custom-format backup은 실행 중인 DB container의 도구로 생성하고 archive 목록을 확인합니다.
+
+```bash
+ENV_FILE=.env ./scripts/backup-db.sh
+```
+
 ## 문서
 
 - [서비스 요구사항](docs/PRD.md)
 - [아키텍처](docs/ARCHITECTURE.md)
 - [ERD](docs/ERD.md)
 - [REST·STOMP API 명세](docs/API.md)
+- [운영 가이드](docs/OPERATIONS.md)
 
 현재는 TypeScript 7.0.2 기반 React SPA와 Spring Boot, PostgreSQL 18.4를 Docker Compose로 실행할 수 있습니다. 프런트엔드는 회원가입·로그인·로그아웃, cookie session 복원, CSRF 공통 client, 비회원·회원 route guard, 방 생성·코드 입장·이어하기와 실시간 대기방을 제공합니다. 대기방은 `@stomp/stompjs`로 사용자별 queue를 구독하고 `resume` snapshot, 연결 상태, 명시적 이탈과 방 종료를 동기화합니다. 백엔드는 Flyway 기반 회원·Spring Session·전국도감·경기 기록 schema와 포켓몬 검색, 2인 방 REST API를 제공합니다. `/ws` STOMP 연결에는 session 인증과 CSRF를 적용했으며 정답 선택, 질문, 답변, 추측, 60초 재접속, 이탈 종료, 역할을 바꾸는 재대결을 사용자별 event로 처리합니다. 포켓몬 선택·실제 경기·기록 프런트엔드 화면은 후속 작업 단위에서 연결합니다.
 
