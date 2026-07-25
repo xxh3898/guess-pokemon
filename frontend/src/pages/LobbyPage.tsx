@@ -17,6 +17,7 @@ import {
   type RoomGateway,
   roomGateway,
 } from "../features/room/roomApi";
+import { JoinableRoomList } from "../features/room/JoinableRoomList";
 import {
   validateRoomCode,
 } from "../features/room/roomCode";
@@ -35,6 +36,7 @@ export function LobbyPage({
   const navigate = useNavigate();
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
+  const [joiningListedRoom, setJoiningListedRoom] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -53,7 +55,10 @@ export function LobbyPage({
 
   const { activeRoomCode, user } = auth.currentUser;
   const roomActionDisabled =
-    creatingRoom || joiningRoom || activeRoomCode !== null;
+    creatingRoom ||
+    joiningRoom ||
+    joiningListedRoom ||
+    activeRoomCode !== null;
 
   const handleCreateRoom = async () => {
     if (roomActionDisabled) {
@@ -208,6 +213,7 @@ export function LobbyPage({
                   </p>
                 ) : null}
                 <button
+                  aria-label="입력한 방 코드로 입장하기"
                   className="mint-button"
                   disabled={roomActionDisabled}
                   type="submit"
@@ -233,6 +239,16 @@ export function LobbyPage({
               먼저 확인해 주세요.
             </p>
           ) : null}
+
+          <JoinableRoomList
+            disabled={roomActionDisabled}
+            gateway={gateway}
+            onJoined={(joinedRoomCode) => {
+              auth.setActiveRoomCode(joinedRoomCode);
+              navigate(`/rooms/${joinedRoomCode}`);
+            }}
+            onJoiningChange={setJoiningListedRoom}
+          />
 
           <p className="account-note">
             아이디 <strong>{user.loginId}</strong>

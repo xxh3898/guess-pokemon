@@ -7,6 +7,7 @@ import com.guesspokemon.realtime.RealtimeEventPublisher;
 import com.guesspokemon.realtime.RoomConnectionService;
 import com.guesspokemon.room.RoomApplicationService.JoinOutcome;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
+import com.guesspokemon.room.RoomDtos.JoinableRoomListResponse;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.security.AuthenticatedUser;
 import org.springframework.http.CacheControl;
@@ -66,6 +67,15 @@ public class RoomController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(outcome.joinedSnapshot());
+    }
+
+    @GetMapping
+    ResponseEntity<JoinableRoomListResponse> list(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
+        requireAuthenticatedUser(authenticatedUser);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(roomApplicationService.listJoinableRooms());
     }
 
     @GetMapping("/{roomCode}")

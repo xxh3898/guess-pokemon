@@ -8,6 +8,10 @@ import {
   normalizeRoomCode,
 } from "./roomCode";
 import {
+  parseJoinableRoomListResponse,
+  type JoinableRoomListResponse,
+} from "./joinableRoomTypes";
+import {
   parseRoomSnapshot,
   parseWaitingRoomSnapshot,
   type RoomSnapshot,
@@ -16,6 +20,7 @@ import {
 
 export interface RoomGateway {
   create(signal?: AbortSignal): Promise<WaitingRoomSnapshot>;
+  list(signal?: AbortSignal): Promise<JoinableRoomListResponse>;
   get(
     roomCode: string,
     signal?: AbortSignal,
@@ -36,6 +41,13 @@ export function createRoomGateway(client: HttpClient): RoomGateway {
         signal,
       );
       return parseWaitingRoomSnapshot(payload);
+    },
+    async list(signal) {
+      const payload = await client.get(
+        "/api/v1/rooms",
+        signal,
+      );
+      return parseJoinableRoomListResponse(payload);
     },
     async get(roomCode, signal) {
       const normalizedCode = requireRoomCode(roomCode);

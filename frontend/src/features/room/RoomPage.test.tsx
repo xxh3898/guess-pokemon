@@ -815,6 +815,7 @@ function createRoomGateway(
     get: vi.fn().mockResolvedValue(HOST_SNAPSHOT),
     join: vi.fn().mockResolvedValue(TWO_PLAYER_SNAPSHOT),
     leave: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue({ rooms: [] }),
     ...overrides,
   };
 }

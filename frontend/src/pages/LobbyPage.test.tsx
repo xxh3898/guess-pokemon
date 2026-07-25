@@ -93,7 +93,11 @@ describe("LobbyPage", () => {
     fireEvent.change(await screen.findByLabelText("방 코드"), {
       target: { value: "ab3k7m" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "입장하기" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "입력한 방 코드로 입장하기",
+      }),
+    );
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/rooms/AB3K7M");
@@ -115,7 +119,11 @@ describe("LobbyPage", () => {
     fireEvent.change(await screen.findByLabelText("방 코드"), {
       target: { value: "AB12" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "입장하기" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "입력한 방 코드로 입장하기",
+      }),
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "친구에게 받은 방 코드 6자리를 입력해 주세요.",
@@ -145,7 +153,11 @@ describe("LobbyPage", () => {
     fireEvent.change(await screen.findByLabelText("방 코드"), {
       target: { value: "AB3K7M" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "입장하기" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "입력한 방 코드로 입장하기",
+      }),
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "방을 찾을 수 없습니다.",
@@ -168,8 +180,51 @@ describe("LobbyPage", () => {
       await screen.findByRole("button", { name: "방 만들기" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "입장하기" }),
+      screen.getByRole("button", {
+        name: "입력한 방 코드로 입장하기",
+      }),
     ).toBeDisabled();
+  });
+
+  it("should_openWaitingRoom_when_joinableRoomIsSelected", async () => {
+    const setActiveRoomCode = vi.fn();
+    const gateway = createRoomGateway({
+      join: vi.fn().mockResolvedValue({
+        ...GUEST_SNAPSHOT,
+        roomCode: "ABCD23",
+      }),
+      list: vi.fn().mockResolvedValue({
+        rooms: [
+          {
+            hostNickname: "블루",
+            roomCode: "ABCD23",
+          },
+        ],
+      }),
+    });
+    const router = renderLobby(
+      createAuthContextValue({
+        currentUser: TEST_CURRENT_USER,
+        setActiveRoomCode,
+        status: "authenticated",
+      }),
+      gateway,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "블루님의 방 ABCD23 입장하기",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/rooms/ABCD23");
+    });
+    expect(gateway.join).toHaveBeenCalledWith(
+      "ABCD23",
+      expect.anything(),
+    );
+    expect(setActiveRoomCode).toHaveBeenCalledWith("ABCD23");
   });
 
   it("should_openLogin_when_logoutSucceeds", async () => {
@@ -259,6 +314,7 @@ function createRoomGateway(
     get: vi.fn().mockResolvedValue(HOST_SNAPSHOT),
     join: vi.fn().mockResolvedValue(GUEST_SNAPSHOT),
     leave: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue({ rooms: [] }),
     ...overrides,
   };
 }

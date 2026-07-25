@@ -295,6 +295,10 @@ final class Room {
         return guest != null;
     }
 
+    boolean isJoinable() {
+        return status == WAITING_FOR_OPPONENT && guest == null;
+    }
+
     boolean isHostOnlyExpired(
             Instant now,
             Duration waitingExpiry) {
@@ -316,6 +320,14 @@ final class Room {
 
     UUID hostUserId() {
         return host.userId();
+    }
+
+    String hostNickname() {
+        return host.nickname();
+    }
+
+    Instant createdAt() {
+        return createdAt;
     }
 
     UUID guestUserId() {

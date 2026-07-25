@@ -21,9 +21,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.guesspokemon.common.error.ApiErrorCode;
 import com.guesspokemon.common.error.ApiException;
 import com.guesspokemon.game.GameViews.SelectorGameView;
+import com.guesspokemon.room.RoomDtos.JoinableRoomSummary;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -226,6 +228,174 @@ class RoomRegistryTest {
         assertEquals(1, roomRegistry.activeRoomCount());
         assertFalse(roomRegistry.findActiveRoomCode(host.id()).isEmpty());
         assertFalse(roomRegistry.findActiveRoomCode(guest.id()).isEmpty());
+    }
+
+    @Test
+    void should_listOnlyJoinableRoomsInNewestOrder_when_roomsHaveDifferentStates() {
+        TestUser oldestHost = user(1, "레드");
+        TestUser newestHost = user(2, "그린");
+        TestUser joinedHost = user(3, "블루");
+        TestUser guest = user(4, "옐로");
+        RoomSnapshot oldest =
+                roomRegistry.create(
+                        oldestHost.id(),
+                        oldestHost.nickname());
+        clock.advance(Duration.ofSeconds(1));
+        RoomSnapshot newest =
+                roomRegistry.create(
+                        newestHost.id(),
+                        newestHost.nickname());
+        clock.advance(Duration.ofSeconds(1));
+        RoomSnapshot joined =
+                roomRegistry.create(
+                        joinedHost.id(),
+                        joinedHost.nickname());
+        roomRegistry.join(
+                joined.roomCode(),
+                guest.id(),
+                guest.nickname());
+
+        List<JoinableRoomSummary> summaries =
+                roomRegistry.listJoinableRooms();
+
+        assertEquals(
+                List.of(
+                        new JoinableRoomSummary(
+                                newest.roomCode(),
+                                newestHost.nickname()),
+                        new JoinableRoomSummary(
+                                oldest.roomCode(),
+                                oldestHost.nickname())),
+                summaries);
+        assertThrows(
+                UnsupportedOperationException.class,
+                () ->
+                        summaries.add(
+                                new JoinableRoomSummary(
+                                        "ABC234",
+                                        "추가")));
+    }
+
+    @Test
+    void should_sortByCode_when_roomsHaveSameCreationTime() {
+        RoomSnapshot first =
+                roomRegistry.create(
+                        user(1, "레드").id(),
+                        "레드");
+        RoomSnapshot second =
+                roomRegistry.create(
+                        user(2, "그린").id(),
+                        "그린");
+        List<String> expectedCodes =
+                List.of(first.roomCode(), second.roomCode()).stream()
+                        .sorted()
+                        .toList();
+
+        List<String> actualCodes =
+                roomRegistry.listJoinableRooms().stream()
+                        .map(JoinableRoomSummary::roomCode)
+                        .toList();
+
+        assertEquals(expectedCodes, actualCodes);
+    }
+
+    @Test
+    void should_removeExpiredRooms_when_joinableRoomsAreListed() {
+        TestUser host = user(1, "레드");
+        roomRegistry.create(host.id(), host.nickname());
+        clock.advance(WAITING_EXPIRY);
+
+        List<JoinableRoomSummary> summaries =
+                roomRegistry.listJoinableRooms();
+
+        assertTrue(summaries.isEmpty());
+        assertTrue(roomRegistry.findActiveRoomCode(host.id()).isEmpty());
+        assertEquals(1, roomRegistry.expiredCodeCount());
+    }
+
+    @Test
+    void should_limitJoinableRooms_when_moreThanFiftyRoomsExist() {
+        List<String> createdCodes = new ArrayList<>();
+        for (int suffix = 1; suffix <= 51; suffix++) {
+            createdCodes.add(
+                    roomRegistry
+                            .create(
+                                    user(suffix, "방장" + suffix).id(),
+                                    "방장" + suffix)
+                            .roomCode());
+            clock.advance(Duration.ofSeconds(1));
+        }
+
+        List<JoinableRoomSummary> summaries =
+                roomRegistry.listJoinableRooms();
+
+        assertEquals(50, summaries.size());
+        assertEquals(
+                createdCodes.get(50),
+                summaries.getFirst().roomCode());
+        assertFalse(
+                summaries.stream()
+                        .anyMatch(
+                                summary ->
+                                        summary.roomCode()
+                                                .equals(
+                                                        createdCodes
+                                                                .getFirst())));
+    }
+
+    @Test
+    void should_returnConsistentSnapshot_when_joinOccursWhileListing()
+            throws Exception {
+        TestUser host = user(1, "레드");
+        TestUser guest = user(2, "그린");
+        String roomCode =
+                roomRegistry.create(host.id(), host.nickname()).roomCode();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Void> joinFuture =
+                    executor.submit(
+                            () -> {
+                                ready.countDown();
+                                assertTrue(
+                                        start.await(
+                                                5,
+                                                TimeUnit.SECONDS));
+                                roomRegistry.join(
+                                        roomCode,
+                                        guest.id(),
+                                        guest.nickname());
+                                return null;
+                            });
+            Future<List<JoinableRoomSummary>> listFuture =
+                    executor.submit(
+                            () -> {
+                                ready.countDown();
+                                assertTrue(
+                                        start.await(
+                                                5,
+                                                TimeUnit.SECONDS));
+                                return roomRegistry.listJoinableRooms();
+                            });
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+
+            List<JoinableRoomSummary> concurrentSnapshot =
+                    listFuture.get(5, TimeUnit.SECONDS);
+            joinFuture.get(5, TimeUnit.SECONDS);
+
+            assertTrue(
+                    concurrentSnapshot.isEmpty()
+                            || concurrentSnapshot.equals(
+                                    List.of(
+                                            new JoinableRoomSummary(
+                                                    roomCode,
+                                                    host.nickname()))));
+            assertTrue(roomRegistry.listJoinableRooms().isEmpty());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test

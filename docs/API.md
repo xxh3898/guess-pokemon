@@ -425,7 +425,39 @@ membership, 연결 상태, game command, 재대결 준비 상태가 바뀔 때�
 
 활성 방은 단일 API instance에서 최대 1,000개다. 새 code를 100회 안에 할당하지 못한 경우에도 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
 
-### 7.2 방 입장
+### 7.2 참가 가능한 방 목록
+
+`GET /api/v1/rooms`
+
+접근: 회원
+
+응답 `200`:
+
+```json
+{
+  "rooms": [
+    {
+      "roomCode": "AB3K7M",
+      "hostNickname": "레드"
+    }
+  ]
+}
+```
+
+- 참가자가 없고 status가 `WAITING_FOR_OPPONENT`인 방만 반환한다.
+- 방장만 남은 채 30분이 지난 방을 먼저 만료 처리한다.
+- `createdAt DESC, roomCode ASC`로 정렬하고 최대 50개까지 반환한다. `createdAt`은 정렬에만 사용하고 응답하지 않는다.
+- 방장 user ID, guest, status, 연결 상태, 선택한 Pokémon, game state는 응답하지 않는다.
+- 응답에는 `Cache-Control: no-store`를 적용한다.
+- 안전한 `GET`이므로 CSRF token은 요구하지 않는다.
+
+오류:
+
+- `401 AUTHENTICATION_REQUIRED`
+
+목록은 조회 시점의 snapshot이다. 조회 직후 다른 사용자가 먼저 들어갈 수 있으므로 실제 입장 성공 여부는 `POST /api/v1/rooms/{roomCode}/join`이 최종 판단한다.
+
+### 7.3 방 입장
 
 `POST /api/v1/rooms/{roomCode}/join`
 
@@ -446,7 +478,7 @@ membership, 연결 상태, game command, 재대결 준비 상태가 바뀔 때�
 
 방장만 있는 방은 최초 생성 30분 뒤 만료한다. 만료 code는 30분 동안 `ROOM_EXPIRED`로 구분한 뒤 `ROOM_NOT_FOUND`로 수렴한다.
 
-### 7.3 방 상태
+### 7.4 방 상태
 
 `GET /api/v1/rooms/{roomCode}`
 
@@ -462,7 +494,7 @@ membership, 연결 상태, game command, 재대결 준비 상태가 바뀔 때�
 
 새로고침과 STOMP reconnect 뒤 state 복구에 사용한다.
 
-### 7.4 명시적 나가기
+### 7.5 명시적 나가기
 
 `DELETE /api/v1/rooms/{roomCode}/members/me`
 
@@ -1038,6 +1070,7 @@ destination:
 ## 16. API 계약 검증
 
 - REST controller 정상·validation·401·403·404·409·429 test
+- 참가 가능한 방 목록 filter·정렬·상한·필드 최소화·`no-store` test
 - session cookie와 CSRF 통합 test
 - 비참가자 history 접근 test
 - STOMP `CONNECT` CSRF·인증 test

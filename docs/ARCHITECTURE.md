@@ -141,6 +141,8 @@ com.guesspokemon
 - 방장만 남은 방은 최초 생성 30분 뒤 만료하고 1분 fixed-delay cleanup으로 제거
 - 만료 code는 최대 10,000개를 30분 동안 tombstone으로 유지해 `410`과 `404`를 구분
 - 활성 방 최대 1,000개, unique code 할당 최대 100회
+- 참가 가능한 방 목록은 같은 registry lock 안에서 만료 정리와 `WAITING_FOR_OPPONENT` filter를 적용한 immutable snapshot으로 생성
+- 목록은 `createdAt DESC, roomCode ASC`로 정렬해 최대 50개의 방 코드와 방장 닉네임만 공개
 
 ### `game`
 
@@ -211,7 +213,9 @@ src/
 - `AuthProvider`는 앱 시작 시 `/auth/me`로 session을 복원하고 `loading`, `anonymous`, `authenticated`, `error` 상태를 구분한다.
 - `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
 - anonymous-only route는 로그인 회원을 `/lobby`로 보내고, protected route는 원래 내부 URL을 보존한 채 비회원을 `/login`으로 보낸다.
-- 로비는 방 생성·코드 입장·활성 방 이어하기를 REST API와 연결하고, `/rooms/:roomCode`는 direct URL과 뒤로가기를 지원한다.
+- 로비는 방 생성·코드 입장·활성 방 이어하기·참가 가능한 방 선택을 REST API와 연결하고, `/rooms/:roomCode`는 direct URL과 뒤로가기를 지원한다.
+- `JoinableRoomList`는 최초 조회, 5초 polling, 수동 새로고침, tab visibility 복귀 조회를 소유한다. hidden tab에서는 polling을 멈추고 `AbortController`와 in-flight guard로 unmount 뒤 갱신과 중복 요청을 막는다.
+- 목록의 `입장하기`는 기존 join API를 재사용한다. 목록이 오래되어 입장에 실패하면 행 가까이에 안내하고 즉시 새 snapshot을 조회한다.
 - 로비와 경기 기록 목록은 공통 인증 header를 사용하며 desktop nav와
   mobile menu에서 `/lobby`, `/history`를 오갈 수 있다.
 - `/history`는 결과 filter와 page를 URL query에 두고 기본값을 생략한다.
@@ -332,6 +336,7 @@ heartbeat, reconnect timeout, 기존 `@Scheduled` room cleanup은 이름이 `tas
 | 포켓몬 catalog | PostgreSQL + versioned snapshot | 검색 성능·재현성 |
 | 경기·참가자·행동 | PostgreSQL | 기록과 무결성 |
 | 방 코드·대기 상태 | API memory | 짧은 수명, 단일 instance |
+| 참가 가능한 방 목록 | API memory에서 파생 | 조회 시점 snapshot, 별도 영속 상태 없음 |
 | 현재 game aggregate | API memory + 핵심 전이 DB 반영 | 낮은 지연과 기록 보존 |
 | socket mapping·60초 task | API memory | 연결 수명과 결합 |
 | 인증 요청 제한 | API Caffeine memory | 10분 수명, 최대 key 수 제한 |
@@ -416,6 +421,7 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - STOMP `SEND`는 `/app/rooms/**`만 허용하고 handler가 room membership을 검사한다.
 - STOMP `SUBSCRIBE`는 사용자별 `/user/queue/game-events`, `/user/queue/errors`만 허용한다. 공개 room subscription은 없다.
 - 모든 outbound event를 `/user/queue/game-events`로 보내고 공개 room topic은 만들지 않는다.
+- 참가 가능한 방 목록 REST API는 인증 회원에게 방 코드와 방장 닉네임만 제공하며 user ID, guest, 연결·게임 상태는 노출하지 않는다.
 - error 응답은 안정적인 code만 제공하고 내부 예외와 stack trace를 감춘다.
 - log에는 login ID 원문 대신 user UUID를 우선 사용하고 question text와 session ID를 남기지 않는다.
 - CSP `img-src`는 self, data placeholder, 공식 artwork host만 허용한다.

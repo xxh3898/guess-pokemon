@@ -34,6 +34,25 @@ describe("roomApi", () => {
     expect(fetcher.mock.calls[1]?.[1]?.method).toBe("POST");
   });
 
+  it("should_parseJoinableRooms_when_lobbyListIsRequested", async () => {
+    const payload = {
+      rooms: [
+        {
+          hostNickname: "레드",
+          roomCode: "ABCD23",
+        },
+      ],
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(payload));
+    const gateway = createRoomGateway(new HttpClient(fetcher));
+
+    await expect(gateway.list()).resolves.toEqual(payload);
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/rooms");
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("GET");
+  });
+
   it("should_normalizeCode_when_joiningRoom", async () => {
     const guestSnapshot = {
       ...HOST_SNAPSHOT,

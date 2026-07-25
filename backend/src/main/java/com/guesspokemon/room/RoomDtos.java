@@ -6,6 +6,7 @@ import com.guesspokemon.game.GameViews.ActionView;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class RoomDtos {
@@ -96,6 +97,24 @@ public final class RoomDtos {
 
         public ResultGameSnapshot {
             actions = List.copyOf(actions);
+        }
+    }
+
+    public record JoinableRoomSummary(
+            String roomCode,
+            String hostNickname) {
+
+        public JoinableRoomSummary {
+            roomCode = Objects.requireNonNull(roomCode);
+            hostNickname = Objects.requireNonNull(hostNickname);
+        }
+    }
+
+    public record JoinableRoomListResponse(
+            List<JoinableRoomSummary> rooms) {
+
+        public JoinableRoomListResponse {
+            rooms = List.copyOf(rooms);
         }
     }
 

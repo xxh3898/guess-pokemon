@@ -17,6 +17,7 @@ import com.guesspokemon.game.GameViews.QuestionerGameView;
 import com.guesspokemon.game.GameViews.SelectorGameView;
 import com.guesspokemon.pokemon.PokemonCatalogService;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
+import com.guesspokemon.room.RoomDtos.JoinableRoomListResponse;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
@@ -57,6 +58,11 @@ public class RoomApplicationService {
             UUID userId,
             String nickname) {
         return roomRegistry.create(userId, nickname);
+    }
+
+    public JoinableRoomListResponse listJoinableRooms() {
+        return new JoinableRoomListResponse(
+                roomRegistry.listJoinableRooms());
     }
 
     public JoinOutcome join(

@@ -2,7 +2,10 @@ package com.guesspokemon.room;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -17,7 +20,10 @@ import com.guesspokemon.security.AuthenticatedUser;
 import com.guesspokemon.user.AppUser;
 import com.jayway.jsonpath.JsonPath;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -198,6 +204,55 @@ class RoomApiIntegrationTest {
     }
 
     @Test
+    void should_listOnlyJoinableRooms_when_authenticatedMemberRequestsLobby()
+            throws Exception {
+        AuthenticatedUser firstHost = user("목록레드");
+        AuthenticatedUser secondHost = user("목록그린");
+        AuthenticatedUser fullRoomHost = user("목록블루");
+        AuthenticatedUser fullRoomGuest = user("목록옐로");
+        AuthenticatedUser viewer = user("목록조회자");
+        String firstRoomCode = createRoom(firstHost);
+        String secondRoomCode = createRoom(secondHost);
+        String fullRoomCode = createRoom(fullRoomHost);
+        joinRoom(fullRoomCode, fullRoomGuest);
+
+        MvcResult result =
+                mockMvc.perform(
+                                get("/api/v1/rooms")
+                                        .with(authenticated(viewer)))
+                        .andExpect(status().isOk())
+                        .andExpect(
+                                header()
+                                        .string(
+                                                "Cache-Control",
+                                                containsString("no-store")))
+                        .andReturn();
+        List<Map<String, Object>> rooms =
+                JsonPath.read(
+                        result.getResponse().getContentAsString(),
+                        "$.rooms");
+
+        assertTrue(rooms.size() <= 50);
+        assertEquals(
+                Set.of("roomCode", "hostNickname"),
+                findRoomSummary(rooms, "목록레드").keySet());
+        assertEquals(
+                firstRoomCode,
+                findRoomSummary(rooms, "목록레드").get("roomCode"));
+        assertEquals(
+                secondRoomCode,
+                findRoomSummary(rooms, "목록그린").get("roomCode"));
+        assertFalse(
+                rooms.stream()
+                        .anyMatch(
+                                room ->
+                                        "목록블루"
+                                                .equals(
+                                                        room.get(
+                                                                "hostNickname"))));
+    }
+
+    @Test
     void should_returnStableErrors_when_joinRulesAreViolated()
             throws Exception {
         AuthenticatedUser host = user("레드");
@@ -293,6 +348,11 @@ class RoomApiIntegrationTest {
                 .andExpect(
                         jsonPath("$.code")
                                 .value("AUTHENTICATION_REQUIRED"));
+        mockMvc.perform(get("/api/v1/rooms"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("AUTHENTICATION_REQUIRED"));
     }
 
     private String createRoom(AuthenticatedUser user) throws Exception {
@@ -332,6 +392,18 @@ class RoomApiIntegrationTest {
                         nickname,
                         "{noop}test-only-password",
                         Instant.parse("2026-07-25T00:00:00Z")));
+    }
+
+    private Map<String, Object> findRoomSummary(
+            List<Map<String, Object>> rooms,
+            String hostNickname) {
+        return rooms.stream()
+                .filter(
+                        room ->
+                                hostNickname.equals(
+                                        room.get("hostNickname")))
+                .findFirst()
+                .orElseThrow();
     }
 
     private RequestPostProcessor authenticated(

@@ -10,11 +10,13 @@ import static com.guesspokemon.common.error.ApiErrorCode.USER_ALREADY_IN_ACTIVE_
 import static com.guesspokemon.common.error.ApiErrorCode.VALIDATION_FAILED;
 
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.room.RoomDtos.JoinableRoomSummary;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +39,7 @@ public class RoomRegistry {
     static final int MAX_ACTIVE_ROOMS = 1_000;
     static final int MAX_CODE_ALLOCATION_ATTEMPTS = 100;
     static final int MAX_EXPIRED_CODE_TOMBSTONES = 10_000;
+    static final int MAX_JOINABLE_ROOM_SUMMARIES = 50;
 
     private static final Logger LOGGER =
             LoggerFactory.getLogger(RoomRegistry.class);
@@ -102,6 +105,28 @@ public class RoomRegistry {
             activeRoomByUser.put(userId, roomCode);
             LOGGER.info("Room created hostUserId={}", userId);
             return room.snapshotFor(userId);
+        } finally {
+            mutationLock.unlock();
+        }
+    }
+
+    public List<JoinableRoomSummary> listJoinableRooms() {
+        mutationLock.lock();
+        try {
+            cleanExpiredState(clock.instant());
+            return rooms.values().stream()
+                    .filter(Room::isJoinable)
+                    .sorted(
+                            Comparator.comparing(Room::createdAt)
+                                    .reversed()
+                                    .thenComparing(Room::code))
+                    .limit(MAX_JOINABLE_ROOM_SUMMARIES)
+                    .map(
+                            room ->
+                                    new JoinableRoomSummary(
+                                            room.code(),
+                                            room.hostNickname()))
+                    .toList();
         } finally {
             mutationLock.unlock();
         }
