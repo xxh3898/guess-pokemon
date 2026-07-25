@@ -338,7 +338,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 
 - `compose.dev.yaml`은 source bind mount와 Vite dev server, Spring `bootRun`, PostgreSQL을 구성한다.
 - host에는 Docker 외 Java·Node·PostgreSQL을 요구하지 않는다.
-- Vite는 `/api`, `/ws`를 API container로 proxy한다.
+- Vite는 `/api`, `/ws`를 API container로 proxy한다. `/api`는 target Host를 사용하지만 `/ws`는 browser Host를 보존해 Spring same-origin 검사가 실제 browser Origin과 같은 host·port를 비교하게 한다. `rewriteWsOrigin`으로 Origin을 바꾸지 않는다.
 - base Compose와 개발 override를 함께 사용하며 Vite는 host의 `5173` port에, Adminer는 loopback의 `${ADMINER_PORT:-8081}` port에 공개한다.
 - Adminer는 Docker network의 `db:5432`에 연결하고 PostgreSQL port 자체는 host에 공개하지 않는다.
 - Adminer service는 `compose.dev.yaml`에만 정의하며 기본·테스트·운영 구성에는 포함하지 않는다.
