@@ -187,6 +187,10 @@
   background: var(--coral);
 }
 
+.action-kind.is-guess.is-correct {
+  background: var(--mint-dark);
+}
+
 .action-copy {
   display: flex;
   flex-direction: column;

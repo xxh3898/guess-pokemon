@@ -34,8 +34,12 @@ export function GameActionTimeline({
                 {String(action.sequenceNumber).padStart(2, "0")}
               </span>
               <span
-                className={`action-kind ${
-                  action.type === "GUESS" ? "is-guess" : ""
+                className={`action-kind${
+                  action.type === "GUESS"
+                    ? ` is-guess${
+                        action.correct ? " is-correct" : ""
+                      }`
+                    : ""
                 }`}
                 aria-hidden="true"
               >
