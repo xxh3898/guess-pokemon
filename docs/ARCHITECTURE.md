@@ -236,7 +236,9 @@ src/
 - `ROOM_CLOSED`를 받으면 local active room을 비우고 닫힌 방 안내와 로비 복귀 경로를 제공한다.
 - 정답 포켓몬 type을 selector 전용 snapshot에만 둔다.
 - STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
-- 포켓몬 추측 modal은 route search parameter로 열어 브라우저 뒤로가기로 닫는다. room pathname 이탈은 React Router blocker로 명시적 leave 완료 뒤에만 진행한다.
+- 질문자 전국도감 모달은 `?pokedex=1` 라우트 검색 파라미터로 열어 브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와 `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는 파라미터를 제거한다.
+- 도감 검색·필터·페이지 이동·포켓몬 선택은 게임 명령을 만들지 않는다. 질문자의 최종 추측 버튼은 최신 snapshot의 미답변 질문, 처리 중인 명령, 남은 횟수를 확인한 뒤에만 활성화하고 실제 승패와 행동 횟수는 서버의 STOMP 명령 검증을 따른다.
+- room pathname 이탈은 React Router blocker로 명시적 leave 완료 뒤에만 진행한다.
 - 진행 중 경기의 hard reload·tab 닫기는 `beforeunload` 기본 경고만 사용한다. unload 과정에서는 신뢰할 수 없는 REST leave를 보내지 않고 server의 disconnect·60초 재접속 규칙에 맡긴다.
 - Lucide icon은 named import만 사용하고 장식 icon은 screen reader에서 숨긴다. icon-only control은 부모 control에 접근 가능한 이름을 제공한다.
 

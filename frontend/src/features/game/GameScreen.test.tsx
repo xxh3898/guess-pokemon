@@ -26,7 +26,7 @@ describe("GameScreen", () => {
         commandPending={false}
         onAnswer={vi.fn()}
         onAsk={vi.fn()}
-        onOpenGuess={vi.fn()}
+        onOpenPokedex={vi.fn()}
         snapshot={questionerSnapshot()}
       />,
     );
@@ -38,8 +38,9 @@ describe("GameScreen", () => {
     ).not.toContain("https://example.com/25.png");
   });
 
-  it("should_blockNewAction_when_questionIsWaitingForAnswer", () => {
+  it("should_allowPokedexBrowsing_when_questionIsWaitingForAnswer", () => {
     const base = questionerSnapshot();
+    const onOpenPokedex = vi.fn();
     const snapshot: QuestionerActiveRoomSnapshot = {
       ...base,
       game: {
@@ -55,14 +56,36 @@ describe("GameScreen", () => {
         commandPending={false}
         onAnswer={vi.fn()}
         onAsk={vi.fn()}
-        onOpenGuess={vi.fn()}
+        onOpenPokedex={onOpenPokedex}
         snapshot={snapshot}
       />,
     );
 
     expect(screen.getByLabelText("질문")).toBeDisabled();
+    const pokedexButton = screen.getByRole("button", {
+      name: "전국도감 보기",
+    });
+    expect(pokedexButton).toBeEnabled();
+    fireEvent.click(pokedexButton);
+    expect(onOpenPokedex).toHaveBeenCalledOnce();
+  });
+
+  it("should_disablePokedexBrowsing_when_gameIsPaused", () => {
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...questionerSnapshot(),
+          status: "PAUSED",
+        }}
+      />,
+    );
+
     expect(
-      screen.getByRole("button", { name: "포켓몬 추측" }),
+      screen.getByRole("button", { name: "전국도감 보기" }),
     ).toBeDisabled();
   });
 
@@ -84,7 +107,7 @@ describe("GameScreen", () => {
         commandPending={false}
         onAnswer={onAnswer}
         onAsk={vi.fn()}
-        onOpenGuess={vi.fn()}
+        onOpenPokedex={vi.fn()}
         snapshot={snapshot}
       />,
     );

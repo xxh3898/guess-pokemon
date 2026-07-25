@@ -588,22 +588,44 @@
   padding: 0.7rem 1rem;
 }
 
-.guess-pokemon-modal {
+.selection-wait-pokedex-button {
+  margin-top: 1rem;
+  min-width: 12rem;
+}
+
+.questioner-pokedex-modal {
   max-width: 64rem;
 }
 
-.guess-warning {
-  background: var(--yellow-soft);
-  border: 1px solid rgb(255 200 67 / 70%);
+.pokedex-guidance {
+  background: var(--blue-soft);
+  border: 1px solid rgb(37 112 239 / 28%);
   border-radius: 8px;
-  color: #7c5a09;
+  color: var(--blue-dark);
   font-size: 0.8rem;
   margin: 0.8rem 0;
-  padding: 0.65rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.pokedex-guidance p {
+  margin: 0;
+}
+
+.pokedex-guidance p:first-child {
+  align-items: center;
+  display: flex;
+  font-weight: 750;
+  gap: 0.45rem;
+  justify-content: center;
+}
+
+.pokedex-guidance p:last-child {
+  color: var(--muted);
+  margin-top: 0.25rem;
   text-align: center;
 }
 
-.guess-pokemon-modal > footer {
+.questioner-pokedex-modal > footer {
   align-items: center;
   border-top: 1px solid var(--line);
   display: grid;
@@ -613,17 +635,17 @@
   padding-top: 0.9rem;
 }
 
-.guess-pokemon-modal > footer > div {
+.questioner-pokedex-modal > footer > div {
   display: flex;
   flex-direction: column;
 }
 
-.guess-pokemon-modal > footer span {
+.questioner-pokedex-modal > footer span {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-.guess-pokemon-modal > footer strong {
+.questioner-pokedex-modal > footer strong {
   color: var(--blue-dark);
 }
 
@@ -695,20 +717,26 @@
     margin: 0;
   }
 
-  .guess-pokemon-modal {
-    border-radius: 0;
+  .questioner-pokedex-modal {
     height: 100vh;
     max-height: 100vh;
   }
 
-  .guess-pokemon-modal > footer {
-    background: var(--paper);
-    bottom: 0;
-    grid-template-columns: 1fr 1fr;
-    position: sticky;
+  .modal-dialog.questioner-pokedex-modal {
+    padding-bottom: 0;
   }
 
-  .guess-pokemon-modal > footer > div {
+  .questioner-pokedex-modal > footer {
+    background: var(--paper);
+    bottom: 0;
+    box-shadow: 0 -10px 24px rgb(17 43 78 / 8%);
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    position: sticky;
+    z-index: 2;
+  }
+
+  .questioner-pokedex-modal > footer > div {
     grid-column: 1 / -1;
   }
 }

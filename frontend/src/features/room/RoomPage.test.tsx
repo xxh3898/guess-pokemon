@@ -32,8 +32,9 @@ import {
 import type { RoomGateway } from "./roomApi";
 import { RoomPage } from "./RoomPage";
 import type {
-  ActiveRoomSnapshot,
+  QuestionerActiveRoomSnapshot,
   ResultRoomSnapshot,
+  SelectorActiveRoomSnapshot,
   WaitingRoomSnapshot,
 } from "./roomTypes";
 
@@ -399,6 +400,41 @@ describe("RoomPage", () => {
     expect(realtime.selectPokemon).toHaveBeenCalledWith(25, 2);
   });
 
+  it("should_allowPokedexBrowsingWithoutGuess_when_questionerWaitsForSelection", async () => {
+    const realtime = createRealtimeHarness();
+    const { router } = renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(QUESTIONER_SELECTION_SNAPSHOT),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByRole("heading", {
+      name: "출제자가 포켓몬을 고르고 있어요",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+
+    expect(router.state.location.search).toBe("?pokedex=1");
+    expect(
+      screen.getByRole("dialog", { name: "전국도감" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("게임이 시작되면 포켓몬을 추측할 수 있어요."),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /피카츄/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: "이 포켓몬 추측" }),
+    ).toBeDisabled();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+  });
+
   it("should_keepAnswerSecretOutOfDom_when_questionerGameLoads", async () => {
     renderRoom({
       gateway: createRoomGateway({
@@ -417,7 +453,123 @@ describe("RoomPage", () => {
     );
   });
 
-  it("should_publishQuestionAndOpenGuessInRouteState_when_questionerActs", async () => {
+  it("should_removePokedexRouteState_when_selectorOpensDirectUrl", async () => {
+    const { router } = renderRoom({
+      gateway: createRoomGateway({
+        get: vi.fn().mockResolvedValue(SELECTOR_ACTIVE_SNAPSHOT),
+      }),
+      initialEntry: "/rooms/AB3K7M?pokedex=1",
+    });
+    await screen.findByText("내가 선택한 포켓몬");
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "전국도감" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should_allowPokedexBrowsingWithoutGuess_when_questionIsWaitingForAnswer", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(QUESTIONER_PENDING_SNAPSHOT),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByText("내 역할 · 질문자");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /피카츄/ }),
+    );
+
+    expect(
+      screen.getByText(
+        "출제자의 답변을 기다리는 동안에는 도감만 볼 수 있어요.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "이 포켓몬 추측" }),
+    ).toBeDisabled();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+  });
+
+  it("should_allowPokedexBrowsingWithoutGuess_when_questionCommandIsPending", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(QUESTIONER_ACTIVE_SNAPSHOT),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByText("내 역할 · 질문자");
+    fireEvent.change(screen.getByLabelText("질문"), {
+      target: { value: "날개가 있나요?" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "질문하기" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /피카츄/ }),
+    );
+
+    expect(
+      screen.getByText(
+        "이전 요청을 처리하는 동안에는 도감만 볼 수 있어요.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "이 포켓몬 추측" }),
+    ).toBeDisabled();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+  });
+
+  it("should_disableGuessButAllowPokedex_when_noActionsRemain", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(QUESTIONER_NO_ACTION_SNAPSHOT),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByText("내 역할 · 질문자");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /피카츄/ }),
+    );
+
+    expect(
+      screen.getByText(
+        "남은 기회를 모두 사용해 지금은 추측할 수 없어요.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "이 포켓몬 추측" }),
+    ).toBeDisabled();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+  });
+
+  it("should_publishQuestionAndOpenPokedexInRouteState_when_questionerActs", async () => {
     const realtime = createRealtimeHarness();
     const { router } = renderRoom({
       gateway: createRoomGateway({
@@ -433,9 +585,9 @@ describe("RoomPage", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "포켓몬 추측" }),
+      screen.getByRole("button", { name: "전국도감 보기" }),
     );
-    expect(router.state.location.search).toBe("?guess=1");
+    expect(router.state.location.search).toBe("?pokedex=1");
     await act(async () => {
       await router.navigate(-1);
     });
@@ -468,7 +620,7 @@ describe("RoomPage", () => {
     });
   });
 
-  it("should_closeGuessRouteState_when_guessPublishes", async () => {
+  it("should_closePokedexRouteState_when_guessPublishes", async () => {
     const realtime = createRealtimeHarness();
     const { router } = renderRoom({
       gateway: createRoomGateway({
@@ -482,7 +634,7 @@ describe("RoomPage", () => {
     await screen.findByText("내 역할 · 질문자");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "포켓몬 추측" }),
+      screen.getByRole("button", { name: "전국도감 보기" }),
     );
     fireEvent.click(
       await screen.findByRole("button", { name: /피카츄/ }),
@@ -500,7 +652,7 @@ describe("RoomPage", () => {
     });
     expect(
       screen.queryByRole("dialog", {
-        name: "정답 포켓몬 추측",
+        name: "전국도감",
       }),
     ).not.toBeInTheDocument();
   });
@@ -610,9 +762,9 @@ describe("RoomPage", () => {
     scrollTo.mockRestore();
   });
 
-  it("should_showReconnectCountdown_when_opponentDisconnects", async () => {
+  it("should_closePokedexAndShowReconnectCountdown_when_opponentDisconnects", async () => {
     const realtime = createRealtimeHarness();
-    renderRoom({
+    const { router } = renderRoom({
       gateway: createRoomGateway({
         get: vi
           .fn()
@@ -621,6 +773,12 @@ describe("RoomPage", () => {
       realtimeGateway: realtime.gateway,
     });
     await screen.findByText("내 역할 · 질문자");
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "전국도감" }),
+    ).toBeInTheDocument();
 
     act(() => {
       realtime.event({
@@ -643,6 +801,12 @@ describe("RoomPage", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText(/00:5|01:00/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "전국도감" }),
+    ).not.toBeInTheDocument();
   });
 
   it("should_blockRouteAndResetNavigation_when_activeGameWouldBeLeft", async () => {
@@ -898,6 +1062,17 @@ const TWO_PLAYER_SNAPSHOT: WaitingRoomSnapshot = {
   status: "WAITING_FOR_SELECTION",
 };
 
+const QUESTIONER_SELECTION_SNAPSHOT: WaitingRoomSnapshot = {
+  game: null,
+  me: GUEST_MEMBER,
+  opponent: HOST_MEMBER,
+  rematch: null,
+  roomCode: "AB3K7M",
+  roundNumber: 1,
+  stateVersion: 2,
+  status: "WAITING_FOR_SELECTION",
+};
+
 const GAME_ID = "3f249b3c-f0a6-4054-8bcf-e6284eec5f3e";
 const PIKACHU = {
   artworkEnabled: true,
@@ -906,7 +1081,7 @@ const PIKACHU = {
   koreanName: "피카츄",
   nationalDexId: 25,
 };
-const QUESTIONER_ACTIVE_SNAPSHOT: ActiveRoomSnapshot = {
+const QUESTIONER_ACTIVE_SNAPSHOT: QuestionerActiveRoomSnapshot = {
   game: {
     actions: [],
     gameId: GAME_ID,
@@ -916,6 +1091,51 @@ const QUESTIONER_ACTIVE_SNAPSHOT: ActiveRoomSnapshot = {
   },
   me: GUEST_MEMBER,
   opponent: HOST_MEMBER,
+  rematch: null,
+  roomCode: "AB3K7M",
+  roundNumber: 1,
+  stateVersion: 3,
+  status: "PLAYING",
+};
+const QUESTIONER_PENDING_SNAPSHOT: QuestionerActiveRoomSnapshot = {
+  ...QUESTIONER_ACTIVE_SNAPSHOT,
+  game: {
+    ...QUESTIONER_ACTIVE_SNAPSHOT.game,
+    actions: [
+      {
+        answer: null,
+        answeredAt: null,
+        createdAt: "2026-07-25T03:00:00Z",
+        question: "날개가 있나요?",
+        sequenceNumber: 1,
+        type: "QUESTION",
+      },
+    ],
+    remainingActionCount: 19,
+    usedActionCount: 1,
+  },
+  stateVersion: 4,
+};
+const QUESTIONER_NO_ACTION_SNAPSHOT: QuestionerActiveRoomSnapshot = {
+  ...QUESTIONER_ACTIVE_SNAPSHOT,
+  game: {
+    ...QUESTIONER_ACTIVE_SNAPSHOT.game,
+    remainingActionCount: 0,
+    usedActionCount: 20,
+  },
+  stateVersion: 23,
+};
+const SELECTOR_ACTIVE_SNAPSHOT: SelectorActiveRoomSnapshot = {
+  game: {
+    actions: [],
+    gameId: GAME_ID,
+    remainingActionCount: 20,
+    selectedPokemon: PIKACHU,
+    status: "IN_PROGRESS",
+    usedActionCount: 0,
+  },
+  me: HOST_MEMBER,
+  opponent: GUEST_MEMBER,
   rematch: null,
   roomCode: "AB3K7M",
   roundNumber: 1,

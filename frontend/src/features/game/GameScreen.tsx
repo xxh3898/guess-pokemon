@@ -29,7 +29,7 @@ interface GameScreenProps {
   commandPending: boolean;
   onAnswer(answer: GameAnswer): void;
   onAsk(question: string): void;
-  onOpenGuess(): void;
+  onOpenPokedex(): void;
   snapshot: ActiveRoomSnapshot;
 }
 
@@ -37,7 +37,7 @@ export function GameScreen({
   commandPending,
   onAnswer,
   onAsk,
-  onOpenGuess,
+  onOpenPokedex,
   snapshot,
 }: GameScreenProps) {
   const isSelector = "selectedPokemon" in snapshot.game;
@@ -106,7 +106,7 @@ export function GameScreen({
           <QuestionPanel
             commandPending={commandPending}
             onAsk={onAsk}
-            onOpenGuess={onOpenGuess}
+            onOpenPokedex={onOpenPokedex}
             paused={snapshot.status === "PAUSED"}
             pendingQuestion={pendingQuestion}
             remaining={snapshot.game.remainingActionCount}
@@ -168,7 +168,7 @@ function RemainingActions({ remaining }: { remaining: number }) {
 interface QuestionPanelProps {
   commandPending: boolean;
   onAsk(question: string): void;
-  onOpenGuess(): void;
+  onOpenPokedex(): void;
   paused: boolean;
   pendingQuestion: QuestionGameAction | null;
   remaining: number;
@@ -177,7 +177,7 @@ interface QuestionPanelProps {
 function QuestionPanel({
   commandPending,
   onAsk,
-  onOpenGuess,
+  onOpenPokedex,
   paused,
   pendingQuestion,
   remaining,
@@ -226,12 +226,12 @@ function QuestionPanel({
       <div className="question-actions">
         <button
           className="secondary-game-button"
-          disabled={blocked}
-          onClick={onOpenGuess}
+          disabled={paused}
+          onClick={onOpenPokedex}
           type="button"
         >
           <Search aria-hidden="true" size={19} />
-          포켓몬 추측
+          전국도감 보기
         </button>
         <button
           className="primary-game-button"

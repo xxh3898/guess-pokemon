@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   LogOut,
   Radio,
+  Search,
   UserRound,
   UsersRound,
   Wifi,
@@ -149,9 +150,16 @@ export function RoomPage({
   const activeSnapshot = isActiveSnapshot(snapshot)
     ? snapshot
     : null;
-  const guessModalOpen =
-    searchParams.get("guess") === "1" &&
-    activeSnapshot?.me.role === "QUESTIONER";
+  const questionerPokedexContext =
+    getQuestionerPokedexContext(
+      snapshot,
+      pendingCommand !== null,
+    );
+  const questionerPokedexAllowed =
+    questionerPokedexContext !== null;
+  const pokedexModalOpen =
+    searchParams.get("pokedex") === "1" &&
+    questionerPokedexAllowed;
 
   const setPendingCommand = useCallback(
     (command: PendingCommand | null) => {
@@ -213,22 +221,33 @@ export function RoomPage({
   }, [snapshot?.status]);
 
   useEffect(() => {
-    if (
-      snapshot &&
-      (!isActiveSnapshot(snapshot) ||
-        snapshot.me.role !== "QUESTIONER") &&
-      searchParams.get("guess") === "1"
-    ) {
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current);
-          next.delete("guess");
-          return next;
-        },
-        { replace: true },
-      );
+    if (!snapshot) {
+      return;
     }
-  }, [searchParams, setSearchParams, snapshot]);
+    const legacyGuessOpen = searchParams.get("guess") === "1";
+    const invalidPokedexOpen =
+      searchParams.get("pokedex") === "1" &&
+      !questionerPokedexAllowed;
+    if (!legacyGuessOpen && !invalidPokedexOpen) {
+      return;
+    }
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("guess");
+        if (invalidPokedexOpen) {
+          next.delete("pokedex");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    questionerPokedexAllowed,
+    searchParams,
+    setSearchParams,
+    snapshot,
+  ]);
 
   useEffect(() => {
     if (!validRoomCode) {
@@ -418,6 +437,29 @@ export function RoomPage({
     }
   };
 
+  const openPokedex = () => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("guess");
+        next.set("pokedex", "1");
+        return next;
+      },
+      { replace: false },
+    );
+  };
+
+  const closePokedex = () => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("pokedex");
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
   if (!validRoomCode) {
     return (
       <PageStatus
@@ -537,7 +579,10 @@ export function RoomPage({
               }}
             />
           ) : (
-            <QuestionerSelectionWaitView snapshot={snapshot} />
+            <QuestionerSelectionWaitView
+              onOpenPokedex={openPokedex}
+              snapshot={snapshot}
+            />
           )
         ) : null}
 
@@ -567,16 +612,7 @@ export function RoomPage({
                     ),
                 );
               }}
-              onOpenGuess={() => {
-                setSearchParams(
-                  (current) => {
-                    const next = new URLSearchParams(current);
-                    next.set("guess", "1");
-                    return next;
-                  },
-                  { replace: false },
-                );
-              }}
+              onOpenPokedex={openPokedex}
               snapshot={snapshot}
             />
             <GameInterruptionDialogs
@@ -672,44 +708,33 @@ export function RoomPage({
           </Modal>
         ) : null}
 
-        {guessModalOpen && activeSnapshot ? (
-          <GuessPokemonModal
-            commandPending={pendingCommand !== null}
+        {pokedexModalOpen && questionerPokedexContext ? (
+          <QuestionerPokedexModal
+            context={questionerPokedexContext}
             gateway={pokemonGateway}
-            onClose={() => {
-              setSearchParams(
-                (current) => {
-                  const next = new URLSearchParams(current);
-                  next.delete("guess");
-                  return next;
-                },
-                { replace: true },
-              );
-            }}
+            onClose={closePokedex}
             onGuess={(pokemon) => {
+              if (
+                !questionerPokedexContext.canGuess ||
+                questionerPokedexContext.stateVersion === null
+              ) {
+                return;
+              }
+              const expectedStateVersion =
+                questionerPokedexContext.stateVersion;
               const published = sendCommand(
                 "guess",
-                activeSnapshot.stateVersion,
+                expectedStateVersion,
                 (session) =>
                   session.guessPokemon(
                     pokemon.nationalDexId,
-                    activeSnapshot.stateVersion,
+                    expectedStateVersion,
                   ),
               );
               if (published) {
-                setSearchParams(
-                  (current) => {
-                    const next = new URLSearchParams(current);
-                    next.delete("guess");
-                    return next;
-                  },
-                  { replace: true },
-                );
+                closePokedex();
               }
             }}
-            remainingActionCount={
-              activeSnapshot.game.remainingActionCount
-            }
           />
         ) : null}
       </div>
@@ -1001,8 +1026,10 @@ function SelectorSelectionView({
 }
 
 function QuestionerSelectionWaitView({
+  onOpenPokedex,
   snapshot,
 }: {
+  onOpenPokedex(): void;
   snapshot: Extract<
     WaitingRoomSnapshot,
     { status: "WAITING_FOR_SELECTION" }
@@ -1024,39 +1051,55 @@ function QuestionerSelectionWaitView({
           ? "상대가 연결되어 있습니다."
           : "상대의 재연결을 기다리고 있습니다."}
       </div>
+      <button
+        className="secondary-game-button selection-wait-pokedex-button"
+        onClick={onOpenPokedex}
+        type="button"
+      >
+        <Search aria-hidden="true" size={19} />
+        전국도감 보기
+      </button>
     </section>
   );
 }
 
-interface GuessPokemonModalProps {
-  commandPending: boolean;
+interface QuestionerPokedexContext {
+  canGuess: boolean;
+  detail: string;
+  stateVersion: number | null;
+}
+
+interface QuestionerPokedexModalProps {
+  context: QuestionerPokedexContext;
   gateway: PokemonCatalogGateway;
   onClose(): void;
   onGuess(pokemon: PokemonSummary): void;
-  remainingActionCount: number;
 }
 
-function GuessPokemonModal({
-  commandPending,
+function QuestionerPokedexModal({
+  context,
   gateway,
   onClose,
   onGuess,
-  remainingActionCount,
-}: GuessPokemonModalProps) {
+}: QuestionerPokedexModalProps) {
   const [selectedPokemon, setSelectedPokemon] =
     useState<PokemonSummary | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   return (
     <Modal
-      className="guess-pokemon-modal"
-      closeLabel="포켓몬 추측 닫기"
+      className="questioner-pokedex-modal"
+      closeLabel="전국도감 닫기"
       onClose={onClose}
-      title="정답 포켓몬 추측"
+      title="전국도감"
     >
-      <div className="guess-warning">
-        추측도 남은 기회 1회를 사용해요. 현재{" "}
-        <strong>{remainingActionCount}회</strong> 남았어요.
+      <div className="pokedex-guidance" role="status">
+        <p>
+          <Info aria-hidden="true" size={18} />
+          도감을 둘러보거나 포켓몬을 고르는 동안에는 기회를
+          사용하지 않아요.
+        </p>
+        <p>{context.detail}</p>
       </div>
       <PokemonCatalogPicker
         gateway={gateway}
@@ -1079,11 +1122,11 @@ function GuessPokemonModal({
           onClick={onClose}
           type="button"
         >
-          취소
+          닫기
         </button>
         <button
           className="primary-game-button"
-          disabled={!selectedPokemon || commandPending}
+          disabled={!selectedPokemon || !context.canGuess}
           onClick={() => {
             setConfirming(true);
           }}
@@ -1092,7 +1135,7 @@ function GuessPokemonModal({
           이 포켓몬 추측
         </button>
       </footer>
-      {confirming && selectedPokemon ? (
+      {confirming && selectedPokemon && context.canGuess ? (
         <Modal
           className="pokemon-confirm-modal"
           onClose={() => {
@@ -1118,7 +1161,7 @@ function GuessPokemonModal({
             </button>
             <button
               className="primary-game-button"
-              disabled={commandPending}
+              disabled={!context.canGuess}
               onClick={() => {
                 onGuess(selectedPokemon);
               }}
@@ -1223,6 +1266,63 @@ function isActiveSnapshot(
     snapshot?.status === "PLAYING" ||
     snapshot?.status === "PAUSED"
   );
+}
+
+function getQuestionerPokedexContext(
+  snapshot: RoomSnapshot | null,
+  commandPending: boolean,
+): QuestionerPokedexContext | null {
+  if (!snapshot || snapshot.me.role !== "QUESTIONER") {
+    return null;
+  }
+  if (snapshot.status === "WAITING_FOR_SELECTION") {
+    return {
+      canGuess: false,
+      detail: "게임이 시작되면 포켓몬을 추측할 수 있어요.",
+      stateVersion: null,
+    };
+  }
+  if (
+    snapshot.status !== "PLAYING" ||
+    "selectedPokemon" in snapshot.game
+  ) {
+    return null;
+  }
+
+  const lastAction = snapshot.game.actions.at(-1);
+  if (commandPending) {
+    return {
+      canGuess: false,
+      detail:
+        "이전 요청을 처리하는 동안에는 도감만 볼 수 있어요.",
+      stateVersion: snapshot.stateVersion,
+    };
+  }
+  if (
+    lastAction?.type === "QUESTION" &&
+    lastAction.answer === null
+  ) {
+    return {
+      canGuess: false,
+      detail:
+        "출제자의 답변을 기다리는 동안에는 도감만 볼 수 있어요.",
+      stateVersion: snapshot.stateVersion,
+    };
+  }
+  if (snapshot.game.remainingActionCount === 0) {
+    return {
+      canGuess: false,
+      detail: "남은 기회를 모두 사용해 지금은 추측할 수 없어요.",
+      stateVersion: snapshot.stateVersion,
+    };
+  }
+  return {
+    canGuess: true,
+    detail:
+      "최종 추측을 보내면 기회 1회를 사용해요. " +
+      `현재 ${snapshot.game.remainingActionCount}회 남았어요.`,
+    stateVersion: snapshot.stateVersion,
+  };
 }
 
 function hasRoomMembership(
