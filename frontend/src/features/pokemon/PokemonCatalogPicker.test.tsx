@@ -2,6 +2,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +19,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"] as const,
 };
 
 describe("PokemonCatalogPicker", () => {
@@ -36,9 +38,11 @@ describe("PokemonCatalogPicker", () => {
       screen.getByPlaceholderText("이름 또는 도감 번호로 검색"),
       { target: { value: "피카츄" } },
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: /피카츄/ }),
-    );
+    const card = await screen.findByRole("button", {
+      name: /피카츄/,
+    });
+    expect(within(card).getByText("전기")).toBeInTheDocument();
+    fireEvent.click(card);
 
     expect(onSelect).toHaveBeenCalledWith(PIKACHU);
     await waitFor(() => {

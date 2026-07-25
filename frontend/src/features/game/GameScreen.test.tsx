@@ -17,6 +17,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"] as const,
 };
 
 describe("GameScreen", () => {
@@ -33,9 +34,27 @@ describe("GameScreen", () => {
 
     expect(screen.getByText("내 역할 · 질문자")).toBeInTheDocument();
     expect(screen.queryByText("피카츄")).not.toBeInTheDocument();
+    expect(screen.queryByText("전기")).not.toBeInTheDocument();
     expect(
       document.body.innerHTML,
     ).not.toContain("https://example.com/25.png");
+  });
+
+  it("should_renderSelectedPokemonType_when_selectorScreenOpens", () => {
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={selectorSnapshot()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: /피카츄/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("전기")).toBeInTheDocument();
   });
 
   it("should_allowPokedexBrowsing_when_questionIsWaitingForAnswer", () => {

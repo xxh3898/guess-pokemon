@@ -17,6 +17,7 @@ import {
   PokemonArtwork,
   formatNationalDexId,
 } from "../pokemon/PokemonArtwork";
+import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   MAX_GAME_ACTION_COUNT,
   type ActiveRoomSnapshot,
@@ -68,6 +69,9 @@ export function GameScreen({
               )}{" "}
               {snapshot.game.selectedPokemon.koreanName}
             </h2>
+            <PokemonTypeBadges
+              types={snapshot.game.selectedPokemon.types}
+            />
             <p className="secret-copy">
               <LockKeyhole aria-hidden="true" size={16} />
               정답은 상대에게 비공개

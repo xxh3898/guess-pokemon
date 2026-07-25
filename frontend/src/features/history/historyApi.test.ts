@@ -51,6 +51,7 @@ describe("historyApi", () => {
           generation: 1,
           koreanName: "피카츄",
           nationalDexId: 25,
+          types: ["ELECTRIC"],
         },
         endedAt: "2026-07-25T05:05:00Z",
         endReason: "CORRECT_GUESS",

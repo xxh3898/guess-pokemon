@@ -14,6 +14,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"],
 } as const;
 
 export const TEST_HISTORY_PAGE: HistoryPage = {

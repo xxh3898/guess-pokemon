@@ -12,6 +12,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"],
 };
 
 describe("pokemonTypes", () => {
@@ -45,6 +46,37 @@ describe("pokemonTypes", () => {
         artworkEnabled: false,
       }),
     ).toThrow();
+  });
+
+  it("should_parsePokemonSummary_when_dualTypesAreValid", () => {
+    expect(
+      parsePokemonSummary({
+        ...PIKACHU,
+        koreanName: "이상해씨",
+        nationalDexId: 1,
+        types: ["GRASS", "POISON"],
+      }),
+    ).toMatchObject({
+      types: ["GRASS", "POISON"],
+    });
+  });
+
+  it("should_rejectPokemonSummary_when_typesAreInvalid", () => {
+    for (const types of [
+      undefined,
+      "ELECTRIC",
+      [],
+      ["FIRE", "FLYING", "DRAGON"],
+      ["ELECTRIC", "ELECTRIC"],
+      ["LIGHT"],
+    ]) {
+      expect(() =>
+        parsePokemonSummary({
+          ...PIKACHU,
+          types,
+        }),
+      ).toThrow();
+    }
   });
 
   it("should_parsePokemonPage_when_pageMetadataIsValid", () => {

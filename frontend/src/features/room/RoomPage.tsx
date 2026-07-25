@@ -39,6 +39,7 @@ import {
   formatNationalDexId,
 } from "../pokemon/PokemonArtwork";
 import { PokemonCatalogPicker } from "../pokemon/PokemonCatalogPicker";
+import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   type PokemonCatalogGateway,
   pokemonCatalogGateway,
@@ -956,6 +957,7 @@ function SelectorSelectionView({
                 )}
               </span>
               <strong>{selectedPokemon.koreanName}</strong>
+              <PokemonTypeBadges types={selectedPokemon.types} />
             </>
           ) : (
             <p>도감에서 정답으로 사용할 포켓몬을 골라 주세요.</p>
@@ -998,6 +1000,7 @@ function SelectorSelectionView({
             )}{" "}
             {selectedPokemon.koreanName}
           </strong>
+          <PokemonTypeBadges types={selectedPokemon.types} />
           <div className="modal-actions">
             <button
               className="secondary-game-button"
@@ -1116,6 +1119,9 @@ function QuestionerPokedexModal({
                 )} ${selectedPokemon.koreanName}`
               : "아직 선택하지 않았어요"}
           </strong>
+          {selectedPokemon ? (
+            <PokemonTypeBadges types={selectedPokemon.types} />
+          ) : null}
         </div>
         <button
           className="secondary-game-button"
@@ -1148,6 +1154,7 @@ function QuestionerPokedexModal({
             className="warning-icon"
             size={40}
           />
+          <PokemonTypeBadges types={selectedPokemon.types} />
           <p>틀리면 남은 기회가 줄어들어요.</p>
           <div className="modal-actions">
             <button

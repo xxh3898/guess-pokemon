@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   createMemoryRouter,
@@ -393,6 +394,14 @@ describe("RoomPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "이 포켓몬 선택" }),
     );
+    expect(screen.getAllByText("전기").length).toBeGreaterThan(1);
+    expect(
+      within(
+        screen.getByRole("dialog", {
+          name: "피카츄를 정답으로 선택할까요?",
+        }),
+      ).getByText("전기"),
+    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "선택하기" }),
     );
@@ -429,6 +438,7 @@ describe("RoomPage", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /피카츄/ }),
     );
+    expect(screen.getAllByText("전기").length).toBeGreaterThan(1);
     expect(
       screen.getByRole("button", { name: "이 포켓몬 추측" }),
     ).toBeDisabled();
@@ -448,6 +458,7 @@ describe("RoomPage", () => {
       await screen.findByText("내 역할 · 질문자"),
     ).toBeInTheDocument();
     expect(screen.queryByText("피카츄")).not.toBeInTheDocument();
+    expect(screen.queryByText("전기")).not.toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(
       PIKACHU.artworkUrl,
     );
@@ -642,6 +653,13 @@ describe("RoomPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "이 포켓몬 추측" }),
     );
+    expect(
+      within(
+        screen.getByRole("dialog", {
+          name: "피카츄로 추측할까요?",
+        }),
+      ).getByText("전기"),
+    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "추측하기" }),
     );
@@ -704,6 +722,7 @@ describe("RoomPage", () => {
       await screen.findByRole("heading", { name: "승리했어요" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("피카츄")).not.toHaveLength(0);
+    expect(screen.getByText("전기")).toBeInTheDocument();
     expect(scrollTo).toHaveBeenCalledWith(0, 0);
     scrollTo.mockRestore();
   });
@@ -1080,6 +1099,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"] as const,
 };
 const QUESTIONER_ACTIVE_SNAPSHOT: QuestionerActiveRoomSnapshot = {
   game: {
@@ -1188,6 +1208,7 @@ function createPokemonGateway(
       generation: 1,
       koreanName: "피카츄",
       nationalDexId: 25,
+      types: ["ELECTRIC"] as const,
     }),
     search: vi.fn().mockResolvedValue({
       content,

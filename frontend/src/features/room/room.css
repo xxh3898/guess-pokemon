@@ -640,13 +640,18 @@
   flex-direction: column;
 }
 
-.questioner-pokedex-modal > footer span {
+.questioner-pokedex-modal > footer > div > span {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
 .questioner-pokedex-modal > footer strong {
   color: var(--blue-dark);
+}
+
+.questioner-pokedex-modal > footer .pokemon-type-badges {
+  justify-content: flex-start;
+  margin-top: 0.4rem;
 }
 
 @media (max-width: 760px) {

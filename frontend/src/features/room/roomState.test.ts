@@ -18,6 +18,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"] as const,
 };
 const HOST_SNAPSHOT: WaitingRoomSnapshot = {
   game: null,

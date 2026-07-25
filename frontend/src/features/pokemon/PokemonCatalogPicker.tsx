@@ -19,6 +19,7 @@ import {
   PokemonArtwork,
   formatNationalDexId,
 } from "./PokemonArtwork";
+import { PokemonTypeBadges } from "./PokemonTypeBadges";
 import type {
   PokemonPage,
   PokemonSummary,
@@ -259,6 +260,7 @@ function CatalogContent({
             <PokemonArtwork pokemon={pokemon} />
             <span>{formatNationalDexId(pokemon.nationalDexId)}</span>
             <strong>{pokemon.koreanName}</strong>
+            <PokemonTypeBadges types={pokemon.types} />
           </button>
         );
       })}

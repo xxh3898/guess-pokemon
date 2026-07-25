@@ -11,6 +11,7 @@ const PIKACHU = {
   generation: 1,
   koreanName: "피카츄",
   nationalDexId: 25,
+  types: ["ELECTRIC"],
 };
 const GAME_ID = "b10d3452-0508-4964-a037-61460073cc7a";
 const CURRENT_USER_ID =

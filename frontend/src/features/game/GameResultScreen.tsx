@@ -11,6 +11,7 @@ import {
   PokemonArtwork,
   formatNationalDexId,
 } from "../pokemon/PokemonArtwork";
+import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   MAX_GAME_ACTION_COUNT,
   type ResultRoomSnapshot,
@@ -62,7 +63,7 @@ export function GameResultScreen({
         <span>{outcome.detail}</span>
         <article className="answer-reveal-card panel-card">
           <div>
-            <span>정답 공개</span>
+            <span className="answer-reveal-label">정답 공개</span>
             <small>
               {formatNationalDexId(
                 snapshot.game.answerPokemon.nationalDexId,
@@ -71,6 +72,9 @@ export function GameResultScreen({
             <strong>
               {snapshot.game.answerPokemon.koreanName}
             </strong>
+            <PokemonTypeBadges
+              types={snapshot.game.answerPokemon.types}
+            />
           </div>
           <PokemonArtwork
             pokemon={snapshot.game.answerPokemon}

@@ -185,7 +185,7 @@ src/
 │   ├── auth/
 │   ├── room/        # 방 REST 계약, route orchestration, room state
 │   ├── game/        # 역할별 게임, 결과, 재접속·이탈 화면
-│   ├── pokemon/     # 전국도감 gateway, picker, artwork fallback
+│   ├── pokemon/     # 전국도감 gateway, parser, picker, artwork·타입 표시
 │   └── history/     # 기록 목록·상세 gateway, parser, 화면, timeline
 ├── pages/
 │   ├── HomePage.tsx
@@ -243,6 +243,9 @@ src/
 - STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
 - 질문자 전국도감 모달은 `?pokedex=1` 라우트 검색 파라미터로 열어 브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와 `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는 파라미터를 제거한다.
 - 도감 검색·필터·페이지 이동·포켓몬 선택은 게임 명령을 만들지 않는다. 질문자의 최종 추측 버튼은 최신 snapshot의 미답변 질문, 처리 중인 명령, 남은 횟수를 확인한 뒤에만 활성화하고 실제 승패와 행동 횟수는 서버의 STOMP 명령 검증을 따른다.
+- frontend `PokemonSummary` parser는 `types`가 지원 코드 18개 중 중복 없는 1~2개인지 검증한다. 누락·미지원·중복·길이 초과 응답은 안전한 API 응답 오류로 처리한다.
+- `PokemonTypeBadges`는 API 순서를 유지하면서 고정 mapping으로 한국어 label과 type별 class를 출력한다. 색상은 보조 정보로만 쓰고 label text를 항상 남기며, 좁은 카드에서는 배지 단위로 줄바꿈한다.
+- 질문자에게는 공개 전국도감·자신이 고른 추측 후보·경기 종료 정답의 타입만 표시한다. 출제자에게는 정답 선택 후보·확인·selector 전용 경기 snapshot의 타입을 표시한다.
 - room pathname 이탈은 React Router blocker로 명시적 leave 완료 뒤에만 진행한다.
 - 진행 중 경기의 hard reload·tab 닫기는 `beforeunload` 기본 경고만 사용한다. unload 과정에서는 신뢰할 수 없는 REST leave를 보내지 않고 server의 disconnect·60초 재접속 규칙에 맡긴다.
 - Lucide icon은 named import만 사용하고 장식 icon은 screen reader에서 숨긴다. icon-only control은 부모 control에 접근 가능한 이름을 제공한다.

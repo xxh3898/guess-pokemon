@@ -74,7 +74,8 @@
   width: 0.55rem;
 }
 
-.secret-pokemon-card > span:not(.pokemon-artwork) {
+.secret-pokemon-card
+  > span:not(.pokemon-artwork):not(.pokemon-type-badges) {
   align-self: flex-start;
   color: var(--muted);
   font-size: 0.82rem;
@@ -86,6 +87,10 @@
 
 .secret-pokemon-card h2 {
   font-size: 1.15rem;
+}
+
+.secret-pokemon-card .pokemon-type-badges {
+  margin-bottom: 0.15rem;
 }
 
 .remaining-actions {
@@ -403,7 +408,7 @@
   gap: 0.4rem;
 }
 
-.answer-reveal-card > div > span {
+.answer-reveal-label {
   background: var(--blue);
   border-radius: 6px;
   color: white;
@@ -414,6 +419,11 @@
 
 .answer-reveal-card strong {
   font-size: 1.55rem;
+}
+
+.answer-reveal-card .pokemon-type-badges {
+  justify-content: flex-start;
+  margin-top: 0.2rem;
 }
 
 .used-action-summary {
