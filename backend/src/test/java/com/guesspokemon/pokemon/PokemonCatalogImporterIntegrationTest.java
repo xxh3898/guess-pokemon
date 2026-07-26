@@ -85,10 +85,32 @@ class PokemonCatalogImporterIntegrationTest {
                                 """)
                         .query(Long.class)
                         .single();
+        Integer pikachuParent =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT evolves_from_national_dex_id
+                                FROM pokemon_species
+                                WHERE national_dex_id = 25
+                                """)
+                        .query(Integer.class)
+                        .single();
+        Integer raichuParent =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT evolves_from_national_dex_id
+                                FROM pokemon_species
+                                WHERE national_dex_id = 26
+                                """)
+                        .query(Integer.class)
+                        .single();
 
         assertEquals(1025L, rowCount);
         assertEquals(1L, versionCount);
         assertEquals(1025L, typedRowCount);
+        assertEquals(172, pikachuParent);
+        assertEquals(25, raichuParent);
     }
 
     @Test
@@ -115,6 +137,45 @@ class PokemonCatalogImporterIntegrationTest {
                         .query(Boolean.class)
                         .single();
         assertFalse(enabled);
+    }
+
+    @Test
+    void should_restoreEvolutionRelationAndPreserveDisabledRow_when_sameVersionRelationIsMissing() {
+        jdbcClient
+                .sql(
+                        """
+                        UPDATE pokemon_species
+                        SET enabled = FALSE,
+                            evolves_from_national_dex_id = NULL
+                        WHERE national_dex_id = 25
+                        """)
+                .update();
+
+        pokemonCatalogImporter.run(null);
+
+        Boolean enabled =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT enabled
+                                FROM pokemon_species
+                                WHERE national_dex_id = 25
+                                """)
+                        .query(Boolean.class)
+                        .single();
+        Integer evolvesFromNationalDexId =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT evolves_from_national_dex_id
+                                FROM pokemon_species
+                                WHERE national_dex_id = 25
+                                """)
+                        .query(Integer.class)
+                        .single();
+
+        assertFalse(enabled);
+        assertEquals(172, evolvesFromNationalDexId);
     }
 
     @Test

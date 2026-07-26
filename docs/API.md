@@ -336,6 +336,61 @@ query:
 - `401 AUTHENTICATION_REQUIRED` (`nationalDexId=25` 외 비회원 요청)
 - `404 POKEMON_NOT_FOUND`
 
+### 6.3 직접 진화 관계
+
+`GET /api/v1/pokemon-species/{nationalDexId}/evolutions`
+
+접근: 회원
+
+`nationalDexId=25`도 이 경로에서는 회원 인증이 필요하다. 응답은 요청한
+포켓몬과 직접 연결된 이전·다음 진화만 포함하며 전체 진화 계보를
+재귀적으로 펼치지 않는다. 비활성 포켓몬은 관계에서 제외하고 다음 진화는
+National Dex 번호 오름차순으로 반환한다.
+
+응답 `200`:
+
+```json
+{
+  "pokemon": {
+    "nationalDexId": 25,
+    "koreanName": "피카츄",
+    "generation": 1,
+    "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
+    "artworkEnabled": true,
+    "types": ["ELECTRIC"]
+  },
+  "previousEvolution": {
+    "nationalDexId": 172,
+    "koreanName": "피츄",
+    "generation": 2,
+    "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/172.png",
+    "artworkEnabled": true,
+    "types": ["ELECTRIC"]
+  },
+  "nextEvolutions": [
+    {
+      "nationalDexId": 26,
+      "koreanName": "라이츄",
+      "generation": 1,
+      "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/26.png",
+      "artworkEnabled": true,
+      "types": ["ELECTRIC"]
+    }
+  ]
+}
+```
+
+직접 이전 진화가 없으면 `previousEvolution`은 `null`, 직접 다음 진화가
+없으면 `nextEvolutions`는 `[]`다. `POKEMON_ARTWORK_ENABLED=false`이면
+세 위치의 모든 `PokemonSummary`가 `artworkEnabled=false`,
+`artworkUrl=null`을 반환한다.
+
+오류:
+
+- `400 VALIDATION_FAILED`
+- `401 AUTHENTICATION_REQUIRED`
+- `404 POKEMON_NOT_FOUND`
+
 ## 7. 방 REST API
 
 ### `RoomSnapshot`

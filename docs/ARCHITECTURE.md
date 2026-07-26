@@ -129,6 +129,7 @@ com.guesspokemon
 - versioned catalog snapshot 검증
 - `pokemon_species` 초기 적재
 - 기본 폼의 1~2개 타입과 PokéAPI slot 순서 보존
+- 직접 이전·다음 진화 관계 저장과 회원용 조회
 - 한국어 검색과 세대 filter
 - official artwork kill switch
 
@@ -363,7 +364,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 ## 12. 포켓몬 catalog
 
 - `scripts/fetch-pokemon-catalog.mjs`는 명시적으로 실행하는 개발 도구다.
-- PokéAPI에서 기본 species, 한국어 이름, generation, official artwork URL과 기본 폼의 타입을 모은다.
+- PokéAPI에서 기본 species, 한국어 이름, generation, `evolves_from_species`, official artwork URL과 기본 폼의 타입을 모은다.
 - PokéAPI Fair Use Policy에 맞춰 응답을 `scripts/.cache/pokeapi/`에 저장하고 cache miss만 제한된 동시성으로 요청한다.
 - PokéAPI species count가 승인된 최대 번호 1,025와 다르면 새 종을 자동 포함하지 않고 생성에 실패한다.
 - 1부터 snapshot의 최대 National Dex 번호까지 다음 조건을 검증한다.
@@ -373,16 +374,24 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
   - default variety 정확히 하나
   - HTTPS official artwork URL 존재
   - PokéAPI slot 순서의 중복 없는 지원 타입 1~2개
+  - 직접 이전 진화 ID가 snapshot에 존재하고 자기 자신을 가리키지 않음
+  - 직접 이전 진화 연결에 cycle 없음
 - 결과를 `backend/src/main/resources/catalog/pokemon-species.json`에 저장한다.
 - canonical species content의 SHA-256 일부를 catalog version으로 사용하고 생성 시각은 별도 field로 기록한다.
 - V4는 `pokemon_species.primary_type`, `secondary_type`과 지원 코드·순서 구조·중복·활성 row 제약을 추가한다. 기존 row는 migration에서 비활성화하고 타입 없는 활성 row가 노출되지 않게 한다.
-- 애플리케이션은 snapshot을 다시 검증한 뒤 같은 catalog version의 타입 완전한 1,025행이 없을 때 한 transaction으로 JDBC batch upsert한다.
+- V6는 nullable `evolves_from_national_dex_id` self FK, 자기 참조 금지 제약과 다음 진화 조회 index를 추가한다. 기존 V5 row는 관계가 없는 상태로 보존한다.
+- 애플리케이션은 snapshot을 다시 검증한 뒤 한 transaction에서 기본 종 정보를 먼저 JDBC batch upsert하고 직접 진화 관계를 두 번째 batch로 반영한다. 이 순서로 National Dex 번호가 더 큰 이전 진화 종도 FK 위반 없이 저장한다.
 - 새 version이나 누락 타입을 복구하는 upsert는 현재 1,025종을 활성화한다. 같은 완전한 version에서는 기존 `enabled=false`를 보존한다. 현재 snapshot에 없는 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
+- 같은 완전한 version에서 진화 관계만 누락되거나 달라지면 관계 batch만 다시 적용하고 기존 `enabled=false` kill switch는 보존한다.
 - 운영 시작마다 PokéAPI를 호출하거나 자동으로 종 수를 바꾸지 않는다.
 - catalog 갱신은 독립 commit과 검증 결과를 요구한다.
 - 비회원에게는 공개 화면 대표 이미지에 필요한 정확한
   `GET /api/v1/pokemon-species/25`만 허용한다. 목록·검색과 다른
-  도감 번호는 회원 인증을 유지하며 두 경계를 통합 테스트한다.
+  도감 번호 및 모든 `/evolutions` 경로는 회원 인증을 유지하며 두
+  경계를 통합 테스트한다.
+- 진화 관계 API는 요청 종과 활성 상태인 직접 이전·다음 종만
+  `PokemonSummary`로 반환한다. 이전 종이 없으면 `null`, 다음 종이
+  없으면 빈 목록이며 다음 종은 National Dex 번호 오름차순으로 정렬한다.
 
 ## 13. Docker와 배포
 
@@ -402,7 +411,7 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - backend test는 `postgres:18.4-alpine3.24`, `@ServiceConnection`을 사용해 실행마다 격리된 DB를 만든다.
 - Docker Desktop의 sibling container 통신을 위해 source를 host와 같은 절대경로에 mount하고 `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal`을 사용한다.
 - backend test container의 `/var/run/docker.sock` mount는 Docker daemon 전체 제어 권한에 해당하므로 신뢰할 수 있는 로컬 코드 검증에만 사용한다.
-- 외부 PokéAPI에 의존하지 않고 versioned catalog fixture를 사용한다.
+- 외부 PokéAPI에 의존하지 않고 타입과 직접 진화 관계를 포함한 versioned catalog fixture를 사용한다.
 - Testcontainers DB는 실행마다 임의 port와 credential을 사용하고 test 종료 뒤 폐기한다.
 - `infra-test`는 Nginx·Tunnel·backup·Compose 정적 계약을 검사하고 `nginx-config-test`는 실제 Nginx image에서 `nginx -t`를 실행한다.
 - `QuickTunnelConnectivityTest`는 `QUICK_TUNNEL_URL`을 명시한 경우에만 HTTPS, Secure cookie, 두 REST session과 WSS/STOMP를 외부 통합 검증한다.
@@ -498,6 +507,6 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - 정답이 질문자 DTO에 컴파일 단계부터 존재하지 않는다.
 - game state machine이 Spring·JPA 없이 단위 테스트 가능하다.
 - REST·STOMP command 모두 같은 application service와 domain 규칙을 호출한다.
-- DB migration, session schema, 타입을 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade와 V4 game action의 V5 upgrade 경로를 Testcontainers에서 검증한다.
+- DB migration, session schema, 타입·직접 진화 관계를 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade, V4 game action의 V5 upgrade, V5 catalog row의 V6 upgrade 경로를 Testcontainers에서 검증한다.
 - Docker Compose로 local, test, production-like profile을 구분한다.
 - 향후 이메일 인증과 다중 서버는 현재 dead code 없이 확장 지점만 문서로 남긴다.

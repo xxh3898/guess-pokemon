@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(
@@ -30,5 +31,23 @@ class PokemonCatalogArtworkDisabledApiIntegrationTest {
                 .andExpect(jsonPath("$.artworkEnabled").value(false))
                 .andExpect(jsonPath("$.artworkUrl", nullValue()))
                 .andExpect(jsonPath("$.types[0]").value("ELECTRIC"));
+    }
+
+    @Test
+    @WithMockUser(username = "catalog-member")
+    void should_hideArtworkUrls_when_memberRequestsEvolutionDetailsWithGlobalKillSwitchDisabled()
+            throws Exception {
+        mockMvc.perform(get("/api/v1/pokemon-species/25/evolutions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pokemon.artworkEnabled").value(false))
+                .andExpect(jsonPath("$.pokemon.artworkUrl", nullValue()))
+                .andExpect(
+                        jsonPath(
+                                "$.previousEvolution.artworkUrl",
+                                nullValue()))
+                .andExpect(
+                        jsonPath(
+                                "$.nextEvolutions[0].artworkUrl",
+                                nullValue()));
     }
 }

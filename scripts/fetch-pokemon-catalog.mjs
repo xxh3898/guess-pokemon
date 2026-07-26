@@ -81,6 +81,30 @@ function parseResourceId(resourceUrl, resourceName) {
   return Number.parseInt(match[1], 10);
 }
 
+function parseEvolvesFromNationalDexId(species) {
+  assertCondition(
+    Object.hasOwn(species, "evolves_from_species"),
+    `species ${species.id} evolves_from_species가 없습니다.`,
+  );
+  if (species.evolves_from_species === null) {
+    return null;
+  }
+  const evolvesFromNationalDexId = parseResourceId(
+    species.evolves_from_species?.url,
+    "pokemon-species",
+  );
+  assertCondition(
+    evolvesFromNationalDexId >= 1 &&
+      evolvesFromNationalDexId <= EXPECTED_NATIONAL_DEX_MAX,
+    `species ${species.id} 이전 진화 종이 승인 범위를 벗어났습니다: ${evolvesFromNationalDexId}`,
+  );
+  assertCondition(
+    evolvesFromNationalDexId !== species.id,
+    `species ${species.id} 이전 진화 종이 자기 자신입니다.`,
+  );
+  return evolvesFromNationalDexId;
+}
+
 export function parseGeneration(generationName) {
   const generation = GENERATIONS.get(generationName);
   assertCondition(
@@ -212,9 +236,52 @@ export function buildSpeciesRecord(species, pokemon) {
     slug,
     koreanName,
     generation: parseGeneration(species.generation?.name),
+    evolvesFromNationalDexId:
+      parseEvolvesFromNationalDexId(species),
     artworkUrl,
     types: parsePokemonTypes(pokemon.types, species.id),
   };
+}
+
+function validateEvolutionRelations(sortedRecords) {
+  const recordsByNationalDexId = new Map(
+    sortedRecords.map((record) => [record.nationalDexId, record]),
+  );
+  sortedRecords.forEach((record) => {
+    const evolvesFromNationalDexId = record.evolvesFromNationalDexId;
+    assertCondition(
+      evolvesFromNationalDexId === null ||
+        Number.isInteger(evolvesFromNationalDexId),
+      `species ${record.nationalDexId} 이전 진화 종 번호가 올바르지 않습니다.`,
+    );
+    if (evolvesFromNationalDexId === null) {
+      return;
+    }
+    assertCondition(
+      evolvesFromNationalDexId !== record.nationalDexId,
+      `species ${record.nationalDexId} 이전 진화 종이 자기 자신입니다.`,
+    );
+    assertCondition(
+      recordsByNationalDexId.has(evolvesFromNationalDexId),
+      `species ${record.nationalDexId} 이전 진화 종을 찾을 수 없습니다: ${evolvesFromNationalDexId}`,
+    );
+  });
+
+  sortedRecords.forEach((record) => {
+    const path = new Set();
+    let currentNationalDexId = record.nationalDexId;
+    while (currentNationalDexId !== null) {
+      assertCondition(
+        !path.has(currentNationalDexId),
+        `species ${record.nationalDexId} 진화 관계에 cycle이 있습니다.`,
+      );
+      path.add(currentNationalDexId);
+      currentNationalDexId =
+        recordsByNationalDexId.get(
+          currentNationalDexId,
+        ).evolvesFromNationalDexId;
+    }
+  });
 }
 
 export function validateSpeciesRecords(speciesRecords) {
@@ -264,6 +331,7 @@ export function validateSpeciesRecords(speciesRecords) {
     slugs.add(record.slug);
     koreanNames.add(record.koreanName);
   });
+  validateEvolutionRelations(sortedRecords);
 
   return sortedRecords;
 }

@@ -4,9 +4,11 @@ import java.net.URI;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -80,6 +82,7 @@ public class PokemonCatalogValidator {
             requireHttpsUrl(species.artworkUrl());
             requireTypes(species.types());
         }
+        validateEvolutionRelations(snapshot.species());
 
         require(
                 expectedCatalogVersion(snapshot.species())
@@ -101,6 +104,44 @@ public class PokemonCatalogValidator {
             throw new IllegalStateException(
                     "catalog version을 계산할 수 없습니다.",
                     exception);
+        }
+    }
+
+    private void validateEvolutionRelations(
+            List<PokemonCatalogSnapshot.Species> speciesList) {
+        Map<Integer, PokemonCatalogSnapshot.Species> speciesById =
+                new HashMap<>();
+        for (PokemonCatalogSnapshot.Species species : speciesList) {
+            speciesById.put(species.nationalDexId(), species);
+        }
+
+        for (PokemonCatalogSnapshot.Species species : speciesList) {
+            Integer evolvesFromNationalDexId =
+                    species.evolvesFromNationalDexId();
+            if (evolvesFromNationalDexId == null) {
+                continue;
+            }
+            require(
+                    evolvesFromNationalDexId
+                            != species.nationalDexId(),
+                    "이전 진화 종이 자기 자신입니다.");
+            require(
+                    speciesById.containsKey(evolvesFromNationalDexId),
+                    "참조한 이전 진화 종이 catalog에 없습니다.");
+        }
+
+        for (PokemonCatalogSnapshot.Species species : speciesList) {
+            Set<Integer> path = new HashSet<>();
+            Integer currentNationalDexId = species.nationalDexId();
+            while (currentNationalDexId != null) {
+                require(
+                        path.add(currentNationalDexId),
+                        "진화 관계에 cycle이 있습니다.");
+                currentNationalDexId =
+                        speciesById
+                                .get(currentNationalDexId)
+                                .evolvesFromNationalDexId();
+            }
         }
     }
 

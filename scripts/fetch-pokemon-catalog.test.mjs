@@ -26,6 +26,7 @@ function createSpecies(overrides = {}) {
     generation: {
       name: "generation-i",
     },
+    evolves_from_species: null,
     varieties: [
       {
         is_default: true,
@@ -73,6 +74,7 @@ function createCompleteRecords() {
       slug: `pokemon-${index + 1}`,
       koreanName: `포켓몬-${index + 1}`,
       generation: Math.min(Math.floor(index / 130) + 1, 9),
+      evolvesFromNationalDexId: null,
       artworkUrl:
         `https://raw.githubusercontent.com/PokeAPI/sprites/master/` +
         `sprites/pokemon/other/official-artwork/${index + 1}.png`,
@@ -99,10 +101,25 @@ test("should_buildSpeciesRecord_when_requiredResourcesAreComplete", () => {
     slug: "pikachu",
     koreanName: "피카츄",
     generation: 1,
+    evolvesFromNationalDexId: null,
     artworkUrl:
       "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
     types: ["ELECTRIC"],
   });
+});
+
+test("should_parseEvolutionParent_when_speciesHasPreviousEvolution", () => {
+  const record = buildSpeciesRecord(
+    createSpecies({
+      evolves_from_species: {
+        name: "pichu",
+        url: "https://pokeapi.co/api/v2/pokemon-species/172/",
+      },
+    }),
+    createPokemon(),
+  );
+
+  assert.equal(record.evolvesFromNationalDexId, 172);
 });
 
 test("should_preserveSlotOrder_when_pokemonHasTwoTypes", () => {
@@ -292,6 +309,59 @@ test("should_rejectRecords_when_typesAreInvalid", () => {
   assert.throws(
     () => validateSpeciesRecords(records),
     /중복 타입/,
+  );
+});
+
+test("should_acceptRecords_when_parentNationalDexIdIsGreater", () => {
+  const records = createCompleteRecords();
+  records[24] = {
+    ...records[24],
+    evolvesFromNationalDexId: 172,
+  };
+
+  assert.doesNotThrow(() => validateSpeciesRecords(records));
+});
+
+test("should_rejectRecords_when_evolutionParentIsMissing", () => {
+  const records = createCompleteRecords();
+  records[24] = {
+    ...records[24],
+    evolvesFromNationalDexId: EXPECTED_NATIONAL_DEX_MAX + 1,
+  };
+
+  assert.throws(
+    () => validateSpeciesRecords(records),
+    /이전 진화 종을 찾을 수 없습니다/,
+  );
+});
+
+test("should_rejectRecords_when_evolutionReferencesSelf", () => {
+  const records = createCompleteRecords();
+  records[24] = {
+    ...records[24],
+    evolvesFromNationalDexId: 25,
+  };
+
+  assert.throws(
+    () => validateSpeciesRecords(records),
+    /이전 진화 종이 자기 자신입니다/,
+  );
+});
+
+test("should_rejectRecords_when_evolutionRelationsContainCycle", () => {
+  const records = createCompleteRecords();
+  records[0] = {
+    ...records[0],
+    evolvesFromNationalDexId: 2,
+  };
+  records[1] = {
+    ...records[1],
+    evolvesFromNationalDexId: 1,
+  };
+
+  assert.throws(
+    () => validateSpeciesRecords(records),
+    /진화 관계에 cycle이 있습니다/,
   );
 });
 

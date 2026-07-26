@@ -20,6 +20,8 @@ class FlywayMigrationIntegrationTest {
             "pokemon_type_upgrade_test";
     private static final String ANSWER_COMMENT_UPGRADE_SCHEMA =
             "answer_comment_upgrade_test";
+    private static final String EVOLUTION_UPGRADE_SCHEMA =
+            "pokemon_evolution_upgrade_test";
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -70,7 +72,7 @@ class FlywayMigrationIntegrationTest {
                         .single();
 
         assertEquals(0, migrationsExecuted);
-        assertEquals(5L, historyCount);
+        assertEquals(6L, historyCount);
     }
 
     @Test
@@ -290,6 +292,57 @@ class FlywayMigrationIntegrationTest {
     }
 
     @Test
+    void should_createEvolutionColumnConstraintsAndIndex_when_v6MigrationRuns() {
+        Long columnCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'pokemon_species'
+                                  AND column_name =
+                                      'evolves_from_national_dex_id'
+                                  AND data_type = 'integer'
+                                  AND is_nullable = 'YES'
+                                """)
+                        .query(Long.class)
+                        .single();
+        Long constraintCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM information_schema.table_constraints
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'pokemon_species'
+                                  AND constraint_name IN (
+                                      'fk_pokemon_species_evolves_from',
+                                      'ck_pokemon_species_evolves_from_not_self'
+                                  )
+                                """)
+                        .query(Long.class)
+                        .single();
+        Long indexCount =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM pg_indexes
+                                WHERE schemaname = 'public'
+                                  AND tablename = 'pokemon_species'
+                                  AND indexname =
+                                      'ix_pokemon_species_evolves_from'
+                                """)
+                        .query(Long.class)
+                        .single();
+
+        assertEquals(1L, columnCount);
+        assertEquals(2L, constraintCount);
+        assertEquals(1L, indexCount);
+    }
+
+    @Test
     void should_disableExistingCatalogRows_when_v3DatabaseMigratesToV4() {
         Flyway legacyFlyway =
                 Flyway.configure()
@@ -404,6 +457,7 @@ class FlywayMigrationIntegrationTest {
                         .dataSource(dataSource)
                         .schemas(ANSWER_COMMENT_UPGRADE_SCHEMA)
                         .defaultSchema(ANSWER_COMMENT_UPGRADE_SCHEMA)
+                        .target("5")
                         .load();
         assertEquals(
                 1,
@@ -443,6 +497,90 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(1L, preservedActionCount);
         assertTrue(constraintValidated);
+    }
+
+    @Test
+    void should_preserveExistingCatalogRows_when_v5DatabaseMigratesToV6() {
+        Flyway legacyFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(EVOLUTION_UPGRADE_SCHEMA)
+                        .defaultSchema(EVOLUTION_UPGRADE_SCHEMA)
+                        .target("5")
+                        .load();
+        assertEquals(
+                5,
+                legacyFlyway.migrate().migrationsExecuted);
+        JdbcClient upgradeJdbcClient = JdbcClient.create(dataSource);
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.pokemon_species (
+                            national_dex_id,
+                            slug,
+                            korean_name,
+                            generation,
+                            primary_type,
+                            secondary_type,
+                            artwork_url,
+                            catalog_version,
+                            source_updated_at,
+                            enabled
+                        )
+                        VALUES
+                            (
+                                25,
+                                'pikachu',
+                                '피카츄',
+                                1,
+                                'ELECTRIC',
+                                NULL,
+                                'https://example.test/25.png',
+                                'pokeapi-v2-upgrade',
+                                CURRENT_TIMESTAMP,
+                                TRUE
+                            ),
+                            (
+                                172,
+                                'pichu',
+                                '피츄',
+                                2,
+                                'ELECTRIC',
+                                NULL,
+                                'https://example.test/172.png',
+                                'pokeapi-v2-upgrade',
+                                CURRENT_TIMESTAMP,
+                                TRUE
+                            )
+                        """
+                                .formatted(EVOLUTION_UPGRADE_SCHEMA))
+                .update();
+
+        Flyway currentFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(EVOLUTION_UPGRADE_SCHEMA)
+                        .defaultSchema(EVOLUTION_UPGRADE_SCHEMA)
+                        .load();
+        assertEquals(
+                1,
+                currentFlyway.migrate().migrationsExecuted);
+
+        Long preservedRowCount =
+                upgradeJdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM %s.pokemon_species
+                                WHERE national_dex_id IN (25, 172)
+                                  AND evolves_from_national_dex_id IS NULL
+                                """
+                                        .formatted(
+                                                EVOLUTION_UPGRADE_SCHEMA))
+                        .query(Long.class)
+                        .single();
+
+        assertEquals(2L, preservedRowCount);
     }
 
     private void insertV4AnsweredQuestion(

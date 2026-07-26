@@ -26,6 +26,7 @@ erDiagram
     APP_USER ||--o{ GAME_ACTION : acts
     POKEMON_SPECIES ||--o{ GAME : answer
     POKEMON_SPECIES ||--o{ GAME_ACTION : guessed
+    POKEMON_SPECIES o|--o{ POKEMON_SPECIES : evolves_to
     SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTE : contains
 
     APP_USER {
@@ -47,6 +48,7 @@ erDiagram
         smallint generation
         varchar primary_type
         varchar secondary_type
+        int evolves_from_national_dex_id FK
         text artwork_url
         varchar catalog_version
         timestamptz source_updated_at
@@ -141,14 +143,17 @@ erDiagram
 | `generation` | `smallint` | N | CHECK 1~9 | 첫 등장 세대 |
 | `primary_type` | `varchar(20)` | Y | CHECK | PokéAPI slot 1 타입, 활성 row는 필수 |
 | `secondary_type` | `varchar(20)` | Y | CHECK | PokéAPI slot 2 타입, 단일 타입이면 null |
+| `evolves_from_national_dex_id` | `integer` | Y | self FK, CHECK | PokéAPI 기준 직접 이전 진화 종 |
 | `artwork_url` | `text` | N | HTTPS validation | 기본 official artwork URL |
 | `catalog_version` | `varchar(40)` | N |  | canonical snapshot content hash 기반 식별자 |
 | `source_updated_at` | `timestamptz` | N |  | snapshot 생성 시각 |
 | `enabled` | `boolean` | N | default true | kill switch·누락 대응 |
 
-catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫 등장 세대 1~9, default variety, HTTPS artwork URL과 타입을 import 전에 검증한다. 타입은 `BUG`, `DARK`, `DRAGON`, `ELECTRIC`, `FAIRY`, `FIGHTING`, `FIRE`, `FLYING`, `GHOST`, `GRASS`, `GROUND`, `ICE`, `NORMAL`, `POISON`, `PSYCHIC`, `ROCK`, `STEEL`, `WATER` 중 PokéAPI slot 순서대로 1~2개만 허용한다.
+catalog snapshot은 1~1,025 ID 연속성, slug·한국어 이름 uniqueness, 첫 등장 세대 1~9, default variety, HTTPS artwork URL, 타입과 직접 이전 진화 관계를 import 전에 검증한다. 타입은 `BUG`, `DARK`, `DRAGON`, `ELECTRIC`, `FAIRY`, `FIGHTING`, `FIRE`, `FLYING`, `GHOST`, `GRASS`, `GROUND`, `ICE`, `NORMAL`, `POISON`, `PSYCHIC`, `ROCK`, `STEEL`, `WATER` 중 PokéAPI slot 순서대로 1~2개만 허용한다. 직접 이전 진화 ID는 snapshot 안에 있어야 하며 자기 자신 참조와 cycle을 허용하지 않는다.
 
 `secondary_type`은 `primary_type` 없이 저장할 수 없고 두 타입은 서로 달라야 한다. `enabled=true`인 row는 `primary_type`이 필수다. V4는 기존 row를 먼저 비활성화하고 새 snapshot importer가 타입과 새 catalog version을 같은 transaction으로 upsert하면서 현재 1,025종을 다시 활성화한다. 같은 완전한 version이면 수동 비활성화 상태를 보존하고, 타입이 누락됐거나 version이 바뀌면 전체 현재 snapshot을 복구한다. 현재 snapshot 밖의 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
+
+V6는 `evolves_from_national_dex_id`에 `pokemon_species(national_dex_id)` self FK와 자기 참조 금지 `CHECK`를 둔다. importer는 기본 종 upsert 뒤 관계를 별도 batch로 반영해 National Dex 순서와 무관하게 FK를 만족한다. 같은 완전한 version에서 관계만 어긋나면 관계만 복구하고 기존 `enabled=false` 상태를 유지한다. 조회할 때 비활성 관련 종은 진화 관계 응답에서 제외한다.
 
 ## 5. `game`
 
@@ -253,6 +258,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 - `app_user(nickname_key)` unique
 - `pokemon_species(korean_name)`
 - `pokemon_species(generation, national_dex_id)`
+- `pokemon_species(evolves_from_national_dex_id)`
 - `game_participant(user_id, game_id)`
 - `game(round_group_id)`
 - `game(status, updated_at)`
@@ -266,7 +272,7 @@ Spring Session JDBC의 PostgreSQL schema를 Flyway migration에서 관리한다.
 ## 10. Transaction 경계
 
 - signup: user insert 한 transaction
-- catalog import: 타입을 포함한 snapshot 전체 검증 뒤 upsert 한 transaction
+- catalog import: 타입·직접 진화 관계를 포함한 snapshot 전체 검증 뒤 기본 종 upsert와 관계 update를 한 transaction
 - game start: game + participant 2건 한 transaction
 - question submit: action insert + game count/version update 한 transaction
 - answer: action answer·선택 코멘트 + game version·종료 여부 update 한 transaction
@@ -290,6 +296,8 @@ game command는 기존 memory aggregate를 직접 바꾸지 않고 immutable can
 | `V2__create_pokemon_catalog.sql` | 포켓몬 catalog |
 | `V3__create_game_history.sql` | 경기, 참가자, 행동 |
 | `V4__add_pokemon_types.sql` | catalog 타입 column·제약과 안전한 재적재 준비 |
+| `V5__add_answer_comment.sql` | 선택 답변 코멘트 column·형식 제약 |
+| `V6__add_pokemon_evolution_relation.sql` | 직접 이전 진화 self FK·자기 참조 금지 제약·조회 index |
 
 각 migration commit은 빈 DB 적용, 재시작, Testcontainers integration test를 통과해야 한다. 이미 적용한 migration 파일은 수정하지 않고 후속 migration을 추가한다.
 같은 migration 파일을 Testcontainers 임시 DB, MacBook 개발 DB, Mac mini 운영 DB 순서로 적용하며 환경별 SQL을 따로 만들지 않는다.

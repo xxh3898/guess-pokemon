@@ -4,6 +4,7 @@ import static com.guesspokemon.common.error.ApiErrorCode.POKEMON_NOT_FOUND;
 import static com.guesspokemon.common.error.ApiErrorCode.VALIDATION_FAILED;
 
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.pokemon.PokemonDtos.PokemonEvolutionDetails;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonPage;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import java.text.Normalizer;
@@ -60,11 +61,39 @@ public class PokemonCatalogService {
 
     @Transactional(readOnly = true)
     public PokemonSummary findByNationalDexId(int nationalDexId) {
+        return toSummary(findEnabledSpecies(nationalDexId));
+    }
+
+    @Transactional(readOnly = true)
+    public PokemonEvolutionDetails findEvolutionDetails(
+            int nationalDexId) {
+        PokemonSpecies species = findEnabledSpecies(nationalDexId);
+        PokemonSummary previousEvolution =
+                species.getEvolvesFromNationalDexId() == null
+                        ? null
+                        : pokemonSpeciesRepository
+                                .findByNationalDexIdAndEnabledTrue(
+                                        species
+                                                .getEvolvesFromNationalDexId())
+                                .map(this::toSummary)
+                                .orElse(null);
+        return new PokemonEvolutionDetails(
+                toSummary(species),
+                previousEvolution,
+                pokemonSpeciesRepository
+                        .findAllByEvolvesFromNationalDexIdAndEnabledTrueOrderByNationalDexIdAsc(
+                                nationalDexId)
+                        .stream()
+                        .map(this::toSummary)
+                        .toList());
+    }
+
+    private PokemonSpecies findEnabledSpecies(int nationalDexId) {
         PokemonSpecies species =
                 pokemonSpeciesRepository
                         .findByNationalDexIdAndEnabledTrue(nationalDexId)
                         .orElseThrow(() -> new ApiException(POKEMON_NOT_FOUND));
-        return toSummary(species);
+        return species;
     }
 
     private String normalizeQuery(String queryInput) {

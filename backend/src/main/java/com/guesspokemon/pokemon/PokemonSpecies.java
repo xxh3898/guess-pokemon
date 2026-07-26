@@ -28,7 +28,10 @@ import java.util.List;
                     columnList = "korean_name"),
             @Index(
                     name = "ix_pokemon_species_generation_national_dex_id",
-                    columnList = "generation,national_dex_id")
+                    columnList = "generation,national_dex_id"),
+            @Index(
+                    name = "ix_pokemon_species_evolves_from",
+                    columnList = "evolves_from_national_dex_id")
         })
 public class PokemonSpecies {
 
@@ -44,6 +47,9 @@ public class PokemonSpecies {
 
     @Column(nullable = false)
     private Short generation;
+
+    @Column(name = "evolves_from_national_dex_id")
+    private Integer evolvesFromNationalDexId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "primary_type", length = 20)
@@ -82,6 +88,10 @@ public class PokemonSpecies {
 
     public Short getGeneration() {
         return generation;
+    }
+
+    public Integer getEvolvesFromNationalDexId() {
+        return evolvesFromNationalDexId;
     }
 
     public List<PokemonType> getTypes() {

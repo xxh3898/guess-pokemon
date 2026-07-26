@@ -33,6 +33,9 @@ class PokemonSpeciesMappingTest {
         assertEquals("피카츄", pikachu.getKoreanName());
         assertEquals((short) 1, pikachu.getGeneration());
         assertEquals(
+                172,
+                pikachu.getEvolvesFromNationalDexId());
+        assertEquals(
                 List.of(PokemonType.ELECTRIC),
                 pikachu.getTypes());
         assertTrue(pikachu.getArtworkUrl().startsWith("https://"));
@@ -101,6 +104,76 @@ class PokemonSpeciesMappingTest {
                                     'ELECTRIC',
                                     'ELECTRIC',
                                     'https://example.com/2001.png',
+                                    'test-invalid',
+                                    CURRENT_TIMESTAMP,
+                                    TRUE
+                                )
+                                """));
+    }
+
+    @Test
+    @Transactional
+    void should_rejectRow_when_evolutionParentDoesNotExist() {
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () ->
+                        jdbcTemplate.update(
+                                """
+                                INSERT INTO pokemon_species (
+                                    national_dex_id,
+                                    slug,
+                                    korean_name,
+                                    generation,
+                                    evolves_from_national_dex_id,
+                                    primary_type,
+                                    artwork_url,
+                                    catalog_version,
+                                    source_updated_at,
+                                    enabled
+                                )
+                                VALUES (
+                                    2002,
+                                    'invalid-evolution-parent',
+                                    '잘못된진화참조',
+                                    9,
+                                    2999,
+                                    'NORMAL',
+                                    'https://example.com/2002.png',
+                                    'test-invalid',
+                                    CURRENT_TIMESTAMP,
+                                    TRUE
+                                )
+                                """));
+    }
+
+    @Test
+    @Transactional
+    void should_rejectRow_when_evolutionReferencesSelf() {
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () ->
+                        jdbcTemplate.update(
+                                """
+                                INSERT INTO pokemon_species (
+                                    national_dex_id,
+                                    slug,
+                                    korean_name,
+                                    generation,
+                                    evolves_from_national_dex_id,
+                                    primary_type,
+                                    artwork_url,
+                                    catalog_version,
+                                    source_updated_at,
+                                    enabled
+                                )
+                                VALUES (
+                                    2003,
+                                    'invalid-self-evolution',
+                                    '잘못된자기진화',
+                                    9,
+                                    2003,
+                                    'NORMAL',
+                                    'https://example.com/2003.png',
                                     'test-invalid',
                                     CURRENT_TIMESTAMP,
                                     TRUE

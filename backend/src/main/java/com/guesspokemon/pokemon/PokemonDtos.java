@@ -23,4 +23,10 @@ public final class PokemonDtos {
             long totalElements,
             int totalPages) {
     }
+
+    public record PokemonEvolutionDetails(
+            PokemonSummary pokemon,
+            PokemonSummary previousEvolution,
+            List<PokemonSummary> nextEvolutions) {
+    }
 }

@@ -3,6 +3,7 @@ package com.guesspokemon.pokemon;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,13 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                 catalog_version = EXCLUDED.catalog_version,
                 source_updated_at = EXCLUDED.source_updated_at,
                 enabled = TRUE
+            """;
+    private static final String UPDATE_EVOLUTION_SQL =
+            """
+            UPDATE pokemon_species
+            SET evolves_from_national_dex_id = ?
+            WHERE national_dex_id = ?
+              AND catalog_version = ?
             """;
 
     private final Resource snapshotResource;
@@ -96,8 +104,11 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                 countCompleteRowsByVersion(snapshot.catalogVersion());
         long enabledOutdatedRowCount =
                 countEnabledRowsOutsideVersion(snapshot.catalogVersion());
+        boolean evolutionRelationsCurrent =
+                evolutionRelationsMatch(snapshot);
         if (currentVersionCount == snapshot.species().size()
-                && enabledOutdatedRowCount == 0) {
+                && enabledOutdatedRowCount == 0
+                && evolutionRelationsCurrent) {
             LOGGER.info(
                     "Pokemon catalog already current version={} count={}",
                     snapshot.catalogVersion(),
@@ -108,6 +119,10 @@ public class PokemonCatalogImporter implements ApplicationRunner {
         if (currentVersionCount != snapshot.species().size()) {
             batchUpsert(snapshot);
         }
+        if (currentVersionCount != snapshot.species().size()
+                || !evolutionRelationsCurrent) {
+            batchUpdateEvolutionRelations(snapshot);
+        }
         disableRowsOutsideVersion(snapshot.catalogVersion());
 
         long importedCount =
@@ -115,6 +130,10 @@ public class PokemonCatalogImporter implements ApplicationRunner {
         if (importedCount != snapshot.species().size()) {
             throw new IllegalStateException(
                     "catalog import row 수가 snapshot과 다릅니다.");
+        }
+        if (!evolutionRelationsMatch(snapshot)) {
+            throw new IllegalStateException(
+                    "catalog 진화 관계가 snapshot과 다릅니다.");
         }
         LOGGER.info(
                 "Pokemon catalog imported version={} count={}",
@@ -151,6 +170,57 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                             9,
                             Timestamp.from(snapshot.sourceUpdatedAt()));
                 });
+    }
+
+    private void batchUpdateEvolutionRelations(
+            PokemonCatalogSnapshot snapshot) {
+        jdbcTemplate.batchUpdate(
+                UPDATE_EVOLUTION_SQL,
+                snapshot.species(),
+                BATCH_SIZE,
+                (preparedStatement, item) -> {
+                    preparedStatement.setObject(
+                            1,
+                            item.evolvesFromNationalDexId(),
+                            Types.INTEGER);
+                    preparedStatement.setInt(
+                            2,
+                            item.nationalDexId());
+                    preparedStatement.setString(
+                            3,
+                            snapshot.catalogVersion());
+                });
+    }
+
+    private boolean evolutionRelationsMatch(
+            PokemonCatalogSnapshot snapshot) {
+        List<EvolutionRelation> expected =
+                snapshot.species().stream()
+                        .map(
+                                species ->
+                                        new EvolutionRelation(
+                                                species.nationalDexId(),
+                                                species
+                                                        .evolvesFromNationalDexId()))
+                        .toList();
+        List<EvolutionRelation> actual =
+                jdbcTemplate.query(
+                        """
+                        SELECT national_dex_id,
+                               evolves_from_national_dex_id
+                        FROM pokemon_species
+                        WHERE catalog_version = ?
+                        ORDER BY national_dex_id
+                        """,
+                        (resultSet, rowNumber) ->
+                                new EvolutionRelation(
+                                        resultSet.getInt(
+                                                "national_dex_id"),
+                                        resultSet.getObject(
+                                                "evolves_from_national_dex_id",
+                                                Integer.class)),
+                        snapshot.catalogVersion());
+        return expected.equals(actual);
     }
 
     private long countCompleteRowsByVersion(String catalogVersion) {
@@ -198,5 +268,10 @@ public class PokemonCatalogImporter implements ApplicationRunner {
                   AND enabled = TRUE
                 """,
                 catalogVersion);
+    }
+
+    private record EvolutionRelation(
+            int nationalDexId,
+            Integer evolvesFromNationalDexId) {
     }
 }

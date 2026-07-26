@@ -43,6 +43,7 @@ class PokemonCatalogValidatorTest {
                         "duplicate-id",
                         "누락검증",
                         1,
+                        null,
                         artworkUrl(26),
                         List.of(PokemonType.NORMAL)));
         PokemonCatalogSnapshot snapshot =
@@ -71,6 +72,7 @@ class PokemonCatalogValidatorTest {
                         second.slug(),
                         first.koreanName(),
                         second.generation(),
+                        second.evolvesFromNationalDexId(),
                         second.artworkUrl(),
                         second.types()));
         PokemonCatalogSnapshot snapshot =
@@ -115,6 +117,7 @@ class PokemonCatalogValidatorTest {
                         first.slug(),
                         first.koreanName(),
                         first.generation(),
+                        first.evolvesFromNationalDexId(),
                         first.artworkUrl(),
                         List.of()));
         PokemonCatalogSnapshot snapshot =
@@ -142,6 +145,7 @@ class PokemonCatalogValidatorTest {
                         first.slug(),
                         first.koreanName(),
                         first.generation(),
+                        first.evolvesFromNationalDexId(),
                         first.artworkUrl(),
                         List.of(
                                 PokemonType.NORMAL,
@@ -153,6 +157,70 @@ class PokemonCatalogValidatorTest {
                         Instant.parse("2026-07-25T00:00:00Z"),
                         PokemonCatalogValidator.EXPECTED_NATIONAL_DEX_MAX,
                         species);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_acceptSnapshot_when_parentNationalDexIdIsGreater() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        PokemonCatalogSnapshot.Species pikachu = species.get(24);
+        species.set(
+                24,
+                withEvolutionParent(pikachu, 172));
+        PokemonCatalogSnapshot snapshot = createSnapshot(species);
+
+        assertDoesNotThrow(
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_rejectSnapshot_when_evolutionParentIsMissing() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        PokemonCatalogSnapshot.Species pikachu = species.get(24);
+        species.set(
+                24,
+                withEvolutionParent(
+                        pikachu,
+                        PokemonCatalogValidator.EXPECTED_NATIONAL_DEX_MAX
+                                + 1));
+        PokemonCatalogSnapshot snapshot = createSnapshot(species);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_rejectSnapshot_when_evolutionReferencesSelf() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        PokemonCatalogSnapshot.Species pikachu = species.get(24);
+        species.set(
+                24,
+                withEvolutionParent(pikachu, 25));
+        PokemonCatalogSnapshot snapshot = createSnapshot(species);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> pokemonCatalogValidator.validate(snapshot));
+    }
+
+    @Test
+    void should_rejectSnapshot_when_evolutionRelationsContainCycle() {
+        List<PokemonCatalogSnapshot.Species> species =
+                createCompleteSpecies();
+        species.set(
+                0,
+                withEvolutionParent(species.get(0), 2));
+        species.set(
+                1,
+                withEvolutionParent(species.get(1), 1));
+        PokemonCatalogSnapshot snapshot = createSnapshot(species);
 
         assertThrows(
                 IllegalStateException.class,
@@ -184,10 +252,24 @@ class PokemonCatalogValidatorTest {
                             "pokemon-" + nationalDexId,
                             "포켓몬-" + nationalDexId,
                             Math.min(((nationalDexId - 1) / 130) + 1, 9),
+                            null,
                             artworkUrl(nationalDexId),
                             List.of(PokemonType.NORMAL)));
         }
         return species;
+    }
+
+    private PokemonCatalogSnapshot.Species withEvolutionParent(
+            PokemonCatalogSnapshot.Species species,
+            Integer evolvesFromNationalDexId) {
+        return new PokemonCatalogSnapshot.Species(
+                species.nationalDexId(),
+                species.slug(),
+                species.koreanName(),
+                species.generation(),
+                evolvesFromNationalDexId,
+                species.artworkUrl(),
+                species.types());
     }
 
     private String artworkUrl(int nationalDexId) {

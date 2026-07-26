@@ -1,5 +1,6 @@
 package com.guesspokemon.pokemon;
 
+import com.guesspokemon.pokemon.PokemonDtos.PokemonEvolutionDetails;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonPage;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import jakarta.validation.constraints.Max;
@@ -49,5 +50,11 @@ public class PokemonCatalogController {
     PokemonSummary findByNationalDexId(
             @PathVariable @Positive int nationalDexId) {
         return pokemonCatalogService.findByNationalDexId(nationalDexId);
+    }
+
+    @GetMapping("/{nationalDexId}/evolutions")
+    PokemonEvolutionDetails findEvolutionDetails(
+            @PathVariable @Positive int nationalDexId) {
+        return pokemonCatalogService.findEvolutionDetails(nationalDexId);
     }
 }

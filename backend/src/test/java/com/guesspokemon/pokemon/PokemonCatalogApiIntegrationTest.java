@@ -1,5 +1,6 @@
 package com.guesspokemon.pokemon;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -117,6 +118,55 @@ class PokemonCatalogApiIntegrationTest {
     }
 
     @Test
+    @WithMockUser(username = "catalog-member")
+    void should_returnDirectEvolutionDetails_when_speciesHasPreviousAndNextEvolution()
+            throws Exception {
+        mockMvc.perform(get("/api/v1/pokemon-species/25/evolutions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pokemon.nationalDexId").value(25))
+                .andExpect(jsonPath("$.pokemon.koreanName").value("피카츄"))
+                .andExpect(
+                        jsonPath("$.previousEvolution.nationalDexId")
+                                .value(172))
+                .andExpect(
+                        jsonPath("$.previousEvolution.koreanName")
+                                .value("피츄"))
+                .andExpect(jsonPath("$.nextEvolutions.length()").value(1))
+                .andExpect(
+                        jsonPath("$.nextEvolutions[0].nationalDexId")
+                                .value(26))
+                .andExpect(
+                        jsonPath("$.nextEvolutions[0].koreanName")
+                                .value("라이츄"));
+    }
+
+    @Test
+    @WithMockUser(username = "catalog-member")
+    void should_sortNextEvolutions_when_speciesHasMultipleBranches()
+            throws Exception {
+        mockMvc.perform(get("/api/v1/pokemon-species/133/evolutions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previousEvolution", nullValue()))
+                .andExpect(jsonPath("$.nextEvolutions.length()").value(8))
+                .andExpect(
+                        jsonPath("$.nextEvolutions[0].nationalDexId")
+                                .value(134))
+                .andExpect(
+                        jsonPath("$.nextEvolutions[7].nationalDexId")
+                                .value(700));
+    }
+
+    @Test
+    @WithMockUser(username = "catalog-member")
+    void should_returnEmptyRelations_when_speciesHasNoDirectEvolution()
+            throws Exception {
+        mockMvc.perform(get("/api/v1/pokemon-species/128/evolutions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previousEvolution", nullValue()))
+                .andExpect(jsonPath("$.nextEvolutions").isEmpty());
+    }
+
+    @Test
     void should_returnPikachuSummary_when_anonymousUserRequestsFeaturedSpecies()
             throws Exception {
         mockMvc.perform(get("/api/v1/pokemon-species/25"))
@@ -141,6 +191,9 @@ class PokemonCatalogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/pokemon-species/2000"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("POKEMON_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/pokemon-species/2000/evolutions"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("POKEMON_NOT_FOUND"));
     }
 
     @Test
@@ -159,6 +212,11 @@ class PokemonCatalogApiIntegrationTest {
             mockMvc.perform(get("/api/v1/pokemon-species/25"))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("POKEMON_NOT_FOUND"));
+            mockMvc.perform(
+                            get(
+                                    "/api/v1/pokemon-species/25/evolutions"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("POKEMON_NOT_FOUND"));
 
             mockMvc.perform(
                             get("/api/v1/pokemon-species")
@@ -172,6 +230,43 @@ class PokemonCatalogApiIntegrationTest {
                             UPDATE pokemon_species
                             SET enabled = TRUE
                             WHERE national_dex_id = 25
+                            """)
+                    .update();
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "catalog-member")
+    void should_hideDisabledRelatedSpecies_when_evolutionDetailsAreRequested()
+            throws Exception {
+        jdbcClient
+                .sql(
+                        """
+                        UPDATE pokemon_species
+                        SET enabled = FALSE
+                        WHERE national_dex_id = 172
+                        """)
+                .update();
+        try {
+            mockMvc.perform(
+                            get(
+                                    "/api/v1/pokemon-species/25/evolutions"))
+                    .andExpect(status().isOk())
+                    .andExpect(
+                            jsonPath(
+                                    "$.previousEvolution",
+                                    nullValue()))
+                    .andExpect(
+                            jsonPath(
+                                            "$.nextEvolutions[0].nationalDexId")
+                                    .value(26));
+        } finally {
+            jdbcClient
+                    .sql(
+                            """
+                            UPDATE pokemon_species
+                            SET enabled = TRUE
+                            WHERE national_dex_id = 172
                             """)
                     .update();
         }
@@ -204,6 +299,9 @@ class PokemonCatalogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/pokemon-species/0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get("/api/v1/pokemon-species/0/evolutions"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -213,6 +311,9 @@ class PokemonCatalogApiIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
         mockMvc.perform(get("/api/v1/pokemon-species/26"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+        mockMvc.perform(get("/api/v1/pokemon-species/25/evolutions"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
