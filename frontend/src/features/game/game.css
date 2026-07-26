@@ -18,6 +18,16 @@
   min-width: 0;
 }
 
+.game-role-column {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.game-command-column {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .game-role-card,
 .secret-pokemon-card {
   align-items: center;
@@ -125,6 +135,10 @@
 }
 
 .game-timeline {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 28rem;
   min-width: 0;
   overflow: hidden;
@@ -147,7 +161,10 @@
 .game-timeline ol {
   list-style: none;
   margin: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 0 1rem;
+  scrollbar-gutter: stable;
 }
 
 .game-timeline li {
@@ -247,6 +264,23 @@
   justify-content: center;
   min-height: 20rem;
   text-align: center;
+}
+
+@media (min-width: 981px) and (min-height: 820px) {
+  .game-layout {
+    height: calc(100dvh - 8.5rem);
+    min-height: 40rem;
+  }
+
+  .game-role-column,
+  .game-command-column,
+  .game-timeline {
+    min-height: 0;
+  }
+
+  .game-empty-timeline {
+    min-height: 0;
+  }
 }
 
 .question-composer {
@@ -714,6 +748,12 @@
     grid-template-columns: 1fr;
   }
 
+  .game-role-column,
+  .game-command-column,
+  .game-timeline {
+    grid-column: 1;
+  }
+
   .game-role-column {
     grid-template-columns: 1fr 1fr;
   }
@@ -729,28 +769,16 @@
   .game-command-column {
     grid-row: 2;
   }
+
+  .game-timeline {
+    grid-row: 3;
+  }
 }
 
 @media (max-width: 580px) {
   .game-layout,
   .result-layout {
     padding: 0.7rem;
-  }
-
-  .questioner-layout .game-timeline {
-    grid-row: 2;
-  }
-
-  .questioner-layout .game-command-column {
-    grid-row: 3;
-  }
-
-  .selector-layout .game-command-column {
-    grid-row: 2;
-  }
-
-  .selector-layout .game-timeline {
-    grid-row: 3;
   }
 
   .game-role-column {

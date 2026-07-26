@@ -215,6 +215,12 @@ src/
 - `styles/index.css`는 전역 CSS 진입점이며 token, reset, base, 공통 component, 화면별 CSS, 접근성 규칙 순서로 불러온다.
 - 전역 design token과 reset은 `styles/**`에 두고 auth·page selector와 반응형 규칙은 해당 feature·page 가까이에 둔다.
 - 한국어 UI는 `word-break: keep-all`을 기본값으로 사용하고 code·room code 같은 기계 문자열만 별도 overflow 규칙을 적용한다.
+- active game DOM은 역할, 현재 행동, 기록 순서로 구성한다. PC는 CSS
+  grid로 역할·기록·행동 3열을 유지하고 충분한 viewport 높이에서
+  기록 목록만 내부 스크롤한다. 모바일과 낮은 PC 화면은 현재 행동을
+  기록보다 먼저 보여 주는 자연 문서 흐름을 사용한다.
+- 기록 목록은 사용자가 최신 위치를 보고 있을 때만 새 action을 따라
+  이동한다. 과거 action을 읽는 중이면 현재 scroll 위치를 유지한다.
 - `AuthProvider`는 앱 시작 시 `/auth/me`로 session을 복원하고 `loading`, `anonymous`, `authenticated`, `error` 상태를 구분한다.
 - `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
 - `FeaturedPokemonArtwork`는 공개 화면에서 고정된

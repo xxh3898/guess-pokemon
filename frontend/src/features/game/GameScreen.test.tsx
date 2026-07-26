@@ -41,7 +41,7 @@ describe("GameScreen", () => {
   });
 
   it("should_renderSelectedPokemonType_when_selectorScreenOpens", () => {
-    render(
+    const { container } = render(
       <GameScreen
         commandPending={false}
         onAnswer={vi.fn()}
@@ -55,6 +55,21 @@ describe("GameScreen", () => {
       screen.getByRole("heading", { name: /피카츄/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("전기")).toBeInTheDocument();
+    expectCommandBeforeTimeline(container);
+  });
+
+  it("should_renderCommandBeforeTimeline_when_questionerScreenOpens", () => {
+    const { container } = render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={questionerSnapshot()}
+      />,
+    );
+
+    expectCommandBeforeTimeline(container);
   });
 
   it("should_allowPokedexBrowsing_when_questionIsWaitingForAnswer", () => {
@@ -402,4 +417,17 @@ function pendingQuestion(
     sequenceNumber,
     type: "QUESTION" as const,
   };
+}
+
+function expectCommandBeforeTimeline(container: HTMLElement) {
+  const layout = container.querySelector(".game-layout");
+  const command = container.querySelector(".game-command-column");
+  const timeline = container.querySelector(".game-timeline");
+
+  expect(layout).not.toBeNull();
+  expect(command).not.toBeNull();
+  expect(timeline).not.toBeNull();
+  expect(Array.from(layout?.children ?? []).indexOf(command!)).toBeLessThan(
+    Array.from(layout?.children ?? []).indexOf(timeline!),
+  );
 }

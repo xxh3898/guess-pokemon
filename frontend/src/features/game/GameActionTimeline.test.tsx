@@ -1,4 +1,5 @@
 import {
+  fireEvent,
   render,
   screen,
   within,
@@ -81,5 +82,55 @@ describe("GameActionTimeline", () => {
       "is-guess",
       "is-correct",
     );
+  });
+
+  it("should_followLatestAction_when_readerWasAtTimelineEnd", () => {
+    const { rerender } = render(
+      <GameActionTimeline actions={ACTIONS.slice(0, 2)} />,
+    );
+    const list = screen.getByRole("list", {
+      name: "질문과 답변 기록 목록",
+    });
+    let scrollHeight = 200;
+    Object.defineProperty(list, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    list.scrollTop = 100;
+    fireEvent.scroll(list);
+
+    scrollHeight = 300;
+    rerender(<GameActionTimeline actions={ACTIONS} />);
+
+    expect(list.scrollTop).toBe(300);
+  });
+
+  it("should_preserveReaderPosition_when_olderActionsAreBeingRead", () => {
+    const { rerender } = render(
+      <GameActionTimeline actions={ACTIONS.slice(0, 2)} />,
+    );
+    const list = screen.getByRole("list", {
+      name: "질문과 답변 기록 목록",
+    });
+    let scrollHeight = 200;
+    Object.defineProperty(list, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    list.scrollTop = 20;
+    fireEvent.scroll(list);
+
+    scrollHeight = 300;
+    rerender(<GameActionTimeline actions={ACTIONS} />);
+
+    expect(list.scrollTop).toBe(20);
   });
 });

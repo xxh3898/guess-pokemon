@@ -4,15 +4,33 @@ import {
   Clock3,
   X,
 } from "lucide-react";
+import {
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { formatNationalDexId } from "../pokemon/PokemonArtwork";
 import type { GameAction } from "../room/roomTypes";
+
+const TIMELINE_END_THRESHOLD = 32;
 
 export function GameActionTimeline({
   actions,
 }: {
   actions: readonly GameAction[];
 }) {
+  const listRef = useRef<HTMLOListElement>(null);
+  const readerAtEndRef = useRef(true);
+  const revision = timelineRevision(actions);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !readerAtEndRef.current) {
+      return;
+    }
+    list.scrollTop = list.scrollHeight;
+  }, [revision]);
+
   return (
     <section
       aria-labelledby="game-timeline-title"
@@ -27,7 +45,19 @@ export function GameActionTimeline({
           첫 질문을 기다리고 있어요.
         </div>
       ) : (
-        <ol>
+        <ol
+          aria-label="질문과 답변 기록 목록"
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            readerAtEndRef.current =
+              list.scrollHeight -
+                list.scrollTop -
+                list.clientHeight <=
+              TIMELINE_END_THRESHOLD;
+          }}
+          ref={listRef}
+          tabIndex={0}
+        >
           {actions.map((action) => (
             <li key={action.sequenceNumber}>
               <span className="action-sequence">
@@ -69,6 +99,28 @@ export function GameActionTimeline({
       )}
     </section>
   );
+}
+
+function timelineRevision(actions: readonly GameAction[]) {
+  const lastAction = actions.at(-1);
+  if (!lastAction) {
+    return "empty";
+  }
+  if (lastAction.type === "GUESS") {
+    return [
+      actions.length,
+      lastAction.sequenceNumber,
+      lastAction.correct,
+      lastAction.guessedPokemonNationalDexId,
+    ].join(":");
+  }
+  return [
+    actions.length,
+    lastAction.sequenceNumber,
+    lastAction.answer,
+    lastAction.comment,
+    lastAction.answeredAt,
+  ].join(":");
 }
 
 function ActionOutcome({ action }: { action: GameAction }) {

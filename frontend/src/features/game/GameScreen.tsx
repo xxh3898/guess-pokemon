@@ -101,8 +101,6 @@ export function GameScreen({
         />
       </aside>
 
-      <GameActionTimeline actions={snapshot.game.actions} />
-
       <section className="game-command-column">
         {isSelector ? (
           <AnswerPanel
@@ -123,6 +121,8 @@ export function GameScreen({
           />
         )}
       </section>
+
+      <GameActionTimeline actions={snapshot.game.actions} />
     </div>
   );
 }
