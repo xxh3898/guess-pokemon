@@ -80,11 +80,15 @@ class RoomApiIntegrationTest {
                                         .value(host.id().toString()))
                         .andExpect(
                                 jsonPath("$.me.role")
-                                        .value("SELECTOR"))
+                                        .value(nullValue()))
                         .andExpect(
                                 jsonPath("$.me.connected").value(true))
                         .andExpect(jsonPath("$.opponent", nullValue()))
                         .andExpect(jsonPath("$.game", nullValue()))
+                        .andExpect(
+                                jsonPath("$.roleSelection", nullValue()))
+                        .andExpect(
+                                jsonPath("$.roleAssignment", nullValue()))
                         .andReturn();
         String roomCode =
                 JsonPath.read(
@@ -100,7 +104,7 @@ class RoomApiIntegrationTest {
     }
 
     @Test
-    void should_joinAndReturnRoleSpecificSnapshots_when_guestUsesCode()
+    void should_joinAndReturnRoleSelectionSnapshots_when_guestUsesCode()
             throws Exception {
         AuthenticatedUser host = user("레드");
         AuthenticatedUser guest = user("그린");
@@ -120,15 +124,21 @@ class RoomApiIntegrationTest {
                                         containsString("no-store")))
                 .andExpect(
                         jsonPath("$.status")
-                                .value("WAITING_FOR_SELECTION"))
+                                .value("WAITING_FOR_ROLE_SELECTION"))
                 .andExpect(jsonPath("$.stateVersion").value(2))
                 .andExpect(jsonPath("$.me.userId").value(guest.id().toString()))
-                .andExpect(jsonPath("$.me.role").value("QUESTIONER"))
+                .andExpect(jsonPath("$.me.role").value(nullValue()))
                 .andExpect(
                         jsonPath("$.opponent.userId")
                                 .value(host.id().toString()))
                 .andExpect(
-                        jsonPath("$.opponent.role").value("SELECTOR"))
+                        jsonPath("$.opponent.role").value(nullValue()))
+                .andExpect(
+                        jsonPath("$.roleSelection.preferredRole")
+                                .value(nullValue()))
+                .andExpect(
+                        jsonPath("$.roleSelection.opponentSelected")
+                                .value(false))
                 .andExpect(jsonPath("$.selectedPokemon").doesNotExist());
 
         mockMvc.perform(
@@ -140,10 +150,10 @@ class RoomApiIntegrationTest {
                                 .string(
                                         "Cache-Control",
                                         containsString("no-store")))
-                .andExpect(jsonPath("$.me.role").value("SELECTOR"))
+                .andExpect(jsonPath("$.me.role").value(nullValue()))
                 .andExpect(
                         jsonPath("$.opponent.role")
-                                .value("QUESTIONER"));
+                                .value(nullValue()));
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.guesspokemon.game.GameTypes.GameEndReason;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
+import com.guesspokemon.room.RoomDtos.RoomRole;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -45,8 +46,8 @@ public final class RealtimeDtos {
     public record ResumePayload() {
     }
 
-    public record RematchReadyPayload(
-            boolean ready) {
+    public record RolePreferencePayload(
+            @NotNull RoomRole preferredRole) {
     }
 
     public enum GameEventType {
@@ -58,8 +59,7 @@ public final class RealtimeDtos {
         GUESS_RESOLVED,
         PLAYER_CONNECTION_CHANGED,
         ROOM_CLOSED,
-        GAME_ENDED,
-        REMATCH_STATE_CHANGED
+        GAME_ENDED
     }
 
     public record GameEventEnvelope(
@@ -170,11 +170,6 @@ public final class RealtimeDtos {
             UUID loserUserId,
             GameEndReason endReason,
             int usedActionCount) {
-    }
-
-    public record RematchStateChangedPayload(
-            boolean meReady,
-            boolean opponentReady) {
     }
 
 }

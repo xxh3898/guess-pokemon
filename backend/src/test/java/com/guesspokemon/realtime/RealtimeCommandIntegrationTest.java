@@ -72,6 +72,12 @@ class RealtimeCommandIntegrationTest {
             String roomCode =
                     createRoom(host);
             joinRoom(guest, roomCode);
+            awaitEvent(
+                    hostSocket.events(),
+                    "PLAYER_JOINED");
+            awaitEvent(
+                    hostSocket.events(),
+                    "ROOM_SNAPSHOT");
             send(
                     hostSocket.session(),
                     "/app/rooms/"
@@ -101,10 +107,80 @@ class RealtimeCommandIntegrationTest {
                     hostSocket.session(),
                     "/app/rooms/"
                             + roomCode
-                            + "/select-pokemon",
+                            + "/role-preference",
                     commandJson(
                             UUID.randomUUID(),
                             2,
+                            """
+                            {"preferredRole":"SELECTOR"}
+                            """));
+            JsonNode hostPreference =
+                    awaitEvent(
+                            hostSocket.events(),
+                            "ROOM_SNAPSHOT");
+            JsonNode hiddenHostPreference =
+                    awaitEvent(
+                            guestSocket.events(),
+                            "ROOM_SNAPSHOT");
+            assertEquals(
+                    "SELECTOR",
+                    hostPreference
+                            .get("payload")
+                            .get("roleSelection")
+                            .get("preferredRole")
+                            .stringValue());
+            assertTrue(
+                    hiddenHostPreference
+                            .get("payload")
+                            .get("roleSelection")
+                            .get("preferredRole")
+                            .isNull());
+            assertTrue(
+                    hiddenHostPreference
+                            .get("payload")
+                            .get("roleSelection")
+                            .get("opponentSelected")
+                            .asBoolean());
+
+            send(
+                    guestSocket.session(),
+                    "/app/rooms/"
+                            + roomCode
+                            + "/role-preference",
+                    commandJson(
+                            UUID.randomUUID(),
+                            3,
+                            """
+                            {"preferredRole":"QUESTIONER"}
+                            """));
+            JsonNode hostAssignment =
+                    awaitEvent(
+                            hostSocket.events(),
+                            "ROOM_SNAPSHOT");
+            awaitEvent(
+                    guestSocket.events(),
+                    "ROOM_SNAPSHOT");
+            assertEquals(
+                    "WAITING_FOR_SELECTION",
+                    hostAssignment
+                            .get("payload")
+                            .get("status")
+                            .stringValue());
+            assertFalse(
+                    hostAssignment
+                            .get("payload")
+                            .get("roleAssignment")
+                            .get("randomized")
+                            .asBoolean());
+
+            send(
+                    hostSocket.session(),
+                    "/app/rooms/"
+                            + roomCode
+                            + "/select-pokemon",
+                    commandJson(
+                            UUID.randomUUID(),
+                            4,
                             """
                             {"nationalDexId":25}
                             """));
@@ -137,7 +213,7 @@ class RealtimeCommandIntegrationTest {
                             + "/ask",
                     commandJson(
                             UUID.randomUUID(),
-                            3,
+                            5,
                             """
                             {"question":"날개가 있나요?"}
                             """));
@@ -155,7 +231,7 @@ class RealtimeCommandIntegrationTest {
                             + "/ask",
                     commandJson(
                             UUID.randomUUID(),
-                            3,
+                            5,
                             """
                             {"question":"전기 타입인가요?"}
                             """));
@@ -186,7 +262,7 @@ class RealtimeCommandIntegrationTest {
                     "STALE_ROOM_STATE",
                     staleError.get("code").stringValue());
             assertEquals(
-                    3,
+                    5,
                     staleError
                             .get("latestStateVersion")
                             .asLong());
@@ -199,7 +275,7 @@ class RealtimeCommandIntegrationTest {
                             + "/ask",
                     commandJson(
                             askCommandId,
-                            3,
+                            5,
                             """
                             {"question":"전기 타입인가요?"}
                             """));
@@ -208,7 +284,7 @@ class RealtimeCommandIntegrationTest {
                             guestSocket.events(),
                             "QUESTION_ASKED");
             assertEquals(
-                    4,
+                    6,
                     questionAsked
                             .get("stateVersion")
                             .asLong());
@@ -220,7 +296,7 @@ class RealtimeCommandIntegrationTest {
                             + "/ask",
                     commandJson(
                             askCommandId,
-                            4,
+                            6,
                             """
                             {"question":"전기 타입인가요?"}
                             """));
@@ -240,7 +316,7 @@ class RealtimeCommandIntegrationTest {
                             + "/ask",
                     commandJson(
                             UUID.randomUUID(),
-                            4,
+                            6,
                             """
                             {"question":" "}
                             """));
@@ -260,7 +336,7 @@ class RealtimeCommandIntegrationTest {
                             + "/answer",
                     commandJson(
                             UUID.randomUUID(),
-                            4,
+                            6,
                             """
                             {
                               "answer":"YES",
@@ -277,7 +353,7 @@ class RealtimeCommandIntegrationTest {
                             "QUESTION_ANSWERED");
 
             assertEquals(
-                    5,
+                    7,
                     selectorAnswered
                             .get("stateVersion")
                             .asLong());
@@ -301,7 +377,7 @@ class RealtimeCommandIntegrationTest {
                             + "/guess",
                     commandJson(
                             UUID.randomUUID(),
-                            5,
+                            7,
                             """
                             {"nationalDexId":26}
                             """));
@@ -313,7 +389,7 @@ class RealtimeCommandIntegrationTest {
                             guestSocket.events(),
                             "GUESS_RESOLVED");
             assertEquals(
-                    6,
+                    8,
                     firstGuess
                             .get("stateVersion")
                             .asLong());
@@ -325,7 +401,7 @@ class RealtimeCommandIntegrationTest {
                             + "/guess",
                     commandJson(
                             UUID.randomUUID(),
-                            6,
+                            8,
                             """
                             {"nationalDexId":26}
                             """));
@@ -347,7 +423,7 @@ class RealtimeCommandIntegrationTest {
                             .get("recoverable")
                             .asBoolean());
             assertEquals(
-                    6,
+                    8,
                     repeatedGuessError
                             .get("latestStateVersion")
                             .asLong());

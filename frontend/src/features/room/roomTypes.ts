@@ -21,6 +21,7 @@ export const MAX_GAME_ACTION_COUNT = 20;
 
 export type RoomStatus =
   | "WAITING_FOR_OPPONENT"
+  | "WAITING_FOR_ROLE_SELECTION"
   | "WAITING_FOR_SELECTION"
   | "PLAYING"
   | "PAUSED"
@@ -28,6 +29,7 @@ export type RoomStatus =
 
 export type WaitingRoomStatus =
   | "WAITING_FOR_OPPONENT"
+  | "WAITING_FOR_ROLE_SELECTION"
   | "WAITING_FOR_SELECTION";
 
 export type RoomRole = "QUESTIONER" | "SELECTOR";
@@ -45,7 +47,7 @@ export interface RoomMember {
   readonly connected: boolean;
   readonly nickname: string;
   readonly reconnectDeadline: string | null;
-  readonly role: RoomRole;
+  readonly role: RoomRole | null;
   readonly userId: string;
 }
 
@@ -95,9 +97,13 @@ export interface ResultGameSnapshot extends GameSnapshotBase {
   readonly winnerUserId: string | null;
 }
 
-export interface RematchState {
-  readonly meReady: boolean;
-  readonly opponentReady: boolean;
+export interface RoleSelectionState {
+  readonly opponentSelected: boolean;
+  readonly preferredRole: RoomRole | null;
+}
+
+export interface RoleAssignmentState {
+  readonly randomized: boolean;
 }
 
 interface RoomSnapshotBase {
@@ -111,15 +117,26 @@ export interface WaitingForOpponentSnapshot
   extends RoomSnapshotBase {
   readonly game: null;
   readonly opponent: null;
-  readonly rematch: null;
+  readonly roleAssignment: null;
+  readonly roleSelection: null;
   readonly status: "WAITING_FOR_OPPONENT";
+}
+
+export interface WaitingForRoleSelectionSnapshot
+  extends RoomSnapshotBase {
+  readonly game: null;
+  readonly opponent: RoomMember;
+  readonly roleAssignment: null;
+  readonly roleSelection: RoleSelectionState;
+  readonly status: "WAITING_FOR_ROLE_SELECTION";
 }
 
 export interface WaitingForSelectionSnapshot
   extends RoomSnapshotBase {
   readonly game: null;
   readonly opponent: RoomMember;
-  readonly rematch: null;
+  readonly roleAssignment: RoleAssignmentState;
+  readonly roleSelection: null;
   readonly status: "WAITING_FOR_SELECTION";
 }
 
@@ -127,7 +144,8 @@ export interface SelectorActiveRoomSnapshot
   extends RoomSnapshotBase {
   readonly game: SelectorGameSnapshot;
   readonly opponent: RoomMember;
-  readonly rematch: null;
+  readonly roleAssignment: null;
+  readonly roleSelection: null;
   readonly status: "PAUSED" | "PLAYING";
 }
 
@@ -135,14 +153,16 @@ export interface QuestionerActiveRoomSnapshot
   extends RoomSnapshotBase {
   readonly game: QuestionerGameSnapshot;
   readonly opponent: RoomMember;
-  readonly rematch: null;
+  readonly roleAssignment: null;
+  readonly roleSelection: null;
   readonly status: "PAUSED" | "PLAYING";
 }
 
 export interface ResultRoomSnapshot extends RoomSnapshotBase {
   readonly game: ResultGameSnapshot;
   readonly opponent: RoomMember;
-  readonly rematch: RematchState;
+  readonly roleAssignment: null;
+  readonly roleSelection: RoleSelectionState;
   readonly status: "RESULT";
 }
 
@@ -152,6 +172,7 @@ export type ActiveRoomSnapshot =
 
 export type WaitingRoomSnapshot =
   | WaitingForOpponentSnapshot
+  | WaitingForRoleSelectionSnapshot
   | WaitingForSelectionSnapshot;
 
 export type RoomSnapshot =
@@ -184,14 +205,42 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
 
   if (status === "WAITING_FOR_OPPONENT") {
     requireEmptyGameState(response);
-    if (opponent !== null) {
+    if (
+      opponent !== null ||
+      me.role !== null ||
+      response.roleSelection !== null ||
+      response.roleAssignment !== null
+    ) {
       throw ApiError.invalidResponse();
     }
     return {
       ...base,
       game: null,
       opponent: null,
-      rematch: null,
+      roleAssignment: null,
+      roleSelection: null,
+      status,
+    };
+  }
+
+  if (status === "WAITING_FOR_ROLE_SELECTION") {
+    requireEmptyGameState(response);
+    if (
+      opponent === null ||
+      me.role !== null ||
+      opponent.role !== null ||
+      response.roleAssignment !== null
+    ) {
+      throw ApiError.invalidResponse();
+    }
+    return {
+      ...base,
+      game: null,
+      opponent,
+      roleAssignment: null,
+      roleSelection: parseRoleSelectionState(
+        response.roleSelection,
+      ),
       status,
     };
   }
@@ -201,11 +250,18 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
     if (opponent === null) {
       throw ApiError.invalidResponse();
     }
+    requireAssignedRoles(me, opponent);
+    if (response.roleSelection !== null) {
+      throw ApiError.invalidResponse();
+    }
     return {
       ...base,
       game: null,
       opponent,
-      rematch: null,
+      roleAssignment: parseRoleAssignmentState(
+        response.roleAssignment,
+      ),
+      roleSelection: null,
       status,
     };
   }
@@ -215,16 +271,27 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
   }
 
   if (status === "RESULT") {
+    requireAssignedRoles(me, opponent);
+    if (response.roleAssignment !== null) {
+      throw ApiError.invalidResponse();
+    }
     return {
       ...base,
       game: parseResultGameSnapshot(response.game),
       opponent,
-      rematch: parseRematchState(response.rematch),
+      roleAssignment: null,
+      roleSelection: parseRoleSelectionState(
+        response.roleSelection,
+      ),
       status,
     };
   }
 
-  if (response.rematch !== null) {
+  requireAssignedRoles(me, opponent);
+  if (
+    response.roleSelection !== null ||
+    response.roleAssignment !== null
+  ) {
     throw ApiError.invalidResponse();
   }
   const game =
@@ -235,7 +302,8 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
     ...base,
     game,
     opponent,
-    rematch: null,
+    roleAssignment: null,
+    roleSelection: null,
     status,
   };
 }
@@ -246,6 +314,7 @@ export function parseWaitingRoomSnapshot(
   const snapshot = parseRoomSnapshot(payload);
   if (
     snapshot.status !== "WAITING_FOR_OPPONENT" &&
+    snapshot.status !== "WAITING_FOR_ROLE_SELECTION" &&
     snapshot.status !== "WAITING_FOR_SELECTION"
   ) {
     throw ApiError.invalidResponse();
@@ -262,7 +331,10 @@ function parseRoomMember(payload: unknown): RoomMember {
       member,
       "reconnectDeadline",
     ),
-    role: requireRoomRole(member.role),
+    role:
+      member.role === null
+        ? null
+        : requireRoomRole(member.role),
     userId: requireUuid(member, "userId"),
   };
 }
@@ -450,11 +522,28 @@ function parseGameAction(
   };
 }
 
-function parseRematchState(payload: unknown): RematchState {
-  const rematch = requireRecord(payload);
+function parseRoleSelectionState(
+  payload: unknown,
+): RoleSelectionState {
+  const selection = requireRecord(payload);
   return {
-    meReady: requireBoolean(rematch, "meReady"),
-    opponentReady: requireBoolean(rematch, "opponentReady"),
+    opponentSelected: requireBoolean(
+      selection,
+      "opponentSelected",
+    ),
+    preferredRole:
+      selection.preferredRole === null
+        ? null
+        : requireRoomRole(selection.preferredRole),
+  };
+}
+
+function parseRoleAssignmentState(
+  payload: unknown,
+): RoleAssignmentState {
+  const assignment = requireRecord(payload);
+  return {
+    randomized: requireBoolean(assignment, "randomized"),
   };
 }
 
@@ -463,7 +552,7 @@ function requireEmptyGameState(
 ): void {
   if (
     response.game !== null ||
-    response.rematch !== null ||
+    hasOwn(response, "rematch") ||
     hasOwn(response, "selectedPokemon") ||
     hasOwn(response, "answerPokemon")
   ) {
@@ -477,7 +566,20 @@ function validateParticipants(
 ): void {
   if (
     opponent &&
-    (opponent.userId === me.userId || opponent.role === me.role)
+    opponent.userId === me.userId
+  ) {
+    throw ApiError.invalidResponse();
+  }
+}
+
+function requireAssignedRoles(
+  me: RoomMember,
+  opponent: RoomMember,
+): void {
+  if (
+    me.role === null ||
+    opponent.role === null ||
+    opponent.role === me.role
   ) {
     throw ApiError.invalidResponse();
   }
@@ -486,6 +588,7 @@ function validateParticipants(
 function requireRoomStatus(value: unknown): RoomStatus {
   if (
     value !== "WAITING_FOR_OPPONENT" &&
+    value !== "WAITING_FOR_ROLE_SELECTION" &&
     value !== "WAITING_FOR_SELECTION" &&
     value !== "PLAYING" &&
     value !== "PAUSED" &&

@@ -457,7 +457,6 @@
 }
 
 .question-actions,
-.rematch-actions,
 .modal-actions {
   display: flex;
   gap: 0.65rem;
@@ -688,20 +687,16 @@
   gap: 0.8rem;
 }
 
-.result-participants,
-.rematch-panel {
+.result-participants {
   padding: 1rem;
 }
 
-.result-participants h2,
-.rematch-panel h2 {
+.result-participants h2 {
   font-size: 1rem;
   margin-bottom: 0.75rem;
 }
 
-.result-participants > article,
-.ready-state,
-.rematch-members > article {
+.result-participants > article {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -711,20 +706,17 @@
   padding: 0.7rem;
 }
 
-.result-participants article > div,
-.rematch-members article > div {
+.result-participants article > div {
   display: flex;
   flex-direction: column;
 }
 
-.result-participants article span,
-.rematch-members article span {
+.result-participants article span {
   color: var(--muted);
   font-size: 0.75rem;
 }
 
-.result-participants article em,
-.rematch-members article em {
+.result-participants article em {
   align-items: center;
   display: inline-flex;
   font-size: 0.78rem;
@@ -741,25 +733,13 @@
   color: var(--muted);
 }
 
-.rematch-panel > p {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.rematch-members {
+.result-role-selection {
   display: grid;
-  gap: 0.6rem;
-  grid-template-columns: 1fr 1fr;
-  margin: 0.8rem 0;
+  gap: 0.65rem;
 }
 
-.rematch-members article.is-ready {
-  background: var(--mint-soft);
-  border-color: var(--mint);
-}
-
-.rematch-actions button {
-  flex: 1;
+.result-lobby-button {
+  width: 100%;
 }
 
 .result-room-closed {
@@ -1010,14 +990,6 @@
 
   .answer-comment-field textarea {
     min-height: 4.75rem;
-  }
-
-  .rematch-members {
-    grid-template-columns: 1fr;
-  }
-
-  .rematch-actions {
-    flex-direction: column;
   }
 
   .modal-backdrop {

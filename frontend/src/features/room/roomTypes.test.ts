@@ -43,9 +43,13 @@ describe("roomTypes", () => {
     expect(
       parseWaitingRoomSnapshot({
         game: null,
-        me: SELECTOR,
+        me: {
+          ...SELECTOR,
+          role: null,
+        },
         opponent: null,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 1,
@@ -54,6 +58,62 @@ describe("roomTypes", () => {
     ).toMatchObject({
       opponent: null,
       status: "WAITING_FOR_OPPONENT",
+    });
+  });
+
+  it("should_hideOpponentPreference_when_rolesAreBeingSelected", () => {
+    expect(
+      parseWaitingRoomSnapshot({
+        game: null,
+        me: {
+          ...SELECTOR,
+          role: null,
+        },
+        opponent: {
+          ...QUESTIONER,
+          role: null,
+        },
+        roleAssignment: null,
+        roleSelection: {
+          opponentSelected: true,
+          preferredRole: "SELECTOR",
+        },
+        roomCode: "AB3K7M",
+        roundNumber: 1,
+        stateVersion: 3,
+        status: "WAITING_FOR_ROLE_SELECTION",
+      }),
+    ).toMatchObject({
+      me: { role: null },
+      opponent: { role: null },
+      roleSelection: {
+        opponentSelected: true,
+        preferredRole: "SELECTOR",
+      },
+      status: "WAITING_FOR_ROLE_SELECTION",
+    });
+  });
+
+  it("should_parseRandomAssignment_when_rolesHaveBeenAssigned", () => {
+    expect(
+      parseWaitingRoomSnapshot({
+        game: null,
+        me: SELECTOR,
+        opponent: QUESTIONER,
+        roleAssignment: {
+          randomized: true,
+        },
+        roleSelection: null,
+        roomCode: "AB3K7M",
+        roundNumber: 1,
+        stateVersion: 4,
+        status: "WAITING_FOR_SELECTION",
+      }),
+    ).toMatchObject({
+      roleAssignment: {
+        randomized: true,
+      },
+      status: "WAITING_FOR_SELECTION",
     });
   });
 
@@ -66,7 +126,8 @@ describe("roomTypes", () => {
         },
         me: SELECTOR,
         opponent: QUESTIONER,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 3,
@@ -85,7 +146,8 @@ describe("roomTypes", () => {
       game: ACTIVE_GAME,
       me: QUESTIONER,
       opponent: SELECTOR,
-      rematch: null,
+      roleAssignment: null,
+      roleSelection: null,
       roomCode: "AB3K7M",
       roundNumber: 1,
       stateVersion: 3,
@@ -105,7 +167,8 @@ describe("roomTypes", () => {
         },
         me: QUESTIONER,
         opponent: SELECTOR,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 3,
@@ -153,9 +216,10 @@ describe("roomTypes", () => {
         },
         me: QUESTIONER,
         opponent: SELECTOR,
-        rematch: {
-          meReady: false,
-          opponentReady: false,
+        roleAssignment: null,
+        roleSelection: {
+          opponentSelected: false,
+          preferredRole: null,
         },
         roomCode: "AB3K7M",
         roundNumber: 1,
@@ -205,7 +269,8 @@ describe("roomTypes", () => {
         },
         me: QUESTIONER,
         opponent: SELECTOR,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 4,
@@ -230,9 +295,10 @@ describe("roomTypes", () => {
         },
         me: SELECTOR,
         opponent: QUESTIONER,
-        rematch: {
-          meReady: false,
-          opponentReady: false,
+        roleAssignment: null,
+        roleSelection: {
+          opponentSelected: false,
+          preferredRole: null,
         },
         roomCode: "AB3K7M",
         roundNumber: 1,
@@ -258,7 +324,8 @@ describe("roomTypes", () => {
         },
         me: QUESTIONER,
         opponent: SELECTOR,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 3,

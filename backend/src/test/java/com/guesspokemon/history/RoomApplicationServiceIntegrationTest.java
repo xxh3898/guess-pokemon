@@ -26,7 +26,7 @@ import com.guesspokemon.room.RoomApplicationService;
 import com.guesspokemon.room.RoomApplicationService.CommandOutcome;
 import com.guesspokemon.room.RoomApplicationService.ConnectionOutcome;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
-import com.guesspokemon.room.RoomApplicationService.RematchOutcome;
+import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.room.RoomApplicationService.TimeoutOutcome;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
@@ -77,15 +77,16 @@ class RoomApplicationServiceIntegrationTest {
     }
 
     @Test
-    void should_playAndSwapRoles_when_bothPlayersRequestRematch() {
+    void should_playAndChooseRoles_when_playersStartNextRound() {
         TestRoom testRoom = createJoinedRoom("play");
+        assignFirstRoundRoles(testRoom);
 
         CommandOutcome started =
                 roomApplicationService.selectPokemon(
                         testRoom.roomCode(),
                         testRoom.host().getId(),
                         UUID.randomUUID(),
-                        2,
+                        4,
                         PIKACHU_ID);
         RoomSnapshot selectorSnapshot =
                 started.snapshots()
@@ -106,14 +107,14 @@ class RoomApplicationServiceIntegrationTest {
                 testRoom.roomCode(),
                 testRoom.guest().getId(),
                 UUID.randomUUID(),
-                3,
+                5,
                 "전기 타입인가요?");
         CommandOutcome answered =
                 roomApplicationService.answerQuestion(
                         testRoom.roomCode(),
                         testRoom.host().getId(),
                         UUID.randomUUID(),
-                        4,
+                        6,
                         YES,
                         "  전기 타입이 맞아요.  ");
         assertEquals(
@@ -130,7 +131,7 @@ class RoomApplicationServiceIntegrationTest {
                         testRoom.roomCode(),
                         testRoom.guest().getId(),
                         UUID.randomUUID(),
-                        5,
+                        7,
                         PIKACHU_ID);
 
         assertTrue(ended.gameEnded());
@@ -150,27 +151,27 @@ class RoomApplicationServiceIntegrationTest {
                 "피카츄",
                 resultGame.answerPokemon().koreanName());
 
-        RematchOutcome hostReady =
+        RolePreferenceOutcome hostPreference =
                 roomApplicationService
-                        .changeRematchReady(
+                        .changeRolePreference(
                                 testRoom.roomCode(),
                                 testRoom.host().getId(),
                                 UUID.randomUUID(),
-                                6,
-                                true);
-        RematchOutcome guestReady =
+                                8,
+                                QUESTIONER);
+        RolePreferenceOutcome guestPreference =
                 roomApplicationService
-                        .changeRematchReady(
+                        .changeRolePreference(
                                 testRoom.roomCode(),
                                 testRoom.guest().getId(),
                                 UUID.randomUUID(),
-                                7,
-                                true);
+                                9,
+                                SELECTOR);
 
-        assertFalse(hostReady.nextRoundReady());
-        assertTrue(guestReady.nextRoundReady());
+        assertFalse(hostPreference.rolesAssigned());
+        assertTrue(guestPreference.rolesAssigned());
         RoomSnapshot nextRound =
-                guestReady.snapshots()
+                guestPreference.snapshots()
                         .get(testRoom.host().getId());
         assertEquals(WAITING_FOR_SELECTION, nextRound.status());
         assertEquals(2, nextRound.roundNumber());
@@ -317,13 +318,29 @@ class RoomApplicationServiceIntegrationTest {
 
     private TestRoom createStartedRoom(String prefix) {
         TestRoom testRoom = createJoinedRoom(prefix);
+        assignFirstRoundRoles(testRoom);
         roomApplicationService.selectPokemon(
                 testRoom.roomCode(),
                 testRoom.host().getId(),
                 UUID.randomUUID(),
-                2,
+                4,
                 PIKACHU_ID);
         return testRoom;
+    }
+
+    private void assignFirstRoundRoles(TestRoom testRoom) {
+        roomApplicationService.changeRolePreference(
+                testRoom.roomCode(),
+                testRoom.host().getId(),
+                UUID.randomUUID(),
+                2,
+                SELECTOR);
+        roomApplicationService.changeRolePreference(
+                testRoom.roomCode(),
+                testRoom.guest().getId(),
+                UUID.randomUUID(),
+                3,
+                QUESTIONER);
     }
 
     private TestRoom createJoinedRoom(String prefix) {

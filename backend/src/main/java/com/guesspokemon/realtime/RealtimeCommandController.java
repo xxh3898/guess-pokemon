@@ -7,12 +7,12 @@ import com.guesspokemon.realtime.RealtimeDtos.AskQuestionPayload;
 import com.guesspokemon.realtime.RealtimeDtos.CommandEnvelope;
 import com.guesspokemon.realtime.RealtimeDtos.GuessPokemonPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RealtimeError;
-import com.guesspokemon.realtime.RealtimeDtos.RematchReadyPayload;
+import com.guesspokemon.realtime.RealtimeDtos.RolePreferencePayload;
 import com.guesspokemon.realtime.RealtimeDtos.ResumePayload;
 import com.guesspokemon.realtime.RealtimeDtos.SelectPokemonPayload;
 import com.guesspokemon.room.RoomApplicationService;
 import com.guesspokemon.room.RoomApplicationService.CommandOutcome;
-import com.guesspokemon.room.RoomApplicationService.RematchOutcome;
+import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.ConstraintViolationException;
@@ -229,11 +229,11 @@ class RealtimeCommandController {
                                 roomCode));
     }
 
-    @MessageMapping("/rooms/{roomCode}/rematch-ready")
-    void changeRematchReady(
+    @MessageMapping("/rooms/{roomCode}/role-preference")
+    void changeRolePreference(
             @DestinationVariable String roomCode,
             @Payload @Valid
-                    CommandEnvelope<RematchReadyPayload>
+                    CommandEnvelope<RolePreferencePayload>
                             command,
             @Header(
                             SimpMessageHeaderAccessor
@@ -246,19 +246,20 @@ class RealtimeCommandController {
                 user.id(),
                 command.commandId(),
                 () -> {
-                    RematchOutcome outcome =
+                    RolePreferenceOutcome outcome =
                             roomApplicationService
-                                    .changeRematchReady(
+                                    .changeRolePreference(
                                             roomCode,
                                             user.id(),
                                             command.commandId(),
                                             command.expectedStateVersion(),
-                                            command.payload().ready());
+                                            command.payload()
+                                                    .preferredRole());
                     roomConnectionService.associate(
                             sessionId,
                             user.id(),
                             roomCode);
-                    eventPublisher.publishRematch(
+                    eventPublisher.publishRolePreference(
                             outcome);
                 });
     }

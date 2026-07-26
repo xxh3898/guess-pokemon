@@ -25,7 +25,10 @@ import {
   type RealtimeErrorMessage,
   type RoomRealtimeEvent,
 } from "./realtimeTypes";
-import type { GameAnswer } from "../../features/room/roomTypes";
+import type {
+  GameAnswer,
+  RoomRole,
+} from "../../features/room/roomTypes";
 
 const GAME_EVENTS_DESTINATION = "/user/queue/game-events";
 const ERRORS_DESTINATION = "/user/queue/errors";
@@ -55,8 +58,8 @@ export interface RoomRealtimeSession {
     question: string,
     expectedStateVersion: number,
   ): string;
-  changeRematchReady(
-    ready: boolean,
+  changeRolePreference(
+    preferredRole: RoomRole,
     expectedStateVersion: number,
   ): string;
   close(): Promise<void>;
@@ -285,7 +288,7 @@ export class StompRoomRealtimeGateway
         | "answer"
         | "ask"
         | "guess"
-        | "rematch-ready"
+        | "role-preference"
         | "resume"
         | "select-pokemon",
       expectedStateVersion: number,
@@ -352,11 +355,20 @@ export class StompRoomRealtimeGateway
           question: normalizedQuestion,
         });
       },
-      changeRematchReady: (ready, expectedStateVersion) => {
+      changeRolePreference: (
+        preferredRole,
+        expectedStateVersion,
+      ) => {
+        if (
+          preferredRole !== "SELECTOR" &&
+          preferredRole !== "QUESTIONER"
+        ) {
+          throw commandValidationError();
+        }
         return publishCommand(
-          "rematch-ready",
+          "role-preference",
           expectedStateVersion,
-          { ready },
+          { preferredRole },
         );
       },
       close: () => {

@@ -132,7 +132,7 @@ describe("StompRoomRealtimeGateway", () => {
       4,
     );
     session.guessPokemon(6, 5);
-    session.changeRematchReady(true, 6);
+    session.changeRolePreference("SELECTOR", 6);
     session.requestSnapshot();
 
     expect(fake.publish.mock.calls).toEqual([
@@ -160,8 +160,8 @@ describe("StompRoomRealtimeGateway", () => {
         }),
       ],
       [
-        command("/app/rooms/AB3K7M/rematch-ready", 6, {
-          ready: true,
+        command("/app/rooms/AB3K7M/role-preference", 6, {
+          preferredRole: "SELECTOR",
         }),
       ],
       [command("/app/rooms/AB3K7M/resume", 0, {})],

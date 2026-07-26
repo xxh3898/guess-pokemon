@@ -26,11 +26,12 @@ const HOST_SNAPSHOT: WaitingRoomSnapshot = {
     connected: true,
     nickname: "레드",
     reconnectDeadline: null,
-    role: "SELECTOR",
+    role: null,
     userId: "624f7d62-e328-4ff0-8b90-f6520b81a47f",
   },
   opponent: null,
-  rematch: null,
+  roleAssignment: null,
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
   stateVersion: 1,
@@ -246,7 +247,7 @@ describe("roomState", () => {
     expect(resumed).toMatchObject({ status: "PLAYING" });
   });
 
-  it("should_updateRematchState_when_resultRoomReceivesReadiness", () => {
+  it("should_initializeRoleSelection_when_gameEnds", () => {
     const result = applyRoomEvent(activeSnapshot(), {
       ...baseEvent(4, GAME_ID),
       eventType: "GAME_ENDED",
@@ -260,22 +261,12 @@ describe("roomState", () => {
         winnerUserId: HOST_SNAPSHOT.me.userId,
       },
     });
-    const ready = applyRoomEvent(result, {
-      ...baseEvent(5, GAME_ID),
-      eventType: "REMATCH_STATE_CHANGED",
-      gameId: GAME_ID,
-      payload: {
-        meReady: true,
-        opponentReady: false,
+    expect(result).toMatchObject({
+      roleSelection: {
+        opponentSelected: false,
+        preferredRole: null,
       },
-    });
-
-    expect(ready).toMatchObject({
-      rematch: {
-        meReady: true,
-        opponentReady: false,
-      },
-      stateVersion: 5,
+      stateVersion: 4,
     });
   });
 
@@ -298,6 +289,10 @@ describe("roomState", () => {
 function twoPlayerSnapshot(): WaitingRoomSnapshot {
   return {
     ...HOST_SNAPSHOT,
+    me: {
+      ...HOST_SNAPSHOT.me,
+      role: "SELECTOR",
+    },
     opponent: {
       connected: true,
       nickname: "그린",
@@ -305,6 +300,10 @@ function twoPlayerSnapshot(): WaitingRoomSnapshot {
       role: "QUESTIONER",
       userId: "70226fe2-cdee-4261-a3cb-fbd87a4df783",
     },
+    roleAssignment: {
+      randomized: false,
+    },
+    roleSelection: null,
     stateVersion: 2,
     status: "WAITING_FOR_SELECTION",
   };
@@ -323,6 +322,8 @@ function activeSnapshot(): ActiveRoomSnapshot {
       usedActionCount: 0,
     },
     opponent: waiting.opponent!,
+    roleAssignment: null,
+    roleSelection: null,
     stateVersion: 3,
     status: "PLAYING",
   };

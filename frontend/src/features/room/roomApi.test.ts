@@ -12,11 +12,12 @@ const HOST_SNAPSHOT = {
     connected: true,
     nickname: "레드",
     reconnectDeadline: null,
-    role: "SELECTOR",
+    role: null,
     userId: "624f7d62-e328-4ff0-8b90-f6520b81a47f",
   },
   opponent: null,
-  rematch: null,
+  roleAssignment: null,
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
   stateVersion: 1,
@@ -59,12 +60,15 @@ describe("roomApi", () => {
       me: {
         ...HOST_SNAPSHOT.me,
         nickname: "그린",
-        role: "QUESTIONER",
         userId: "70226fe2-cdee-4261-a3cb-fbd87a4df783",
       },
       opponent: HOST_SNAPSHOT.me,
+      roleSelection: {
+        opponentSelected: false,
+        preferredRole: null,
+      },
       stateVersion: 2,
-      status: "WAITING_FOR_SELECTION",
+      status: "WAITING_FOR_ROLE_SELECTION",
     };
     const fetcher = stateChangingFetcher(guestSnapshot);
     const gateway = createRoomGateway(new HttpClient(fetcher));

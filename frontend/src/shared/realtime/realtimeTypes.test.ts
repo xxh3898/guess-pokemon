@@ -22,7 +22,7 @@ const HOST_MEMBER = {
   connected: true,
   nickname: "레드",
   reconnectDeadline: null,
-  role: "SELECTOR",
+  role: null,
   userId: HOST_ID,
 };
 describe("realtimeTypes", () => {
@@ -32,7 +32,8 @@ describe("realtimeTypes", () => {
         game: null,
         me: HOST_MEMBER,
         opponent: null,
-        rematch: null,
+        roleAssignment: null,
+        roleSelection: null,
         roomCode: "AB3K7M",
         roundNumber: 1,
         stateVersion: 1,
@@ -208,7 +209,7 @@ describe("realtimeTypes", () => {
     );
   });
 
-  it("should_parseConnectionRoomClosedAndRematchEvents_when_received", () => {
+  it("should_parseConnectionAndRoomClosedEvents_when_received", () => {
     expect(
       parseRoomRealtimeEvent(
         eventBody("PLAYER_CONNECTION_CHANGED", GAME_ID, 9, {
@@ -231,17 +232,6 @@ describe("realtimeTypes", () => {
     ).toMatchObject({
       eventType: "ROOM_CLOSED",
       payload: { reason: "HOST_LEFT" },
-    });
-    expect(
-      parseRoomRealtimeEvent(
-        eventBody("REMATCH_STATE_CHANGED", GAME_ID, 11, {
-          meReady: true,
-          opponentReady: false,
-        }),
-      ),
-    ).toMatchObject({
-      eventType: "REMATCH_STATE_CHANGED",
-      payload: { meReady: true },
     });
   });
 

@@ -16,6 +16,7 @@ import static com.guesspokemon.room.RoomDtos.RoomStatus.PAUSED;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.RESULT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_OPPONENT;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_ROLE_SELECTION;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
 
 import com.guesspokemon.common.error.ApiException;
@@ -23,7 +24,8 @@ import com.guesspokemon.game.GameRuleException;
 import com.guesspokemon.game.GameTypes.GameEndReason;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameViews.ParticipantGameView;
-import com.guesspokemon.room.RoomDtos.RematchState;
+import com.guesspokemon.room.RoomDtos.RoleAssignmentState;
+import com.guesspokemon.room.RoomDtos.RoleSelectionState;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomMember;
 import com.guesspokemon.room.RoomDtos.RoomRole;
@@ -51,15 +53,15 @@ final class Room {
     private long stateVersion;
     private int roundNumber;
     private boolean hasVisibleGame;
-    private boolean hostRematchReady;
-    private boolean guestRematchReady;
+    private RoomRole hostRolePreference;
+    private RoomRole guestRolePreference;
+    private Boolean roleAssignmentRandomized;
 
     Room(String code, UUID hostUserId, String hostNickname, Instant createdAt) {
         this.code = Objects.requireNonNull(code);
         this.host = new Participant(hostUserId, hostNickname);
         this.createdAt = Objects.requireNonNull(createdAt);
         this.roundGroupId = UUID.randomUUID();
-        this.selectorUserId = hostUserId;
         this.status = WAITING_FOR_OPPONENT;
         this.stateVersion = 1;
         this.roundNumber = 1;
@@ -73,8 +75,12 @@ final class Room {
             throw new ApiException(ROOM_FULL);
         }
         guest = new Participant(guestUserId, guestNickname);
-        questionerUserId = guestUserId;
-        status = WAITING_FOR_SELECTION;
+        selectorUserId = null;
+        questionerUserId = null;
+        hostRolePreference = null;
+        guestRolePreference = null;
+        roleAssignmentRandomized = null;
+        status = WAITING_FOR_ROLE_SELECTION;
         stateVersion += 1;
     }
 
@@ -87,12 +93,13 @@ final class Room {
             return LeaveResult.ROOM_CLOSED;
         }
         guest = null;
-        selectorUserId = host.userId();
+        selectorUserId = null;
         questionerUserId = null;
         status = WAITING_FOR_OPPONENT;
         hasVisibleGame = false;
-        hostRematchReady = false;
-        guestRematchReady = false;
+        hostRolePreference = null;
+        guestRolePreference = null;
+        roleAssignmentRandomized = null;
         stateVersion += 1;
         return LeaveResult.GUEST_LEFT;
     }
@@ -148,42 +155,56 @@ final class Room {
                 gameView.status() == IN_PROGRESS
                         ? PLAYING
                         : RESULT;
+        roleAssignmentRandomized = null;
         if (status == RESULT) {
             clearReconnectState();
-            hostRematchReady = false;
-            guestRematchReady = false;
+            hostRolePreference = null;
+            guestRolePreference = null;
         }
     }
 
-    RematchChange changeRematchReady(
+    RolePreferenceChange changeRolePreference(
             UUID userId,
             UUID commandId,
             long expectedStateVersion,
-            boolean ready) {
+            RoomRole preferredRole,
+            RoleAssignmentDecider roleAssignmentDecider) {
         requireParticipant(userId);
         requireExpectedStateVersion(expectedStateVersion);
-        if (status != RESULT || guest == null || !bothConnected()) {
+        Objects.requireNonNull(preferredRole);
+        Objects.requireNonNull(roleAssignmentDecider);
+        if ((status != WAITING_FOR_ROLE_SELECTION && status != RESULT)
+                || guest == null
+                || !bothConnected()) {
             throw new GameRuleException(INVALID_GAME_STATE);
         }
         if (!processedRoomCommandIds.add(commandId)) {
             throw new GameRuleException(DUPLICATE_COMMAND);
         }
-        setRematchReady(userId, ready);
+        setRolePreference(userId, preferredRole);
         stateVersion += 1;
-        boolean nextRoundReady =
-                hostRematchReady && guestRematchReady;
-        if (nextRoundReady) {
-            UUID previousSelector = selectorUserId;
-            selectorUserId = questionerUserId;
-            questionerUserId = previousSelector;
-            roundNumber += 1;
+        boolean rolesAssigned =
+                hostRolePreference != null
+                        && guestRolePreference != null;
+        boolean randomized = false;
+        if (rolesAssigned) {
+            boolean nextRound = status == RESULT;
+            randomized =
+                    assignRoles(roleAssignmentDecider);
+            if (nextRound) {
+                roundNumber += 1;
+            }
             status = WAITING_FOR_SELECTION;
             hasVisibleGame = false;
-            hostRematchReady = false;
-            guestRematchReady = false;
+            hostRolePreference = null;
+            guestRolePreference = null;
+            roleAssignmentRandomized = randomized;
             processedRoomCommandIds.clear();
         }
-        return new RematchChange(nextRoundReady, stateVersion);
+        return new RolePreferenceChange(
+                rolesAssigned,
+                randomized,
+                stateVersion);
     }
 
     ConnectionChange disconnect(
@@ -357,11 +378,20 @@ final class Room {
                         : toMember(
                                 opponent,
                                 roleOf(opponent.userId()));
-        RematchState rematchState =
-                status == RESULT && opponent != null
-                        ? new RematchState(
-                                isRematchReady(me.userId()),
-                                isRematchReady(opponent.userId()))
+        RoleSelectionState roleSelection =
+                (status == WAITING_FOR_ROLE_SELECTION
+                                || status == RESULT)
+                                && opponent != null
+                        ? new RoleSelectionState(
+                                rolePreferenceOf(me.userId()),
+                                rolePreferenceOf(opponent.userId())
+                                        != null)
+                        : null;
+        RoleAssignmentState roleAssignment =
+                status == WAITING_FOR_SELECTION
+                        && roleAssignmentRandomized != null
+                        ? new RoleAssignmentState(
+                                roleAssignmentRandomized)
                         : null;
         return new RoomSnapshot(
                 code,
@@ -371,7 +401,8 @@ final class Room {
                 toMember(me, myRole),
                 opponentSummary,
                 gameSnapshot,
-                rematchState);
+                roleSelection,
+                roleAssignment);
     }
 
     private RoomMember toMember(
@@ -392,7 +423,7 @@ final class Room {
         if (Objects.equals(questionerUserId, userId)) {
             return RoomDtos.RoomRole.QUESTIONER;
         }
-        throw new ApiException(ROOM_MEMBERSHIP_REQUIRED);
+        return null;
     }
 
     private void requireRole(
@@ -442,18 +473,50 @@ final class Room {
         }
     }
 
-    private void setRematchReady(UUID userId, boolean ready) {
+    private void setRolePreference(
+            UUID userId,
+            RoomRole preferredRole) {
         if (host.userId().equals(userId)) {
-            hostRematchReady = ready;
+            hostRolePreference = preferredRole;
         } else {
-            guestRematchReady = ready;
+            guestRolePreference = preferredRole;
         }
     }
 
-    private boolean isRematchReady(UUID userId) {
+    private RoomRole rolePreferenceOf(UUID userId) {
         return host.userId().equals(userId)
-                ? hostRematchReady
-                : guestRematchReady;
+                ? hostRolePreference
+                : guestRolePreference;
+    }
+
+    private boolean assignRoles(
+            RoleAssignmentDecider roleAssignmentDecider) {
+        boolean randomized =
+                hostRolePreference == guestRolePreference;
+        RoomRole hostRole;
+        if (randomized) {
+            hostRole =
+                    roleAssignmentDecider
+                                    .assignHostToPreferredRole()
+                            ? hostRolePreference
+                            : opposite(hostRolePreference);
+        } else {
+            hostRole = hostRolePreference;
+        }
+        if (hostRole == RoomRole.SELECTOR) {
+            selectorUserId = host.userId();
+            questionerUserId = guest.userId();
+        } else {
+            selectorUserId = guest.userId();
+            questionerUserId = host.userId();
+        }
+        return randomized;
+    }
+
+    private RoomRole opposite(RoomRole role) {
+        return role == RoomRole.SELECTOR
+                ? RoomRole.QUESTIONER
+                : RoomRole.SELECTOR;
     }
 
     enum LeaveResult {
@@ -468,8 +531,9 @@ final class Room {
             long targetStateVersion) {
     }
 
-    record RematchChange(
-            boolean nextRoundReady,
+    record RolePreferenceChange(
+            boolean rolesAssigned,
+            boolean randomized,
             long stateVersion) {
     }
 

@@ -1,5 +1,7 @@
 package com.guesspokemon.auth;
 
+import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
+import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -559,11 +561,23 @@ class AuthApiIntegrationTest {
                 created.roomCode(),
                 guest.getId(),
                 guest.getNickname());
-        roomApplicationService.selectPokemon(
+        roomApplicationService.changeRolePreference(
                 created.roomCode(),
                 appUser.getId(),
                 UUID.randomUUID(),
                 2,
+                SELECTOR);
+        roomApplicationService.changeRolePreference(
+                created.roomCode(),
+                guest.getId(),
+                UUID.randomUUID(),
+                3,
+                QUESTIONER);
+        roomApplicationService.selectPokemon(
+                created.roomCode(),
+                appUser.getId(),
+                UUID.randomUUID(),
+                4,
                 25);
 
         try {

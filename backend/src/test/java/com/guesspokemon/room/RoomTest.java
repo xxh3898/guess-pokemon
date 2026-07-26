@@ -3,9 +3,12 @@ package com.guesspokemon.room;
 import static com.guesspokemon.common.error.ApiErrorCode.CANNOT_JOIN_OWN_ROOM;
 import static com.guesspokemon.common.error.ApiErrorCode.ROOM_FULL;
 import static com.guesspokemon.common.error.ApiErrorCode.ROOM_MEMBERSHIP_REQUIRED;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.DUPLICATE_COMMAND;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.STALE_ROOM_STATE;
 import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
 import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_OPPONENT;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_ROLE_SELECTION;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.PAUSED;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
@@ -20,12 +23,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.guesspokemon.common.error.ApiErrorCode;
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.game.GameRuleException;
 import com.guesspokemon.game.GameViews.SelectorGameView;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
 import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class RoomTest {
@@ -48,26 +53,217 @@ class RoomTest {
         assertEquals(1L, snapshot.stateVersion());
         assertEquals(1, snapshot.roundNumber());
         assertEquals(HOST_ID, snapshot.me().userId());
-        assertEquals(SELECTOR, snapshot.me().role());
+        assertNull(snapshot.me().role());
         assertTrue(snapshot.me().connected());
         assertNull(snapshot.opponent());
         assertNull(snapshot.game());
+        assertNull(snapshot.roleSelection());
+        assertNull(snapshot.roleAssignment());
     }
 
     @Test
-    void should_assignFirstRoundRoles_when_guestJoins() {
+    void should_waitForRolePreferences_when_guestJoins() {
         Room room = createRoom();
 
         room.join(GUEST_ID, "그린");
 
         RoomSnapshot hostSnapshot = room.snapshotFor(HOST_ID);
         RoomSnapshot guestSnapshot = room.snapshotFor(GUEST_ID);
-        assertEquals(WAITING_FOR_SELECTION, hostSnapshot.status());
+        assertEquals(
+                WAITING_FOR_ROLE_SELECTION,
+                hostSnapshot.status());
         assertEquals(2L, hostSnapshot.stateVersion());
-        assertEquals(SELECTOR, hostSnapshot.me().role());
-        assertEquals(QUESTIONER, hostSnapshot.opponent().role());
-        assertEquals(QUESTIONER, guestSnapshot.me().role());
-        assertEquals(SELECTOR, guestSnapshot.opponent().role());
+        assertNull(hostSnapshot.me().role());
+        assertNull(hostSnapshot.opponent().role());
+        assertNull(guestSnapshot.me().role());
+        assertNull(guestSnapshot.opponent().role());
+        assertNull(
+                hostSnapshot
+                        .roleSelection()
+                        .preferredRole());
+        assertFalse(
+                hostSnapshot
+                        .roleSelection()
+                        .opponentSelected());
+    }
+
+    @Test
+    void should_assignPreferredRoles_when_preferencesDiffer() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+
+        RoomSnapshot hostPending = room.snapshotFor(HOST_ID);
+        RoomSnapshot guestPending = room.snapshotFor(GUEST_ID);
+        assertEquals(
+                SELECTOR,
+                hostPending
+                        .roleSelection()
+                        .preferredRole());
+        assertFalse(
+                hostPending
+                        .roleSelection()
+                        .opponentSelected());
+        assertNull(
+                guestPending
+                        .roleSelection()
+                        .preferredRole());
+        assertTrue(
+                guestPending
+                        .roleSelection()
+                        .opponentSelected());
+        assertNull(guestPending.opponent().role());
+
+        Room.RolePreferenceChange change =
+                room.changeRolePreference(
+                        GUEST_ID,
+                        UUID.randomUUID(),
+                        3,
+                        QUESTIONER,
+                        roleAssignmentDecider());
+
+        assertTrue(change.rolesAssigned());
+        assertFalse(change.randomized());
+        RoomSnapshot hostAssigned = room.snapshotFor(HOST_ID);
+        assertEquals(
+                WAITING_FOR_SELECTION,
+                hostAssigned.status());
+        assertEquals(SELECTOR, hostAssigned.me().role());
+        assertEquals(
+                QUESTIONER,
+                hostAssigned.opponent().role());
+        assertFalse(
+                hostAssigned
+                        .roleAssignment()
+                        .randomized());
+        assertNull(hostAssigned.roleSelection());
+    }
+
+    @Test
+    void should_assignOppositeRolesRandomly_when_preferencesMatch() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+
+        Room.RolePreferenceChange change =
+                room.changeRolePreference(
+                        GUEST_ID,
+                        UUID.randomUUID(),
+                        3,
+                        SELECTOR,
+                        roleAssignmentDecider());
+
+        RoomSnapshot snapshot = room.snapshotFor(HOST_ID);
+        assertTrue(change.rolesAssigned());
+        assertTrue(change.randomized());
+        assertTrue(
+                snapshot.me().role() !=
+                        snapshot.opponent().role());
+        assertTrue(
+                snapshot
+                        .roleAssignment()
+                        .randomized());
+    }
+
+    @Test
+    void should_allowPreferenceChange_when_opponentHasNotSelected() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+
+        Room.RolePreferenceChange change =
+                room.changeRolePreference(
+                        HOST_ID,
+                        UUID.randomUUID(),
+                        3,
+                        QUESTIONER,
+                        roleAssignmentDecider());
+
+        assertFalse(change.rolesAssigned());
+        assertEquals(
+                QUESTIONER,
+                room.snapshotFor(HOST_ID)
+                        .roleSelection()
+                        .preferredRole());
+    }
+
+    @Test
+    void should_preserveRolePreference_when_participantReconnects() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+
+        room.disconnect(
+                HOST_ID,
+                CREATED_AT.plusSeconds(10),
+                Duration.ofSeconds(60));
+        RoomSnapshot disconnected = room.snapshotFor(HOST_ID);
+        room.resume(HOST_ID);
+        RoomSnapshot resumed = room.snapshotFor(HOST_ID);
+
+        assertFalse(disconnected.me().connected());
+        assertEquals(
+                SELECTOR,
+                disconnected
+                        .roleSelection()
+                        .preferredRole());
+        assertTrue(resumed.me().connected());
+        assertEquals(
+                SELECTOR,
+                resumed.roleSelection().preferredRole());
+    }
+
+    @Test
+    void should_rejectDuplicateAndStaleRolePreference_when_stateChanged() {
+        Room room = createRoom();
+        room.join(GUEST_ID, "그린");
+        UUID commandId = UUID.randomUUID();
+        room.changeRolePreference(
+                HOST_ID,
+                commandId,
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+
+        assertRuleError(
+                DUPLICATE_COMMAND,
+                () ->
+                        room.changeRolePreference(
+                                HOST_ID,
+                                commandId,
+                                3,
+                                QUESTIONER,
+                                roleAssignmentDecider()));
+        assertRuleError(
+                STALE_ROOM_STATE,
+                () ->
+                        room.changeRolePreference(
+                                GUEST_ID,
+                                UUID.randomUUID(),
+                                2,
+                                QUESTIONER,
+                                roleAssignmentDecider()));
     }
 
     @Test
@@ -93,14 +289,22 @@ class RoomTest {
     void should_returnToWaitingForOpponent_when_guestLeaves() {
         Room room = createRoom();
         room.join(GUEST_ID, "그린");
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
 
         Room.LeaveResult result = room.leave(GUEST_ID);
 
         assertEquals(Room.LeaveResult.GUEST_LEFT, result);
         RoomSnapshot snapshot = room.snapshotFor(HOST_ID);
         assertEquals(WAITING_FOR_OPPONENT, snapshot.status());
-        assertEquals(3L, snapshot.stateVersion());
+        assertEquals(4L, snapshot.stateVersion());
         assertNull(snapshot.opponent());
+        assertNull(snapshot.me().role());
+        assertNull(snapshot.roleSelection());
     }
 
     @Test
@@ -209,28 +413,30 @@ class RoomTest {
                         .BOTH_DISCONNECTED,
                 timeout.endReason());
         assertNull(timeout.disconnectedUserId());
-        assertEquals(6L, timeout.targetStateVersion());
+        assertEquals(8L, timeout.targetStateVersion());
     }
 
     @Test
-    void should_swapRoles_when_bothPlayersAcceptRematch() {
+    void should_applyRolePreferences_when_nextRoundStarts() {
         Room room = completedRoom();
 
-        Room.RematchChange hostReady =
-                room.changeRematchReady(
+        Room.RolePreferenceChange hostPreference =
+                room.changeRolePreference(
                         HOST_ID,
                         UUID.randomUUID(),
-                        3,
-                        true);
-        Room.RematchChange guestReady =
-                room.changeRematchReady(
+                        5,
+                        QUESTIONER,
+                        roleAssignmentDecider());
+        Room.RolePreferenceChange guestPreference =
+                room.changeRolePreference(
                         GUEST_ID,
                         UUID.randomUUID(),
-                        4,
-                        true);
+                        6,
+                        SELECTOR,
+                        roleAssignmentDecider());
 
-        assertFalse(hostReady.nextRoundReady());
-        assertTrue(guestReady.nextRoundReady());
+        assertFalse(hostPreference.rolesAssigned());
+        assertTrue(guestPreference.rolesAssigned());
         RoomSnapshot hostSnapshot = room.snapshotFor(HOST_ID);
         RoomSnapshot guestSnapshot = room.snapshotFor(GUEST_ID);
         assertEquals(WAITING_FOR_SELECTION, hostSnapshot.status());
@@ -238,18 +444,23 @@ class RoomTest {
         assertEquals(QUESTIONER, hostSnapshot.me().role());
         assertEquals(SELECTOR, guestSnapshot.me().role());
         assertNull(hostSnapshot.game());
-        assertNull(hostSnapshot.rematch());
+        assertNull(hostSnapshot.roleSelection());
+        assertFalse(
+                hostSnapshot
+                        .roleAssignment()
+                        .randomized());
     }
 
     private Room startedRoom() {
         Room room = createRoom();
         room.join(GUEST_ID, "그린");
+        assignFirstRoundRoles(room);
         room.applyGameView(
                 UUID.randomUUID(),
                 new SelectorGameView(
                         UUID.randomUUID(),
                         IN_PROGRESS,
-                        3,
+                        5,
                         0,
                         20,
                         com.guesspokemon.game.GameTypes.GameRole
@@ -265,12 +476,13 @@ class RoomTest {
     private Room completedRoom() {
         Room room = createRoom();
         room.join(GUEST_ID, "그린");
+        assignFirstRoundRoles(room);
         room.applyGameView(
                 UUID.randomUUID(),
                 new SelectorGameView(
                         UUID.randomUUID(),
                         COMPLETED,
-                        3,
+                        5,
                         1,
                         19,
                         com.guesspokemon.game.GameTypes.GameRole
@@ -287,11 +499,38 @@ class RoomTest {
         return new Room("ABC234", HOST_ID, "레드", CREATED_AT);
     }
 
+    private void assignFirstRoundRoles(Room room) {
+        room.changeRolePreference(
+                HOST_ID,
+                UUID.randomUUID(),
+                2,
+                SELECTOR,
+                roleAssignmentDecider());
+        room.changeRolePreference(
+                GUEST_ID,
+                UUID.randomUUID(),
+                3,
+                QUESTIONER,
+                roleAssignmentDecider());
+    }
+
+    private RoleAssignmentDecider roleAssignmentDecider() {
+        return new RoleAssignmentDecider(new Random(3898));
+    }
+
     private void assertErrorCode(
             ApiErrorCode expected,
             Runnable action) {
         ApiException exception =
                 assertThrows(ApiException.class, action::run);
         assertEquals(expected, exception.errorCode());
+    }
+
+    private void assertRuleError(
+            GameRuleException.GameRuleError expected,
+            Runnable action) {
+        GameRuleException exception =
+                assertThrows(GameRuleException.class, action::run);
+        assertEquals(expected, exception.error());
     }
 }

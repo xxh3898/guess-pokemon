@@ -1,8 +1,6 @@
 import {
-  Check,
   CircleX,
   DoorOpen,
-  RefreshCw,
   Trophy,
   UserRound,
 } from "lucide-react";
@@ -16,20 +14,24 @@ import {
   MAX_GAME_ACTION_COUNT,
   type ResultRoomSnapshot,
   type RoomMember,
+  type RoomRole,
 } from "../room/roomTypes";
+import { RolePreferencePanel } from "../room/RolePreferencePanel";
 import { GameActionTimeline } from "./GameActionTimeline";
 
 interface GameResultScreenProps {
   commandPending: boolean;
+  connected: boolean;
   onLeave(): void;
-  onRematch(ready: boolean): void;
+  onRolePreference(role: RoomRole): void;
   snapshot: ResultRoomSnapshot;
 }
 
 export function GameResultScreen({
   commandPending,
+  connected,
   onLeave,
-  onRematch,
+  onRolePreference,
   snapshot,
 }: GameResultScreenProps) {
   const winner = snapshot.game.winnerUserId;
@@ -116,50 +118,26 @@ export function GameResultScreen({
             </button>
           </div>
         ) : (
-          <section className="rematch-panel panel-card">
-            <h2>재대결 준비</h2>
-            <p>두 사람 모두 준비하면 역할을 바꿔 시작해요.</p>
-            <div className="rematch-members">
-              <ReadyState
-                label="나"
-                member={snapshot.me}
-                ready={snapshot.rematch.meReady}
-              />
-              <ReadyState
-                label="상대"
-                member={snapshot.opponent}
-                ready={snapshot.rematch.opponentReady}
-              />
-            </div>
-            <div className="rematch-actions">
-              <button
-                className="primary-game-button"
-                disabled={
-                  commandPending ||
-                  (snapshot.rematch.opponentReady &&
-                    snapshot.rematch.meReady)
-                }
-                onClick={() => {
-                  onRematch(!snapshot.rematch.meReady);
-                }}
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={18} />
-                {snapshot.rematch.meReady
-                  ? "준비 취소"
-                  : "재대결 준비"}
-              </button>
-              <button
-                className="secondary-game-button"
-                disabled={commandPending}
-                onClick={onLeave}
-                type="button"
-              >
-                <DoorOpen aria-hidden="true" size={18} />
-                로비로
-              </button>
-            </div>
-          </section>
+          <div className="result-role-selection">
+            <RolePreferencePanel
+              commandPending={commandPending}
+              connected={connected}
+              me={snapshot.me}
+              onSelect={onRolePreference}
+              opponent={snapshot.opponent}
+              selection={snapshot.roleSelection}
+              title="다음 게임 역할 선택"
+            />
+            <button
+              className="secondary-game-button result-lobby-button"
+              disabled={commandPending}
+              onClick={onLeave}
+              type="button"
+            >
+              <DoorOpen aria-hidden="true" size={18} />
+              로비로
+            </button>
+          </div>
         )}
 
         <GameActionTimeline actions={snapshot.game.actions} />
@@ -182,7 +160,11 @@ function ResultParticipant({
       <div>
         <strong>{member.nickname}</strong>
         <span>
-          {member.role === "QUESTIONER" ? "질문자" : "출제자"}
+          {member.role === "QUESTIONER"
+            ? "질문자"
+            : member.role === "SELECTOR"
+              ? "출제자"
+              : "역할 미정"}
         </span>
       </div>
       {winnerUserId ? (
@@ -197,36 +179,6 @@ function ResultParticipant({
       ) : (
         <em>중단</em>
       )}
-    </article>
-  );
-}
-
-function ReadyState({
-  label,
-  member,
-  ready,
-}: {
-  label: string;
-  member: RoomMember;
-  ready: boolean;
-}) {
-  return (
-    <article className={ready ? "is-ready" : ""}>
-      <UserRound aria-hidden="true" size={28} />
-      <div>
-        <span>{label}</span>
-        <strong>{member.nickname}</strong>
-      </div>
-      <em>
-        {ready ? (
-          <>
-            <Check aria-hidden="true" size={16} />
-            준비 완료
-          </>
-        ) : (
-          "준비 중"
-        )}
-      </em>
     </article>
   );
 }

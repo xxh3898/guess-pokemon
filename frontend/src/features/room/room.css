@@ -431,6 +431,220 @@
   background: #f2f4f6;
 }
 
+.role-selection-view {
+  margin: 0 auto;
+  padding: 1.6rem 2rem 2rem;
+  width: min(100%, 62rem);
+}
+
+.role-selection-view > .section-kicker {
+  color: #9a6c00;
+  margin: 0 0 0.5rem;
+  text-align: center;
+}
+
+.role-preference-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.role-preference-panel > header {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  text-align: left;
+}
+
+.role-preference-heading-icon {
+  align-items: center;
+  background: var(--yellow-soft);
+  border: 1px solid rgb(213 154 0 / 34%);
+  border-radius: 10px;
+  color: #a06f00;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  min-height: 2.8rem;
+  width: 2.8rem;
+}
+
+.role-preference-panel h2 {
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+  margin: 0;
+}
+
+.role-preference-panel header p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0.25rem 0 0;
+}
+
+.role-preference-members,
+.role-preference-options {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.role-selection-member {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.role-selection-member.is-blue {
+  background: var(--paper-blue);
+  border-color: rgb(59 142 239 / 36%);
+  color: var(--blue-dark);
+}
+
+.role-selection-member.is-mint {
+  background: var(--mint-soft);
+  border-color: rgb(34 154 122 / 32%);
+  color: var(--mint-dark);
+}
+
+.role-selection-member > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.role-selection-member span,
+.role-selection-member small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.role-selection-member strong {
+  color: var(--navy);
+  overflow-wrap: anywhere;
+}
+
+.role-selection-member small {
+  margin-top: 0.2rem;
+}
+
+.role-preference-option {
+  align-items: center;
+  background: white;
+  border: 1px solid;
+  border-radius: 12px;
+  display: grid;
+  gap: 0.25rem 0.65rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 7.2rem;
+  padding: 1rem;
+  position: relative;
+  text-align: left;
+}
+
+.role-preference-option.is-selector {
+  border-color: rgb(59 142 239 / 45%);
+  color: var(--blue-dark);
+}
+
+.role-preference-option.is-questioner {
+  border-color: rgb(34 154 122 / 42%);
+  color: var(--mint-dark);
+}
+
+.role-preference-option > span {
+  grid-row: 1 / 3;
+}
+
+.role-preference-option strong {
+  color: var(--navy);
+  font-size: 0.95rem;
+}
+
+.role-preference-option small {
+  background: var(--blue-soft);
+  border-radius: 999px;
+  color: var(--blue-dark);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  width: fit-content;
+}
+
+.role-preference-option.is-questioner small {
+  background: var(--mint-soft);
+  color: var(--mint-dark);
+}
+
+.role-preference-option[aria-pressed="true"] {
+  background: var(--paper-blue);
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+.role-preference-option.is-questioner[aria-pressed="true"] {
+  background: var(--mint-soft);
+}
+
+.role-preference-option:disabled:not([aria-pressed="true"]) {
+  background: #f5f6f7;
+  border-color: #d7dce1;
+  color: #89939d;
+}
+
+.role-preference-check {
+  position: absolute;
+  right: 0.65rem;
+  top: 0.65rem;
+}
+
+.role-preference-note,
+.role-assignment-notice {
+  align-items: center;
+  border: 1px solid rgb(213 154 0 / 30%);
+  border-radius: 9px;
+  color: #74550a;
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.5rem;
+  justify-content: center;
+  line-height: 1.5;
+  padding: 0.7rem 0.8rem;
+  text-align: center;
+}
+
+.role-preference-note {
+  background: rgb(255 247 217 / 62%);
+}
+
+.role-assignment-notice {
+  margin: 1rem auto 0;
+  max-width: 78rem;
+  text-align: left;
+}
+
+.role-assignment-notice > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.role-assignment-notice span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.role-assignment-notice.is-randomized {
+  background: var(--yellow-soft);
+}
+
+.role-assignment-notice.is-preferred {
+  background: var(--mint-soft);
+  border-color: rgb(34 154 122 / 30%);
+  color: var(--mint-dark);
+}
+
 .room-frame > .room-inline-alert {
   margin-right: auto;
   margin-left: auto;
@@ -696,6 +910,10 @@
     padding: 34px 20px 28px;
   }
 
+  .role-selection-view {
+    padding: 1.25rem 1rem 1.5rem;
+  }
+
   .participant-grid {
     grid-template-columns: 1fr;
   }
@@ -791,6 +1009,46 @@
   .room-content {
     padding-right: 16px;
     padding-left: 16px;
+  }
+
+  .role-preference-panel {
+    gap: 0.75rem;
+    padding: 0.85rem;
+  }
+
+  .role-preference-panel > header {
+    align-items: flex-start;
+  }
+
+  .role-preference-members {
+    grid-template-columns: 1fr;
+  }
+
+  .role-preference-option {
+    gap: 0.35rem;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    min-height: 8.4rem;
+    padding: 0.8rem 0.5rem;
+    text-align: center;
+  }
+
+  .role-preference-option > span {
+    grid-row: auto;
+  }
+
+  .role-preference-option strong {
+    font-size: 0.82rem;
+  }
+
+  .role-preference-note {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .role-assignment-notice {
+    margin-right: 0.75rem;
+    margin-left: 0.75rem;
   }
 
   .selection-view {

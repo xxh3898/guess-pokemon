@@ -21,6 +21,7 @@ import com.guesspokemon.room.RoomDtos.JoinableRoomListResponse;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
+import com.guesspokemon.room.RoomDtos.RoomRole;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.room.RoomDtos.SelectorGameSnapshot;
 import java.time.Clock;
@@ -41,16 +42,19 @@ public class RoomApplicationService {
     private final RoomRegistry roomRegistry;
     private final GameCommandService gameCommandService;
     private final PokemonCatalogService pokemonCatalogService;
+    private final RoleAssignmentDecider roleAssignmentDecider;
     private final Clock clock;
 
     public RoomApplicationService(
             RoomRegistry roomRegistry,
             GameCommandService gameCommandService,
             PokemonCatalogService pokemonCatalogService,
+            RoleAssignmentDecider roleAssignmentDecider,
             Clock roomClock) {
         this.roomRegistry = roomRegistry;
         this.gameCommandService = gameCommandService;
         this.pokemonCatalogService = pokemonCatalogService;
+        this.roleAssignmentDecider = roleAssignmentDecider;
         this.clock = roomClock;
     }
 
@@ -324,24 +328,25 @@ public class RoomApplicationService {
                 });
     }
 
-    public RematchOutcome changeRematchReady(
+    public RolePreferenceOutcome changeRolePreference(
             String roomCode,
             UUID userId,
             UUID commandId,
             long expectedStateVersion,
-            boolean ready) {
+            RoomRole preferredRole) {
         return roomRegistry.executeLocked(
                 roomCode,
                 userId,
                 room -> {
-                    Room.RematchChange change =
-                            room.changeRematchReady(
+                    Room.RolePreferenceChange change =
+                            room.changeRolePreference(
                                     userId,
                                     commandId,
                                     expectedStateVersion,
-                                    ready);
-                    return new RematchOutcome(
-                            change.nextRoundReady(),
+                                    preferredRole,
+                                    roleAssignmentDecider);
+                    return new RolePreferenceOutcome(
+                            change.rolesAssigned(),
                             snapshotsFor(room));
                 });
     }
@@ -563,11 +568,11 @@ public class RoomApplicationService {
         }
     }
 
-    public record RematchOutcome(
-            boolean nextRoundReady,
+    public record RolePreferenceOutcome(
+            boolean rolesAssigned,
             Map<UUID, RoomSnapshot> snapshots) {
 
-        public RematchOutcome {
+        public RolePreferenceOutcome {
             snapshots = Map.copyOf(snapshots);
         }
     }

@@ -77,6 +77,7 @@ class RealtimePayloadMappingTest {
                                 20,
                                 PIKACHU,
                                 List.of()),
+                        null,
                         null);
         RoomSnapshot questioner =
                 new RoomSnapshot(
@@ -92,6 +93,7 @@ class RealtimePayloadMappingTest {
                                 0,
                                 20,
                                 List.of()),
+                        null,
                         null);
 
         String selectorJson =

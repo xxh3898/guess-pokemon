@@ -136,7 +136,7 @@ com.guesspokemon
 ### `room`
 
 - `ConcurrentHashMap` 기반 `RoomRegistry`
-- 방 코드, 두 참가자, 현재 round, 연결 상태, 만료
+- 방 코드, 두 참가자, 현재 round, 역할 선호·배정, 연결 상태, 만료
 - 사용자당 활성 방 하나
 - room map과 사용자 index를 함께 바꾸는 create·join·leave·expire는 짧은 registry lock 안에서 처리
 - 방별 직렬 실행 경계
@@ -145,6 +145,11 @@ com.guesspokemon
 - 활성 방 최대 1,000개, unique code 할당 최대 100회
 - 참가 가능한 방 목록은 같은 registry lock 안에서 만료 정리와 `WAITING_FOR_OPPONENT` filter를 적용한 immutable snapshot으로 생성
 - 목록은 `createdAt DESC, roomCode ASC`로 정렬해 최대 50개의 방 코드와 방장 닉네임만 공개
+- guest 입장 뒤 `WAITING_FOR_ROLE_SELECTION`에서 두 선호를 직렬
+  처리하고 서로 다르면 희망대로, 같으면 주입한 난수 결정기로 역할을
+  한 번 배정
+- 역할 확정 전 사용자별 snapshot에는 본인 선호와 상대 선택 완료
+  여부만 넣고 상대의 실제 선호는 공개하지 않음
 
 ### `game`
 
@@ -172,7 +177,7 @@ com.guesspokemon
 
 - `WebSocketConfig`: `/ws`, `/app`, simple broker `/queue`, 10초 heartbeat
 - `WebSocketSecurityConfig`: STOMP `CONNECT` CSRF·인증과 SEND·SUBSCRIBE allowlist
-- `RealtimeCommandController`: select, ask, answer, guess, resume, rematch-ready
+- `RealtimeCommandController`: role-preference, select, ask, answer, guess, resume
 - `RealtimeEventPublisher`: `/user/queue/game-events` 역할별 event와 대기방 이탈 상태 동기화
 - `RoomConnectionService`: session과 사용자·방 mapping, 마지막 session disconnect 판단, 60초 timeout
 - `WebSocketDisconnectListener`: 중복 가능한 `SessionDisconnectEvent` 전달
@@ -185,8 +190,8 @@ src/
 │   └── routes.tsx
 ├── features/
 │   ├── auth/
-│   ├── room/        # 방 REST 계약, route orchestration, room state
-│   ├── game/        # 역할별 게임, 결과, 재접속·이탈 화면
+│   ├── room/        # 방 REST 계약, 역할 선호, route orchestration, room state
+│   ├── game/        # 역할별 게임, 결과, 다음 역할 선택, 재접속·이탈 화면
 │   ├── pokemon/     # 전국도감 gateway, parser, picker, artwork·타입 표시
 │   └── history/     # 기록 목록·상세 gateway, parser, 화면, timeline
 ├── pages/
@@ -198,7 +203,7 @@ src/
 │   └── system-status.css
 ├── shared/
 │   ├── api/
-│   ├── realtime/    # STOMP 연결, resume, 역할별 event parser
+│   ├── realtime/    # STOMP 연결, resume, 역할 선호 command, 역할별 event parser
 │   ├── ui/
 │   └── validation/
 ├── styles/
@@ -248,6 +253,10 @@ src/
 - room route는 연결할 때마다 CSRF credential을 넣고 사용자별 queue를 구독한 뒤 `resume`을 보내 authoritative snapshot을 복구한다.
 - React StrictMode에서 중복 subscription이 남지 않도록 모든 subscription에 cleanup을 둔다.
 - server snapshot을 기준으로 UI store를 재구성한다. 이전 version은 무시하고 같은 version의 `ROOM_SNAPSHOT`은 authoritative replacement로 허용한다.
+- `RolePreferencePanel`은 첫 경기와 결과 화면에서 재사용한다. 참가자는
+  `포켓몬을 정하고 답하기` 또는 `질문하고 맞히기`를 고르며, 상대의
+  선택 내용 대신 완료 여부만 본다. 선호 변경도 별도 증분 event 없이
+  사용자별 `ROOM_SNAPSHOT`으로 수렴한다.
 - 답변·추측으로 경기가 끝날 때 행동 event와 `GAME_ENDED`는 같은 version을 공유할 수 있다. reducer는 action sequence가 아직 없거나 현재 상태가 아직 `RESULT`가 아닐 때만 같은 version의 상호 보완 event를 적용해 중복과 누락을 함께 막는다.
 - `ROOM_CLOSED`를 받으면 local active room을 비우고 닫힌 방 안내와 로비 복귀 경로를 제공한다.
 - 정답 포켓몬 필드를 selector 전용 snapshot에만 둔다. 공용
@@ -321,18 +330,52 @@ sequenceDiagram
     API-->>H: roomCode + host snapshot
     G->>API: POST /api/v1/rooms/{code}/join
     API-->>G: guest snapshot
-    API-->>H: PLAYER_JOINED
+    API-->>H: PLAYER_JOINED + role selection snapshot
+    H->>API: STOMP role-preference(SELECTOR)
+    API-->>H: own preference snapshot
+    API-->>G: opponent selected snapshot
+    G->>API: STOMP role-preference(QUESTIONER)
+    API-->>H: assigned role snapshot
+    API-->>G: assigned role snapshot
     H->>API: STOMP select-pokemon
     API->>DB: game IN_PROGRESS 생성
     API-->>H: selector ROUND_STARTED + secret
     API-->>G: questioner ROUND_STARTED
 ```
 
-방 생성 직후에는 `WAITING_FOR_OPPONENT`, `stateVersion=1`, `roundNumber=1`이며 방장이 `SELECTOR`다. guest가 입장하면 `QUESTIONER`로 배정하고 `WAITING_FOR_SELECTION`, `stateVersion=2`로 전환한다. create·join 직후에는 참가자를 연결 상태로 시작하고 room route의 `resume` 또는 첫 성공 command가 STOMP session을 사용자·방에 연결한다. 이후 마지막으로 연결된 session이 끊기면 실제 socket 상태를 `connected=false`로 반영한다.
+방 생성 직후에는 `WAITING_FOR_OPPONENT`, `stateVersion=1`,
+`roundNumber=1`이며 역할을 배정하지 않는다. guest가 입장하면
+`WAITING_FOR_ROLE_SELECTION`, `stateVersion=2`로 전환하고 두 참가자가
+선호를 고른다. 서로 다른 선호는 그대로 배정하고 같은 선호는
+`RoleAssignmentDecider`가 host의 결과를 한 번 정한 뒤 상대에게 반대
+역할을 준다. 두 번째 선호 명령을 room lock 안에서 처리해 역할 ID,
+`WAITING_FOR_SELECTION`, 최신 version을 원자적으로 확정한다.
+
+사용자별 `RoleSelectionState`에는 본인의 `preferredRole`과 상대의
+`opponentSelected`만 넣는다. 역할 확정 뒤에는 이 상태를 지우고
+`RoleAssignmentState.randomized`로 같은 선호 충돌 여부만 알린다. 결과
+화면에서도 같은 흐름을 반복하며 역할을 확정할 때 `roundNumber`를
+증가시킨다. 선호는 활성 room memory에만 두므로 DB schema와 경기 기록을
+바꾸지 않는다.
+
+create·join 직후에는 참가자를 연결 상태로 시작하고 room route의
+`resume` 또는 첫 성공 command가 STOMP session을 사용자·방에 연결한다.
+이후 마지막으로 연결된 session이 끊기면 실제 socket 상태를
+`connected=false`로 반영한다. 역할 선택 중 끊기면 선호를 보존하고
+두 참가자가 다시 연결되기 전까지 역할 명령을 처리하지 않는다.
 
 room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든다. 입력은 앞뒤 공백 제거와 대문자 정규화 뒤 같은 alphabet으로 검증한다. code 충돌 재시도 상한이나 활성 방 상한을 넘으면 room map을 부분 갱신하지 않고 `ROOM_CAPACITY_UNAVAILABLE`을 반환한다.
 
-대기 중 guest가 나가면 방장만 남은 상태로 되돌리고 guest active-room index를 해제한 뒤, 남은 방장에게 post-leave `ROOM_SNAPSHOT`을 보낸다. 대기 중 방장이 나가면 room과 두 participant index를 해제하고 나가지 않은 guest에게 `ROOM_CLOSED/HOST_LEFT`를 보낸다. 결과 단계 참가자가 room을 닫으면 상대에게 `ROOM_CLOSED/RESULT_ROOM_LEFT`를 보낸다. 진행 중 참가자가 나가면 `PLAYER_LEFT` 결과를 먼저 저장하고 두 참가자에게 `GAME_ENDED`를 보낸 뒤 room과 active game memory를 해제한다. 방장만 남은 room은 최초 생성 30분 뒤 만료한다. 두 명이 입장한 선택 대기 room의 별도 idle expiry는 첫 범위에 두지 않는다.
+대기 중 guest가 나가면 미확정 역할과 두 선호를 지우고 방장만 남은
+상태로 되돌린다. guest active-room index를 해제한 뒤 남은 방장에게
+post-leave `ROOM_SNAPSHOT`을 보낸다. 대기 중 방장이 나가면 room과 두
+participant index를 해제하고 나가지 않은 guest에게
+`ROOM_CLOSED/HOST_LEFT`를 보낸다. 결과 단계 참가자가 room을 닫으면
+상대에게 `ROOM_CLOSED/RESULT_ROOM_LEFT`를 보낸다. 진행 중 참가자가
+나가면 `PLAYER_LEFT` 결과를 먼저 저장하고 두 참가자에게 `GAME_ENDED`를
+보낸 뒤 room과 active game memory를 해제한다. 방장만 남은 room은 최초
+생성 30분 뒤 만료한다. 두 명이 입장한 역할·정답 선택 대기 room의 별도
+idle expiry는 첫 범위에 두지 않는다.
 
 같은 event type이라도 selector와 questioner payload class를 분리한다. 공용 객체를 만들고 serializer annotation으로 필드를 감추는 방식은 사용하지 않는다.
 
@@ -342,11 +385,16 @@ room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든
 
 1. 인증된 `Principal` 확인
 2. room lock 안에서 room membership, role, status, expected version 확인
-4. `commandId` 중복 확인
-5. domain state transition
-6. 필요한 DB 변경 transaction
-7. transaction commit 뒤 game memory와 room 상태 교체
-8. room lock 해제 뒤 participant별 event 생성·전송
+3. `commandId` 중복 확인
+4. domain state transition
+5. 필요한 DB 변경 transaction
+6. transaction commit 뒤 game memory와 room 상태 교체
+7. room lock 해제 뒤 participant별 event 생성·전송
+
+역할 선호 command는 아직 game이 없으므로 5~6단계의 DB 처리를 하지
+않는다. 같은 room lock과 version·command ID 검증 안에서 선호 저장,
+필요한 무작위 배정, 상태 전이까지 끝내고 사용자별 전체 snapshot을
+보낸다.
 
 질문은 pending 상태를 만든다. 답변 코멘트는 선택 입력이며 domain에서 앞뒤 공백 제거와 NFC 정규화를 적용한다. 정규화한 값이 비어 있으면 null로 저장하고, Unicode code point 기준 200자를 넘으면 거절한다. 답변과 코멘트를 기존 question action에 함께 저장한 뒤 다음 행동을 허용하므로 코멘트는 행동 횟수를 추가로 사용하지 않는다. 추측은 서버가 같은 `Game` aggregate의 기존 `GUESS` action을 먼저 확인하고, 이미 사용한 `pokemon_species_id`면 `POKEMON_ALREADY_GUESSED`로 거절한다. 이때 immutable candidate와 DB action을 만들지 않으므로 행동 횟수와 state version도 유지한다. 처음 추측한 포켓몬이면 정답과 비교해 즉시 결과를 확정한다.
 
@@ -384,7 +432,7 @@ heartbeat, reconnect timeout, 기존 `@Scheduled` room cleanup은 이름이 `tas
 | HTTP session | PostgreSQL | API 재시작 뒤 로그인 유지 |
 | 포켓몬 catalog | PostgreSQL + versioned snapshot | 검색 성능·재현성 |
 | 경기·참가자·행동 | PostgreSQL | 기록과 무결성 |
-| 방 코드·대기 상태 | API memory | 짧은 수명, 단일 instance |
+| 방 코드·대기·역할 선호 상태 | API memory | 짧은 수명, 단일 instance |
 | 참가 가능한 방 목록 | API memory에서 파생 | 조회 시점 snapshot, 별도 영속 상태 없음 |
 | 현재 game aggregate | API memory + 핵심 전이 DB 반영 | 낮은 지연과 기록 보존 |
 | socket mapping·60초 task | API memory | 연결 수명과 결합 |
@@ -536,6 +584,9 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 ## 18. 아키텍처 완료 조건
 
 - 정답이 질문자 DTO에 컴파일 단계부터 존재하지 않는다.
+- 역할 확정 전 사용자별 DTO가 상대의 실제 선호를 포함하지 않는다.
+- 같은 역할 선호는 room lock 안에서 한 번만 무작위 배정하고 두
+  사용자 snapshot이 서로 반대인 역할을 공유한다.
 - game state machine이 Spring·JPA 없이 단위 테스트 가능하다.
 - REST·STOMP command 모두 같은 application service와 domain 규칙을 호출한다.
 - DB migration, session schema, 타입·직접 진화 관계를 포함한 catalog seed가 빈 PostgreSQL에서 재현되고 V3 catalog row의 V4 upgrade, V4 game action의 V5 upgrade, V5 catalog row의 V6 upgrade 경로를 Testcontainers에서 검증한다.

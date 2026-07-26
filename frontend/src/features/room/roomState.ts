@@ -68,8 +68,6 @@ export function applyRoomEvent(
       return applyConnectionChanged(current, event);
     case "GAME_ENDED":
       return applyGameEnded(current, event);
-    case "REMATCH_STATE_CHANGED":
-      return applyRematchChanged(current, event);
     case "IGNORED":
     case "ROOM_CLOSED":
       return current;
@@ -148,7 +146,8 @@ function applyRoundStarted(
         ...gameBase,
         selectedPokemon: event.payload.selectedPokemon,
       },
-      rematch: null,
+      roleAssignment: null,
+      roleSelection: null,
       roundNumber: event.payload.roundNumber,
       stateVersion: event.stateVersion,
       status: "PLAYING",
@@ -157,7 +156,8 @@ function applyRoundStarted(
   return {
     ...current,
     game: gameBase,
-    rematch: null,
+    roleAssignment: null,
+    roleSelection: null,
     roundNumber: event.payload.roundNumber,
     stateVersion: event.stateVersion,
     status: "PLAYING",
@@ -361,34 +361,15 @@ function applyGameEnded(
       usedActionCount: event.payload.usedActionCount,
       winnerUserId: event.payload.winnerUserId,
     },
-    rematch: {
-      meReady: false,
-      opponentReady: false,
+    roleAssignment: null,
+    roleSelection: {
+      opponentSelected: false,
+      preferredRole: null,
     },
     stateVersion: event.stateVersion,
     status: "RESULT",
   };
   return result;
-}
-
-function applyRematchChanged(
-  current: RoomSnapshot,
-  event: Extract<
-    RoomRealtimeEvent,
-    { eventType: "REMATCH_STATE_CHANGED" }
-  >,
-): RoomSnapshot {
-  if (
-    current.status !== "RESULT" ||
-    current.game.gameId !== event.gameId
-  ) {
-    return current;
-  }
-  return {
-    ...current,
-    rematch: event.payload,
-    stateVersion: event.stateVersion,
-  };
 }
 
 function hasMatchingActiveGame(

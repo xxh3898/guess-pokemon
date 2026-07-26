@@ -102,13 +102,62 @@ describe("RoomPage", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "정답 포켓몬 선택",
+        name: "역할 선택 중",
       }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("그린님이 방에 입장했어요."),
     ).toBeInTheDocument();
     expect(screen.queryByText("피카츄")).not.toBeInTheDocument();
+  });
+
+  it("should_submitAndChangeRolePreference_when_firstRoundIsWaiting", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi.fn().mockResolvedValue(TWO_PLAYER_SNAPSHOT),
+      }),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByRole("heading", {
+      name: "역할 선택 중",
+    });
+    act(() => {
+      realtime.status("connected");
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /포켓몬을 정하고 답하기/,
+      }),
+    );
+    expect(realtime.changeRolePreference).toHaveBeenCalledWith(
+      "SELECTOR",
+      2,
+    );
+
+    act(() => {
+      realtime.event({
+        ...baseEvent(3),
+        eventType: "ROOM_SNAPSHOT",
+        payload: {
+          ...TWO_PLAYER_SNAPSHOT,
+          roleSelection: {
+            opponentSelected: false,
+            preferredRole: "SELECTOR",
+          },
+          stateVersion: 3,
+        },
+      });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /질문하고 맞히기/,
+      }),
+    );
+    expect(
+      realtime.changeRolePreference,
+    ).toHaveBeenLastCalledWith("QUESTIONER", 3);
   });
 
   it("should_showDisconnectedOpponent_when_connectionEventArrives", async () => {
@@ -120,7 +169,7 @@ describe("RoomPage", () => {
       realtimeGateway: realtime.gateway,
     });
     await screen.findByRole("heading", {
-      name: "정답 포켓몬 선택",
+      name: "역할 선택 중",
     });
 
     act(() => {
@@ -137,7 +186,7 @@ describe("RoomPage", () => {
 
     expect(
       await screen.findByText(
-        "상대와 실시간 연결을 확인한 뒤 선택할 수 있어요.",
+        "두 참가자의 실시간 연결을 확인한 뒤 선택할 수 있어요.",
       ),
     ).toBeInTheDocument();
   });
@@ -151,7 +200,7 @@ describe("RoomPage", () => {
       realtimeGateway: realtime.gateway,
     });
     await screen.findByRole("heading", {
-      name: "정답 포켓몬 선택",
+      name: "역할 선택 중",
     });
 
     act(() => {
@@ -188,7 +237,7 @@ describe("RoomPage", () => {
       realtimeGateway: realtime.gateway,
     });
     await screen.findByRole("heading", {
-      name: "정답 포켓몬 선택",
+      name: "역할 선택 중",
     });
 
     act(() => {
@@ -376,7 +425,11 @@ describe("RoomPage", () => {
     const realtime = createRealtimeHarness();
     renderRoom({
       gateway: createRoomGateway({
-        get: vi.fn().mockResolvedValue(TWO_PLAYER_SNAPSHOT),
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            ASSIGNED_SELECTOR_SELECTION_SNAPSHOT,
+          ),
       }),
       pokemonGateway: createPokemonGateway([PIKACHU]),
       realtimeGateway: realtime.gateway,
@@ -406,7 +459,7 @@ describe("RoomPage", () => {
       screen.getByRole("button", { name: "선택하기" }),
     );
 
-    expect(realtime.selectPokemon).toHaveBeenCalledWith(25, 2);
+    expect(realtime.selectPokemon).toHaveBeenCalledWith(25, 4);
   });
 
   it("should_allowPokedexBrowsingWithoutGuess_when_questionerWaitsForSelection", async () => {
@@ -866,7 +919,7 @@ describe("RoomPage", () => {
     scrollTo.mockRestore();
   });
 
-  it("should_clearActiveRoomAndHideRematch_when_playerLeavesGame", async () => {
+  it("should_clearActiveRoomAndHideNextRoundSelection_when_playerLeavesGame", async () => {
     const scrollTo = vi
       .spyOn(window, "scrollTo")
       .mockImplementation(() => undefined);
@@ -1039,7 +1092,7 @@ describe("RoomPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("should_publishRematchReadinessAndCancellation_when_resultToggles", async () => {
+  it("should_submitAndChangeRolePreference_when_resultScreenIsOpen", async () => {
     const realtime = createRealtimeHarness();
     renderRoom({
       gateway: createRoomGateway({
@@ -1053,33 +1106,93 @@ describe("RoomPage", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "재대결 준비" }),
+      screen.getByRole("button", {
+        name: /포켓몬을 정하고 답하기/,
+      }),
     );
 
-    expect(realtime.changeRematchReady).toHaveBeenCalledWith(
-      true,
+    expect(realtime.changeRolePreference).toHaveBeenCalledWith(
+      "SELECTOR",
       5,
     );
 
     act(() => {
       realtime.event({
         ...baseEvent(6),
-        eventType: "REMATCH_STATE_CHANGED",
+        eventType: "ROOM_SNAPSHOT",
         gameId: GAME_ID,
         payload: {
-          meReady: true,
-          opponentReady: false,
+          ...RESULT_SNAPSHOT,
+          roleSelection: {
+            opponentSelected: false,
+            preferredRole: "SELECTOR",
+          },
+          stateVersion: 6,
         },
       });
     });
     fireEvent.click(
-      await screen.findByRole("button", { name: "준비 취소" }),
+      await screen.findByRole("button", {
+        name: /질문하고 맞히기/,
+      }),
     );
 
-    expect(realtime.changeRematchReady).toHaveBeenLastCalledWith(
-      false,
-      6,
-    );
+    expect(
+      realtime.changeRolePreference,
+    ).toHaveBeenLastCalledWith("QUESTIONER", 6);
+  });
+
+  it("should_scrollToTop_when_nextRoundRoleAssignmentCompletes", async () => {
+    const scrollTo = vi
+      .spyOn(window, "scrollTo")
+      .mockImplementation(() => undefined);
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi.fn().mockResolvedValue(RESULT_SNAPSHOT),
+      }),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByRole("heading", { name: "승리했어요" });
+    scrollTo.mockClear();
+
+    act(() => {
+      realtime.event({
+        ...baseEvent(6),
+        eventType: "ROOM_SNAPSHOT",
+        payload: {
+          ...QUESTIONER_SELECTION_SNAPSHOT,
+          roleAssignment: {
+            randomized: true,
+          },
+          roundNumber: 2,
+          stateVersion: 6,
+        },
+      });
+    });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "출제자가 포켓몬을 고르고 있어요",
+      }),
+    ).toBeInTheDocument();
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    scrollTo.mockRestore();
+  });
+
+  it("should_disableRolePreference_when_resultRealtimeIsDisconnected", async () => {
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi.fn().mockResolvedValue(RESULT_SNAPSHOT),
+      }),
+      realtimeGateway: createRealtimeHarness().gateway,
+    });
+
+    expect(
+      await screen.findByRole("button", {
+        name: /포켓몬을 정하고 답하기/,
+      }),
+    ).toBeDisabled();
   });
 });
 
@@ -1149,7 +1262,7 @@ function createRealtimeHarness() {
   const close = vi.fn().mockResolvedValue(undefined);
   const answerQuestion = vi.fn().mockReturnValue(COMMAND_ID);
   const askQuestion = vi.fn().mockReturnValue(COMMAND_ID);
-  const changeRematchReady = vi
+  const changeRolePreference = vi
     .fn()
     .mockReturnValue(COMMAND_ID);
   const guessPokemon = vi.fn().mockReturnValue(COMMAND_ID);
@@ -1158,7 +1271,7 @@ function createRealtimeHarness() {
   const session: RoomRealtimeSession = {
     answerQuestion,
     askQuestion,
-    changeRematchReady,
+    changeRolePreference,
     close,
     guessPokemon,
     requestSnapshot,
@@ -1173,7 +1286,7 @@ function createRealtimeHarness() {
   return {
     answerQuestion,
     askQuestion,
-    changeRematchReady,
+    changeRolePreference,
     close,
     event(event: WaitingRoomEvent) {
       handlers?.onEvent(event);
@@ -1204,32 +1317,73 @@ const GUEST_MEMBER = {
   userId: "70226fe2-cdee-4261-a3cb-fbd87a4df783",
 };
 
-const HOST_SNAPSHOT: WaitingRoomSnapshot = {
+const HOST_SNAPSHOT: Extract<
+  WaitingRoomSnapshot,
+  { status: "WAITING_FOR_OPPONENT" }
+> = {
   game: null,
-  me: HOST_MEMBER,
+  me: {
+    ...HOST_MEMBER,
+    role: null,
+  },
   opponent: null,
-  rematch: null,
+  roleAssignment: null,
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
   stateVersion: 1,
   status: "WAITING_FOR_OPPONENT",
 };
 
-const TWO_PLAYER_SNAPSHOT: WaitingRoomSnapshot = {
+const TWO_PLAYER_SNAPSHOT: Extract<
+  WaitingRoomSnapshot,
+  { status: "WAITING_FOR_ROLE_SELECTION" }
+> = {
   ...HOST_SNAPSHOT,
-  opponent: GUEST_MEMBER,
+  opponent: {
+    ...GUEST_MEMBER,
+    role: null,
+  },
+  roleAssignment: null,
+  roleSelection: {
+    opponentSelected: false,
+    preferredRole: null,
+  },
   stateVersion: 2,
+  status: "WAITING_FOR_ROLE_SELECTION",
+};
+
+const ASSIGNED_SELECTOR_SELECTION_SNAPSHOT: Extract<
+  WaitingRoomSnapshot,
+  { status: "WAITING_FOR_SELECTION" }
+> = {
+  game: null,
+  me: HOST_MEMBER,
+  opponent: GUEST_MEMBER,
+  roleAssignment: {
+    randomized: false,
+  },
+  roleSelection: null,
+  roomCode: "AB3K7M",
+  roundNumber: 1,
+  stateVersion: 4,
   status: "WAITING_FOR_SELECTION",
 };
 
-const QUESTIONER_SELECTION_SNAPSHOT: WaitingRoomSnapshot = {
+const QUESTIONER_SELECTION_SNAPSHOT: Extract<
+  WaitingRoomSnapshot,
+  { status: "WAITING_FOR_SELECTION" }
+> = {
   game: null,
   me: GUEST_MEMBER,
   opponent: HOST_MEMBER,
-  rematch: null,
+  roleAssignment: {
+    randomized: false,
+  },
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
-  stateVersion: 2,
+  stateVersion: 4,
   status: "WAITING_FOR_SELECTION",
 };
 
@@ -1252,7 +1406,8 @@ const QUESTIONER_ACTIVE_SNAPSHOT: QuestionerActiveRoomSnapshot = {
   },
   me: GUEST_MEMBER,
   opponent: HOST_MEMBER,
-  rematch: null,
+  roleAssignment: null,
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
   stateVersion: 3,
@@ -1318,7 +1473,8 @@ const SELECTOR_ACTIVE_SNAPSHOT: SelectorActiveRoomSnapshot = {
   },
   me: HOST_MEMBER,
   opponent: GUEST_MEMBER,
-  rematch: null,
+  roleAssignment: null,
+  roleSelection: null,
   roomCode: "AB3K7M",
   roundNumber: 1,
   stateVersion: 3,
@@ -1358,9 +1514,10 @@ const RESULT_SNAPSHOT: ResultRoomSnapshot = {
   },
   me: GUEST_MEMBER,
   opponent: HOST_MEMBER,
-  rematch: {
-    meReady: false,
-    opponentReady: false,
+  roleAssignment: null,
+  roleSelection: {
+    opponentSelected: false,
+    preferredRole: null,
   },
   roomCode: "AB3K7M",
   roundNumber: 1,

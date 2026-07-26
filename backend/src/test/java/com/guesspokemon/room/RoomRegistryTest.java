@@ -11,7 +11,7 @@ import static com.guesspokemon.common.error.ApiErrorCode.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameRole.SELECTOR;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_OPPONENT;
-import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_ROLE_SELECTION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -74,7 +74,9 @@ class RoomRegistryTest {
                         guest.nickname());
 
         assertEquals(WAITING_FOR_OPPONENT, created.status());
-        assertEquals(WAITING_FOR_SELECTION, joined.status());
+        assertEquals(
+                WAITING_FOR_ROLE_SELECTION,
+                joined.status());
         assertEquals(
                 created.roomCode(),
                 roomRegistry.findActiveRoomCode(host.id()).orElseThrow());

@@ -151,16 +151,6 @@ export interface GameEndedEvent extends RealtimeEventBase {
   };
 }
 
-export interface RematchStateChangedEvent
-  extends RealtimeEventBase {
-  readonly eventType: "REMATCH_STATE_CHANGED";
-  readonly gameId: string;
-  readonly payload: {
-    readonly meReady: boolean;
-    readonly opponentReady: boolean;
-  };
-}
-
 export interface IgnoredRoomEvent extends RealtimeEventBase {
   readonly eventType: "IGNORED";
   readonly payload: null;
@@ -174,7 +164,6 @@ export type RoomRealtimeEvent =
   | PlayerJoinedEvent
   | QuestionAnsweredEvent
   | QuestionAskedEvent
-  | RematchStateChangedEvent
   | RoomClosedEvent
   | RoomSnapshotEvent
   | RoundStartedEvent;
@@ -419,22 +408,6 @@ export function parseRoomRealtimeEvent(
           20,
         ),
         winnerUserId,
-      },
-    };
-  }
-
-  if (eventType === "REMATCH_STATE_CHANGED") {
-    const payload = requireRecord(envelope.payload);
-    return {
-      ...base,
-      eventType,
-      gameId: requireGameId(gameId),
-      payload: {
-        meReady: requireBoolean(payload, "meReady"),
-        opponentReady: requireBoolean(
-          payload,
-          "opponentReady",
-        ),
       },
     };
   }

@@ -16,6 +16,7 @@ public final class RoomDtos {
 
     public enum RoomStatus {
         WAITING_FOR_OPPONENT,
+        WAITING_FOR_ROLE_SELECTION,
         WAITING_FOR_SELECTION,
         PLAYING,
         PAUSED,
@@ -35,9 +36,13 @@ public final class RoomDtos {
             Instant reconnectDeadline) {
     }
 
-    public record RematchState(
-            boolean meReady,
-            boolean opponentReady) {
+    public record RoleSelectionState(
+            RoomRole preferredRole,
+            boolean opponentSelected) {
+    }
+
+    public record RoleAssignmentState(
+            boolean randomized) {
     }
 
     public sealed interface RoomGameSnapshot
@@ -126,6 +131,7 @@ public final class RoomDtos {
             RoomMember me,
             RoomMember opponent,
             RoomGameSnapshot game,
-            RematchState rematch) {
+            RoleSelectionState roleSelection,
+            RoleAssignmentState roleAssignment) {
     }
 }

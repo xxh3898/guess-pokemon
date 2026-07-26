@@ -6,7 +6,6 @@ import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.PLAYER_CONNEC
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.PLAYER_JOINED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.QUESTION_ANSWERED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.QUESTION_ASKED;
-import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.REMATCH_STATE_CHANGED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_CLOSED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_SNAPSHOT;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROUND_STARTED;
@@ -27,7 +26,6 @@ import com.guesspokemon.realtime.RealtimeDtos.PlayerSummary;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionAnsweredPayload;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionAskedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.QuestionerRoundStartedPayload;
-import com.guesspokemon.realtime.RealtimeDtos.RematchStateChangedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason;
 import com.guesspokemon.realtime.RealtimeDtos.RoundStartedPayload;
@@ -36,10 +34,9 @@ import com.guesspokemon.room.RoomApplicationService.CommandOutcome;
 import com.guesspokemon.room.RoomApplicationService.ConnectionOutcome;
 import com.guesspokemon.room.RoomApplicationService.JoinOutcome;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
-import com.guesspokemon.room.RoomApplicationService.RematchOutcome;
+import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.room.RoomApplicationService.TimeoutOutcome;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
-import com.guesspokemon.room.RoomDtos.RematchState;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
@@ -219,25 +216,10 @@ public class RealtimeEventPublisher {
                 .forEach(this::publishSnapshot);
     }
 
-    public void publishRematch(
-            RematchOutcome outcome) {
-        if (outcome.nextRoundReady()) {
-            outcome.snapshots()
-                    .forEach(this::publishSnapshot);
-            return;
-        }
-        for (Map.Entry<UUID, RoomSnapshot> entry :
-                outcome.snapshots().entrySet()) {
-            RematchState rematch =
-                    entry.getValue().rematch();
-            publish(
-                    entry.getKey(),
-                    REMATCH_STATE_CHANGED,
-                    entry.getValue(),
-                    new RematchStateChangedPayload(
-                            rematch.meReady(),
-                            rematch.opponentReady()));
-        }
+    public void publishRolePreference(
+            RolePreferenceOutcome outcome) {
+        outcome.snapshots()
+                .forEach(this::publishSnapshot);
     }
 
     private void publishGameEnded(

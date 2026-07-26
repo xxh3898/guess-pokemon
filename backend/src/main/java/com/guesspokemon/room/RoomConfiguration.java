@@ -21,6 +21,11 @@ public class RoomConfiguration {
     }
 
     @Bean
+    RoleAssignmentDecider roleAssignmentDecider() {
+        return new RoleAssignmentDecider(new SecureRandom());
+    }
+
+    @Bean
     RoomRegistry roomRegistry(
             RoomCodeGenerator roomCodeGenerator,
             Clock roomClock) {

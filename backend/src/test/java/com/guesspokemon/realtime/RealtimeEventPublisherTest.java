@@ -2,11 +2,13 @@ package com.guesspokemon.realtime;
 
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
 import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
+import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_SNAPSHOT;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_CLOSED;
 import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.RESULT_ROOM_LEFT;
 import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
 import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.RESULT;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_ROLE_SELECTION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.eq;
@@ -20,7 +22,9 @@ import com.guesspokemon.pokemon.PokemonType;
 import com.guesspokemon.realtime.RealtimeDtos.GameEventEnvelope;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
+import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
+import com.guesspokemon.room.RoomDtos.RoleSelectionState;
 import com.guesspokemon.room.RoomDtos.RoomMember;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Clock;
@@ -126,6 +130,96 @@ class RealtimeEventPublisherTest {
         assertEquals(SELECTOR_ID, payload.leftUserId());
     }
 
+    @Test
+    void should_publishPrivateRolePreferenceSnapshots_when_oneParticipantSelects() {
+        SimpMessagingTemplate messagingTemplate =
+                mock(SimpMessagingTemplate.class);
+        RealtimeEventPublisher publisher =
+                new RealtimeEventPublisher(
+                        messagingTemplate,
+                        mock(PokemonCatalogService.class),
+                        Clock.fixed(
+                                Instant.parse(
+                                        "2026-07-25T03:00:00Z"),
+                                ZoneOffset.UTC));
+        RoomMember host =
+                new RoomMember(
+                        SELECTOR_ID,
+                        "레드",
+                        null,
+                        true,
+                        null);
+        RoomMember guest =
+                new RoomMember(
+                        QUESTIONER_ID,
+                        "그린",
+                        null,
+                        true,
+                        null);
+        RoomSnapshot hostSnapshot =
+                new RoomSnapshot(
+                        "ABC234",
+                        WAITING_FOR_ROLE_SELECTION,
+                        3,
+                        1,
+                        host,
+                        guest,
+                        null,
+                        new RoleSelectionState(
+                                SELECTOR,
+                                false),
+                        null);
+        RoomSnapshot guestSnapshot =
+                new RoomSnapshot(
+                        "ABC234",
+                        WAITING_FOR_ROLE_SELECTION,
+                        3,
+                        1,
+                        guest,
+                        host,
+                        null,
+                        new RoleSelectionState(
+                                null,
+                                true),
+                        null);
+
+        publisher.publishRolePreference(
+                new RolePreferenceOutcome(
+                        false,
+                        Map.of(
+                                SELECTOR_ID,
+                                hostSnapshot,
+                                QUESTIONER_ID,
+                                guestSnapshot)));
+
+        ArgumentCaptor<Object> hostEventCaptor =
+                ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<Object> guestEventCaptor =
+                ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate)
+                .convertAndSendToUser(
+                        eq(SELECTOR_ID.toString()),
+                        eq(WebSocketConfig.GAME_EVENT_QUEUE),
+                        hostEventCaptor.capture());
+        verify(messagingTemplate)
+                .convertAndSendToUser(
+                        eq(QUESTIONER_ID.toString()),
+                        eq(WebSocketConfig.GAME_EVENT_QUEUE),
+                        guestEventCaptor.capture());
+        GameEventEnvelope hostEvent =
+                assertInstanceOf(
+                        GameEventEnvelope.class,
+                        hostEventCaptor.getValue());
+        GameEventEnvelope guestEvent =
+                assertInstanceOf(
+                        GameEventEnvelope.class,
+                        guestEventCaptor.getValue());
+        assertEquals(ROOM_SNAPSHOT, hostEvent.eventType());
+        assertEquals(ROOM_SNAPSHOT, guestEvent.eventType());
+        assertEquals(hostSnapshot, hostEvent.payload());
+        assertEquals(guestSnapshot, guestEvent.payload());
+    }
+
     private RoomSnapshot snapshot(
             RoomMember me,
             RoomMember opponent,
@@ -138,6 +232,7 @@ class RealtimeEventPublisherTest {
                 me,
                 opponent,
                 game,
+                new RoleSelectionState(null, false),
                 null);
     }
 }

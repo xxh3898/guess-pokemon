@@ -406,44 +406,64 @@ National Dex 번호 오름차순으로 반환한다.
   "me": {
     "userId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
     "nickname": "그린",
-    "role": "SELECTOR",
+    "role": null,
     "connected": true,
     "reconnectDeadline": null
   },
   "opponent": null,
   "game": null,
-  "rematch": null
+  "roleSelection": null,
+  "roleAssignment": null
 }
 ```
 
-질문자용 예:
+guest 입장 뒤 역할 선택 대기 중 참가자용 예:
 
 ```json
 {
   "roomCode": "AB3K7M",
-  "status": "WAITING_FOR_SELECTION",
+  "status": "WAITING_FOR_ROLE_SELECTION",
   "stateVersion": 2,
   "roundNumber": 1,
   "me": {
     "userId": "624f7d62-e328-4ff0-8b90-f6520b81a47f",
     "nickname": "레드",
-    "role": "QUESTIONER",
+    "role": null,
     "connected": true,
     "reconnectDeadline": null
   },
   "opponent": {
     "userId": "70226fe2-cdee-4261-a3cb-fbd87a4df783",
     "nickname": "그린",
-    "role": "SELECTOR",
+    "role": null,
     "connected": true,
     "reconnectDeadline": null
   },
   "game": null,
-  "rematch": null
+  "roleSelection": {
+    "preferredRole": null,
+    "opponentSelected": false
+  },
+  "roleAssignment": null
 }
 ```
 
-첫 round는 방장이 `SELECTOR`, 입장한 사용자가 `QUESTIONER`다. 생성 직후 status는 `WAITING_FOR_OPPONENT`이고 입장 뒤 `WAITING_FOR_SELECTION`로 바뀐다. `stateVersion`은 1부터 시작하고 membership이나 status가 바뀔 때 증가한다. `roundNumber`는 1부터 시작한다.
+생성 직후 status는 `WAITING_FOR_OPPONENT`이고 guest 입장 뒤
+`WAITING_FOR_ROLE_SELECTION`로 바뀐다. 역할을 확정하기 전에는 두
+참가자의 `role`이 모두 `null`이다. `roleSelection.preferredRole`에는
+현재 사용자 본인의 선택만 넣고, `opponentSelected`에는 상대가 선택을
+마쳤는지만 넣는다. 상대가 실제로 고른 역할은 반환하지 않는다.
+
+두 선호가 다르면 각자 희망한 역할로 배정한다. 같은 선호면 서버가 한
+번 무작위로 정해 서로 반대인 역할을 배정한다. 역할을 확정하면 status는
+`WAITING_FOR_SELECTION`이고 `roleSelection`은 `null`이 된다.
+`roleAssignment.randomized`는 이번 배정이 같은 선호 충돌로 무작위
+결정됐는지를 나타낸다. 첫 game command가 성공하면
+`roleAssignment`도 `null`로 돌아간다.
+
+`stateVersion`은 1부터 시작하고 membership, 연결 상태, 역할 선호,
+게임 상태가 바뀔 때 증가한다. `roundNumber`는 1부터 시작하며 결과
+화면에서 다음 역할 두 개를 확정할 때 증가한다.
 
 create·join 직후에는 참가자를 연결 상태로 시작한다. room route에서 `resume` 또는 첫 성공 command가 STOMP session을 방에 연결하며, 이후 마지막으로 연결된 session의 disconnect event를 받으면 `connected=false`로 바꾼다. 진행 중 경기라면 `reconnectDeadline`에 server clock 기준 60초 마감 시각을 함께 보낸다.
 
@@ -470,17 +490,25 @@ create·join 직후에는 참가자를 연결 상태로 시작한다. room route
 `game.actions`의 질문 action은 `answer`와 함께 선택 코멘트인 `comment`를
 포함한다. 답변 전이거나 코멘트가 없으면 `comment`는 `null`이다.
 
-진행 중 질문자 DTO에는 `selectedPokemon` field 자체를 두지 않는다. 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`, 승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는 `rematch.meReady`, `rematch.opponentReady`로 동의 상태를 복구한다.
+진행 중 질문자 DTO에는 `selectedPokemon` field 자체를 두지 않는다.
+경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`,
+승자·패자, 종료 사유를 받는다. `RESULT` 상태에서는
+`roleSelection.preferredRole`과 `roleSelection.opponentSelected`로 다음
+라운드 역할 선택 상태를 복구한다.
 
 room status:
 
 - `WAITING_FOR_OPPONENT`
+- `WAITING_FOR_ROLE_SELECTION`
 - `WAITING_FOR_SELECTION`
 - `PLAYING`
 - `PAUSED`
 - `RESULT`
 
-membership, 연결 상태, game command, 재대결 준비 상태가 바뀔 때마다 `stateVersion`을 증가시킨다. 연결 event 때문에 DB에 저장된 직전 game version보다 room version이 앞설 수 있으며 다음 game command가 성공할 때 다시 하나의 최신 version으로 맞춘다.
+membership, 연결 상태, 역할 선호, game command가 바뀔 때마다
+`stateVersion`을 증가시킨다. 연결 event 때문에 DB에 저장된 직전 game
+version보다 room version이 앞설 수 있으며 다음 game command가 성공할
+때 다시 하나의 최신 version으로 맞춘다.
 
 ### 7.1 방 생성
 
@@ -793,10 +821,12 @@ message authorization:
 
 - `commandId`: client가 한 사용자 행동마다 생성하는 UUID
 - `expectedStateVersion`: client가 마지막으로 본 room version
-- server는 같은 active game에서 select·question·answer·guess의 `commandId` 중복 적용을 막는다.
+- server는 역할 선호와 같은 active game의 select·question·answer·guess
+  `commandId` 중복 적용을 막는다.
 - 질문·추측 command ID는 history action row의 unique constraint로 한 번 더 검증한다. 답변 command ID는 active game memory에 유지하며 서버 재시작 뒤 해당 game은 `SERVER_RESTART`로 중단한다.
 - 성공한 select·question·answer·guess마다 state version을 1 증가시킨다.
-- 실제 연결 상태가 바뀐 disconnect·resume과 재대결 준비 변경도 room state version을 1 증가시킨다.
+- 실제 연결 상태가 바뀐 disconnect·resume과 역할 선호 변경도 room
+  state version을 1 증가시킨다.
 - version 충돌 시 `/user/queue/errors`로 `STALE_ROOM_STATE`와 최신 snapshot 요청 지침을 보낸다.
 
 ## 12. STOMP command
@@ -928,12 +958,12 @@ server는 전달받은 version 대신 현재 상태를 기준으로 역할별 `R
 
 `resume`은 현재 STOMP session ID를 인증 사용자와 방에 연결한다. 같은 사용자가 여러 tab을 열었다면 마지막 room-bound session이 끊길 때만 offline으로 전환한다.
 
-### 12.6 재대결 동의
+### 12.6 역할 선호 선택
 
 destination:
 
 ```text
-/app/rooms/{roomCode}/rematch-ready
+/app/rooms/{roomCode}/role-preference
 ```
 
 payload:
@@ -941,16 +971,28 @@ payload:
 ```json
 {
   "commandId": "82b9f92b-8bd4-4ce2-8a0d-822a1ba53836",
-  "expectedStateVersion": 22,
+  "expectedStateVersion": 2,
   "payload": {
-    "ready": true
+    "preferredRole": "SELECTOR"
   }
 }
 ```
 
-두 사용자가 `true`면 역할을 바꾸고 `WAITING_FOR_SELECTION`으로 전환한다.
+허용 값:
 
-첫 준비 변경은 `REMATCH_STATE_CHANGED`를 보낸다. 두 번째 준비로 역할 교대가 끝나면 `roundNumber`를 증가시키고 역할별 `ROOM_SNAPSHOT`을 보낸다.
+- `SELECTOR`: 포켓몬을 정하고 답하는 출제자
+- `QUESTIONER`: 질문하고 맞히는 질문자
+
+첫 경기의 `WAITING_FOR_ROLE_SELECTION`과 경기 종료 뒤 `RESULT`에서만
+보낼 수 있다. 상대 선택 전에는 새 command ID와 최신 version으로
+본인의 선호를 바꿀 수 있다. 연결이 끊긴 참가자가 있으면 재접속하기
+전까지 명령을 거절하며 기존 선호는 보존한다.
+
+첫 선택과 선호 변경은 두 참가자에게 각자 권한에 맞는
+`ROOM_SNAPSHOT`을 보낸다. 두 번째 선택으로 역할이 확정되면
+`WAITING_FOR_SELECTION` snapshot을 보낸다. 결과 화면에서 확정한
+경우에만 `roundNumber`를 증가시킨다. 별도 역할 선택 증분 event는
+사용하지 않는다.
 
 ## 13. STOMP event envelope
 
@@ -983,6 +1025,8 @@ status를 기준으로 이 두 event를 상호 보완 event로 한 번씩 적용
 ### `ROOM_SNAPSHOT`
 
 역할별 전체 상태다. REST `RoomSnapshot`과 같은 노출 규칙을 적용한다.
+역할 선호 선택 중에는 현재 사용자의 실제 선호와 상대 선택 완료
+여부만 포함한다.
 
 ### `PLAYER_JOINED`
 
@@ -1111,17 +1155,6 @@ host에게 `WAITING_FOR_OPPONENT` 상태의 최신 `ROOM_SNAPSHOT`을 보낸다.
 ```
 
 `ABORTED` 경기에서는 winner·loser가 null이다.
-
-### `REMATCH_STATE_CHANGED`
-
-```json
-{
-  "meReady": true,
-  "opponentReady": false
-}
-```
-
-두 사용자 준비가 끝나면 새 `ROOM_SNAPSHOT`과 `WAITING_FOR_SELECTION` 상태를 보낸다.
 
 ## 15. STOMP error
 

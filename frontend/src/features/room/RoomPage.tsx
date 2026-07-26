@@ -10,6 +10,7 @@ import {
   LogOut,
   Radio,
   Search,
+  Shuffle,
   UserRound,
   UsersRound,
   Wifi,
@@ -34,6 +35,7 @@ import { useAuth } from "../auth/AuthContext";
 import { GameInterruptionDialogs } from "../game/GameInterruptionDialogs";
 import { GameResultScreen } from "../game/GameResultScreen";
 import { GameScreen } from "../game/GameScreen";
+import { RolePreferencePanel } from "./RolePreferencePanel";
 import {
   PokemonArtwork,
   formatNationalDexId,
@@ -77,7 +79,9 @@ import {
 import type {
   ActiveRoomSnapshot,
   RoomMember,
+  RoomRole,
   RoomSnapshot,
+  WaitingForRoleSelectionSnapshot,
   WaitingRoomSnapshot,
 } from "./roomTypes";
 
@@ -86,7 +90,7 @@ type PendingCommandKind =
   | "answer"
   | "ask"
   | "guess"
-  | "rematch"
+  | "role"
   | "select";
 
 interface PendingCommand {
@@ -212,9 +216,9 @@ export function RoomPage({
   useEffect(() => {
     const currentStatus = snapshot?.status ?? null;
     if (
-      currentStatus === "RESULT" &&
+      currentStatus !== null &&
       previousRoomStatusRef.current !== null &&
-      previousRoomStatusRef.current !== "RESULT"
+      currentStatus !== previousRoomStatusRef.current
     ) {
       window.scrollTo(0, 0);
     }
@@ -558,33 +562,65 @@ export function RoomPage({
           />
         ) : null}
 
+        {snapshot.status === "WAITING_FOR_ROLE_SELECTION" ? (
+          <RoleSelectionView
+            commandPending={pendingCommand !== null}
+            connected={
+              connectionStatus === "connected" &&
+              snapshot.opponent.connected
+            }
+            leaving={leaving}
+            onLeave={() => {
+              void leaveRoom();
+            }}
+            onSelect={(role) => {
+              sendCommand(
+                "role",
+                snapshot.stateVersion,
+                (session) =>
+                  session.changeRolePreference(
+                    role,
+                    snapshot.stateVersion,
+                  ),
+              );
+            }}
+            snapshot={snapshot}
+          />
+        ) : null}
+
         {snapshot.status === "WAITING_FOR_SELECTION" ? (
-          snapshot.me.role === "SELECTOR" ? (
-            <SelectorSelectionView
-              commandPending={pendingCommand !== null}
-              connected={
-                connectionStatus === "connected" &&
-                snapshot.opponent.connected
-              }
-              gateway={pokemonGateway}
-              onConfirm={(pokemon) => {
-                sendCommand(
-                  "select",
-                  snapshot.stateVersion,
-                  (session) =>
-                    session.selectPokemon(
-                      pokemon.nationalDexId,
-                      snapshot.stateVersion,
-                    ),
-                );
-              }}
+          <>
+            <RoleAssignmentNotice
+              randomized={snapshot.roleAssignment.randomized}
+              role={snapshot.me.role}
             />
-          ) : (
-            <QuestionerSelectionWaitView
-              onOpenPokedex={openPokedex}
-              snapshot={snapshot}
-            />
-          )
+            {snapshot.me.role === "SELECTOR" ? (
+              <SelectorSelectionView
+                commandPending={pendingCommand !== null}
+                connected={
+                  connectionStatus === "connected" &&
+                  snapshot.opponent.connected
+                }
+                gateway={pokemonGateway}
+                onConfirm={(pokemon) => {
+                  sendCommand(
+                    "select",
+                    snapshot.stateVersion,
+                    (session) =>
+                      session.selectPokemon(
+                        pokemon.nationalDexId,
+                        snapshot.stateVersion,
+                      ),
+                  );
+                }}
+              />
+            ) : (
+              <QuestionerSelectionWaitView
+                onOpenPokedex={openPokedex}
+                snapshot={snapshot}
+              />
+            )}
+          </>
         ) : null}
 
         {isActiveSnapshot(snapshot) ? (
@@ -644,6 +680,11 @@ export function RoomPage({
         {snapshot.status === "RESULT" ? (
           <GameResultScreen
             commandPending={pendingCommand !== null}
+            connected={
+              connectionStatus === "connected" &&
+              snapshot.me.connected &&
+              snapshot.opponent.connected
+            }
             onLeave={() => {
               if (snapshot.game.endReason === "PLAYER_LEFT") {
                 allowNavigationRef.current = true;
@@ -653,13 +694,13 @@ export function RoomPage({
                 void leaveRoom();
               }
             }}
-            onRematch={(ready) => {
+            onRolePreference={(role) => {
               sendCommand(
-                "rematch",
+                "role",
                 snapshot.stateVersion,
                 (session) =>
-                  session.changeRematchReady(
-                    ready,
+                  session.changeRolePreference(
+                    role,
                     snapshot.stateVersion,
                   ),
               );
@@ -783,7 +824,9 @@ function RoomHeader({
           <Copy aria-hidden="true" size={17} />
         </button>
       </div>
-      {snapshot.opponent ? (
+      {snapshot.opponent &&
+      snapshot.me.role !== null &&
+      snapshot.opponent.role !== null ? (
         <div className="room-role-badges">
           <span className="questioner-badge">
             <UserRound aria-hidden="true" size={16} />
@@ -818,7 +861,10 @@ interface WaitingForOpponentViewProps {
   onCopy(): void;
   onLeave(): void;
   roomCode: string;
-  snapshot: WaitingRoomSnapshot;
+  snapshot: Extract<
+    WaitingRoomSnapshot,
+    { status: "WAITING_FOR_OPPONENT" }
+  >;
 }
 
 function WaitingForOpponentView({
@@ -841,7 +887,7 @@ function WaitingForOpponentView({
           </p>
           <h1 id="room-title">상대를 기다리는 중</h1>
           <p>
-            친구가 입장하면 정답 포켓몬 선택 단계로 이동해요.
+            친구가 입장하면 각자 원하는 역할을 선택해요.
           </p>
         </div>
       </div>
@@ -851,14 +897,14 @@ function WaitingForOpponentView({
           index="1"
           isMe
           member={snapshot.me}
-          role="출제자"
+          role="역할 선택 전"
           tone="mint"
         />
         <ParticipantCard
           index="2"
           isMe={false}
           member={null}
-          role="질문자"
+          role="역할 선택 전"
           tone="blue"
         />
       </div>
@@ -869,7 +915,7 @@ function WaitingForOpponentView({
         </span>
         <div>
           <h2>방 코드를 친구에게 알려 주세요</h2>
-          <p>같은 방에 입장하면 역할을 나눠 대전을 시작해요.</p>
+          <p>같은 방에 입장하면 원하는 역할부터 골라요.</p>
         </div>
         <div className="room-copy-box">
           <span>방 코드</span>
@@ -913,6 +959,93 @@ function WaitingForOpponentView({
         {leaving ? "방 나가는 중..." : "방 나가기"}
       </button>
     </section>
+  );
+}
+
+function RoleSelectionView({
+  commandPending,
+  connected,
+  leaving,
+  onLeave,
+  onSelect,
+  snapshot,
+}: {
+  commandPending: boolean;
+  connected: boolean;
+  leaving: boolean;
+  onLeave(): void;
+  onSelect(role: RoomRole): void;
+  snapshot: WaitingForRoleSelectionSnapshot;
+}) {
+  return (
+    <section className="role-selection-view">
+      <p className="section-kicker">
+        ROUND {snapshot.roundNumber}
+      </p>
+      <RolePreferencePanel
+        commandPending={commandPending}
+        connected={connected}
+        me={snapshot.me}
+        onSelect={onSelect}
+        opponent={snapshot.opponent}
+        selection={snapshot.roleSelection}
+        title="역할 선택 중"
+      />
+      <button
+        className="room-leave-button"
+        disabled={leaving || commandPending}
+        onClick={onLeave}
+        type="button"
+      >
+        {leaving ? (
+          <LoaderCircle
+            aria-hidden="true"
+            className="spin-icon"
+            size={19}
+          />
+        ) : (
+          <DoorOpen aria-hidden="true" size={19} />
+        )}
+        {leaving ? "방 나가는 중..." : "방 나가기"}
+      </button>
+    </section>
+  );
+}
+
+function RoleAssignmentNotice({
+  randomized,
+  role,
+}: {
+  randomized: boolean;
+  role: RoomRole | null;
+}) {
+  if (role === null) {
+    return null;
+  }
+  return (
+    <div
+      className={`role-assignment-notice ${
+        randomized ? "is-randomized" : "is-preferred"
+      }`}
+      role="status"
+    >
+      {randomized ? (
+        <Shuffle aria-hidden="true" size={20} />
+      ) : (
+        <Check aria-hidden="true" size={20} />
+      )}
+      <div>
+        <strong>
+          {randomized
+            ? "같은 역할을 골라 무작위로 정했어요"
+            : "선택한 역할로 정했어요"}
+        </strong>
+        <span>
+          이번 라운드는{" "}
+          {role === "SELECTOR" ? "출제자" : "질문자"}예요.
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -1440,9 +1573,7 @@ function completesPendingCommand(
         event.eventType === "GAME_ENDED")) ||
     (pending.kind === "guess" &&
       (event.eventType === "GUESS_RESOLVED" ||
-        event.eventType === "GAME_ENDED")) ||
-    (pending.kind === "rematch" &&
-      event.eventType === "REMATCH_STATE_CHANGED")
+        event.eventType === "GAME_ENDED"))
   );
 }
 
