@@ -22,6 +22,12 @@ import {
 } from "./AuthContext";
 import { SignupPage } from "./SignupPage";
 
+vi.mock("../pokemon/FeaturedPokemonArtwork", () => ({
+  FeaturedPokemonArtwork: () => (
+    <span data-testid="featured-pokemon-artwork" />
+  ),
+}));
+
 describe("SignupPage", () => {
   it("should_createAccountAndOpenLogin_when_formIsValid", async () => {
     const signup = vi.fn().mockResolvedValue(TEST_CURRENT_USER.user);

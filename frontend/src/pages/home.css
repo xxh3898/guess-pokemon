@@ -108,8 +108,11 @@
   background: rgba(59, 142, 239, 0.08);
 }
 
-.mystery-stage-icon {
+.mystery-stage .featured-pokemon-artwork {
   position: relative;
+  z-index: 1;
+  width: min(68%, 230px);
+  max-width: 230px;
   color: #71869d;
   filter: drop-shadow(0 12px 18px rgba(23, 50, 77, 0.18));
 }
@@ -334,9 +337,9 @@
     height: 170px;
   }
 
-  .mystery-stage-icon {
-    width: 132px;
-    height: 132px;
+  .mystery-stage .featured-pokemon-artwork {
+    width: 170px;
+    max-width: 170px;
   }
 
   .game-steps {

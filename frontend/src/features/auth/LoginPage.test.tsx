@@ -24,6 +24,12 @@ import {
 } from "./AuthContext";
 import { LoginPage } from "./LoginPage";
 
+vi.mock("../pokemon/FeaturedPokemonArtwork", () => ({
+  FeaturedPokemonArtwork: () => (
+    <span data-testid="featured-pokemon-artwork" />
+  ),
+}));
+
 describe("LoginPage", () => {
   it("should_loginWithNormalizedId_when_formIsValid", async () => {
     const login = vi.fn().mockResolvedValue(TEST_CURRENT_USER);
@@ -84,6 +90,9 @@ describe("LoginPage", () => {
   it("should_showFriendlyPlaceholders_when_formIsEmpty", () => {
     renderLogin(["/login"], createAuthContextValue());
 
+    expect(
+      screen.getByTestId("featured-pokemon-artwork"),
+    ).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText("아이디를 입력해 주세요"),
     ).toBeInTheDocument();

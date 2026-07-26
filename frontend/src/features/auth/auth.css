@@ -67,9 +67,11 @@
   mask-image: linear-gradient(to bottom, #000, transparent 95%);
 }
 
-.mystery-question {
+.auth-mystery-card .featured-pokemon-artwork {
   position: relative;
   z-index: 1;
+  width: min(68%, 190px);
+  max-width: 190px;
   color: #71869d;
   filter: drop-shadow(0 10px 14px rgba(23, 50, 77, 0.13));
 }
@@ -314,5 +316,10 @@
   .auth-intro {
     padding-right: 20px;
     padding-left: 20px;
+  }
+
+  .auth-mystery-card .featured-pokemon-artwork {
+    width: 170px;
+    max-width: 170px;
   }
 }

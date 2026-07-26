@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
+import { FeaturedPokemonArtwork } from "../pokemon/FeaturedPokemonArtwork";
+
 interface AuthLayoutProps {
   children: ReactNode;
   description: string;
@@ -61,7 +63,7 @@ export function AuthLayout({
             <div className="mystery-card auth-mystery-card" aria-hidden="true">
               <div className="mystery-grid" />
               <ScanSearch className="mystery-search" size={58} />
-              <CircleHelp className="mystery-question" size={116} />
+              <FeaturedPokemonArtwork />
               <span className="mystery-number">025</span>
             </div>
           </section>

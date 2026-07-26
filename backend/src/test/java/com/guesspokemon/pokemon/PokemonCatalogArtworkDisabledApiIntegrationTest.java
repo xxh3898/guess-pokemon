@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(
@@ -24,8 +23,7 @@ class PokemonCatalogArtworkDisabledApiIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    @WithMockUser(username = "catalog-member")
-    void should_hideArtworkUrl_when_globalKillSwitchIsDisabled()
+    void should_hideArtworkUrl_when_anonymousUserRequestsFeaturedSpeciesWithGlobalKillSwitchDisabled()
             throws Exception {
         mockMvc.perform(get("/api/v1/pokemon-species/25"))
                 .andExpect(status().isOk())

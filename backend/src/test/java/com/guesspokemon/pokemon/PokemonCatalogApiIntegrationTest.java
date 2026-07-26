@@ -117,6 +117,24 @@ class PokemonCatalogApiIntegrationTest {
     }
 
     @Test
+    void should_returnPikachuSummary_when_anonymousUserRequestsFeaturedSpecies()
+            throws Exception {
+        mockMvc.perform(get("/api/v1/pokemon-species/25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nationalDexId").value(25))
+                .andExpect(jsonPath("$.koreanName").value("피카츄"))
+                .andExpect(jsonPath("$.artworkEnabled").value(true))
+                .andExpect(
+                        jsonPath("$.artworkUrl")
+                                .value(
+                                        "https://raw.githubusercontent.com/"
+                                                + "PokeAPI/sprites/master/sprites/"
+                                                + "pokemon/other/official-artwork/"
+                                                + "25.png"))
+                .andExpect(jsonPath("$.types[0]").value("ELECTRIC"));
+    }
+
+    @Test
     @WithMockUser(username = "catalog-member")
     void should_returnNotFound_when_speciesDoesNotExist()
             throws Exception {
@@ -189,9 +207,12 @@ class PokemonCatalogApiIntegrationTest {
     }
 
     @Test
-    void should_requireAuthentication_when_anonymousUserRequestsCatalog()
+    void should_requireAuthentication_when_anonymousUserRequestsProtectedCatalogPaths()
             throws Exception {
         mockMvc.perform(get("/api/v1/pokemon-species"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+        mockMvc.perform(get("/api/v1/pokemon-species/26"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }

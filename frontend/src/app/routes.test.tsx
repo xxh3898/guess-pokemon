@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
+import { vi } from "vitest";
 
 import {
   AuthContext,
@@ -11,6 +12,12 @@ import {
   TEST_CURRENT_USER,
 } from "../test/authTestUtils";
 import { routes } from "./routes";
+
+vi.mock("../features/pokemon/FeaturedPokemonArtwork", () => ({
+  FeaturedPokemonArtwork: () => (
+    <span data-testid="featured-pokemon-artwork" />
+  ),
+}));
 
 describe("application routes", () => {
   it("should_renderLandingPage_when_openingRootRoute", async () => {
@@ -25,6 +32,9 @@ describe("application routes", () => {
         level: 1,
         name: "질문으로 찾아내는 포켓몬",
       }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("featured-pokemon-artwork"),
     ).toBeInTheDocument();
   });
 

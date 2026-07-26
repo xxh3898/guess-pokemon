@@ -14,6 +14,7 @@ import {
 import { Link } from "react-router";
 
 import { useAuth } from "../features/auth/AuthContext";
+import { FeaturedPokemonArtwork } from "../features/pokemon/FeaturedPokemonArtwork";
 
 export function HomePage() {
   const auth = useAuth();
@@ -102,7 +103,7 @@ export function HomePage() {
           <div className="mystery-stage" aria-hidden="true">
             <span className="mystery-stage-label">WHO&apos;S THAT?</span>
             <div className="mystery-halo" />
-            <CircleHelp className="mystery-stage-icon" size={164} />
+            <FeaturedPokemonArtwork />
             <span className="mystery-stage-number">No. 025</span>
           </div>
         </section>

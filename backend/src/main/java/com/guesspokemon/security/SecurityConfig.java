@@ -132,6 +132,7 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 HttpMethod.GET,
                                                 "/api/v1/auth/csrf",
+                                                "/api/v1/pokemon-species/25",
                                                 "/actuator/health/liveness",
                                                 "/actuator/health/readiness")
                                         .permitAll()

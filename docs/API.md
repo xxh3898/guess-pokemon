@@ -317,14 +317,23 @@ query:
 
 `GET /api/v1/pokemon-species/{nationalDexId}`
 
-접근: 회원
+접근:
+
+- `nationalDexId=25`: 모두. 랜딩·로그인·회원가입의 고정 대표
+  피카츄 이미지를 조회한다.
+- 그 외 도감 번호: 회원
+
+`nationalDexId=25` 공개 예외는 단건 GET 한 경로에만 적용한다.
+목록·검색과 다른 도감 번호는 기존처럼 로그인이 필요하다.
+`POKEMON_ARTWORK_ENABLED=false`이면 공개 응답도
+`artworkEnabled=false`, `artworkUrl=null`을 반환한다.
 
 응답: `200 PokemonSummary`
 
 오류:
 
 - `400 VALIDATION_FAILED`
-- `401 AUTHENTICATION_REQUIRED`
+- `401 AUTHENTICATION_REQUIRED` (`nationalDexId=25` 외 비회원 요청)
 - `404 POKEMON_NOT_FOUND`
 
 ## 7. 방 REST API

@@ -215,6 +215,11 @@ src/
 - 한국어 UI는 `word-break: keep-all`을 기본값으로 사용하고 code·room code 같은 기계 문자열만 별도 overflow 규칙을 적용한다.
 - `AuthProvider`는 앱 시작 시 `/auth/me`로 session을 복원하고 `loading`, `anonymous`, `authenticated`, `error` 상태를 구분한다.
 - `HttpClient`는 same-origin cookie credential, CSRF memory cache·1회 갱신, `ProblemDetail`, session 만료 알림을 공통 처리한다.
+- `FeaturedPokemonArtwork`는 공개 화면에서 고정된
+  `GET /api/v1/pokemon-species/25`를 조회하고 기존
+  `PokemonArtwork`를 재사용한다. 조회 실패, 일러스트 비활성,
+  원격 이미지 로드 실패는 해당 장식 영역의 공통 이미지 준비 중
+  표시로만 처리한다.
 - anonymous-only route는 로그인 회원을 `/lobby`로 보내고, protected route는 원래 내부 URL을 보존한 채 비회원을 `/login`으로 보낸다.
 - 로비는 방 생성·코드 입장·활성 방 이어하기·참가 가능한 방 선택을 REST API와 연결하고, `/rooms/:roomCode`는 direct URL과 뒤로가기를 지원한다.
 - `JoinableRoomList`는 최초 조회, 5초 polling, 수동 새로고침, tab visibility 복귀 조회를 소유한다. hidden tab에서는 polling을 멈추고 `AbortController`와 in-flight guard로 unmount 뒤 갱신과 중복 요청을 막는다.
@@ -373,6 +378,9 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - 새 version이나 누락 타입을 복구하는 upsert는 현재 1,025종을 활성화한다. 같은 완전한 version에서는 기존 `enabled=false`를 보존한다. 현재 snapshot에 없는 과거 version row는 기록 FK 보존을 위해 삭제하지 않고 비활성화한다.
 - 운영 시작마다 PokéAPI를 호출하거나 자동으로 종 수를 바꾸지 않는다.
 - catalog 갱신은 독립 commit과 검증 결과를 요구한다.
+- 비회원에게는 공개 화면 대표 이미지에 필요한 정확한
+  `GET /api/v1/pokemon-species/25`만 허용한다. 목록·검색과 다른
+  도감 번호는 회원 인증을 유지하며 두 경계를 통합 테스트한다.
 
 ## 13. Docker와 배포
 
@@ -434,6 +442,8 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
 - STOMP `SUBSCRIBE`는 사용자별 `/user/queue/game-events`, `/user/queue/errors`만 허용한다. 공개 room subscription은 없다.
 - 모든 outbound event를 `/user/queue/game-events`로 보내고 공개 room topic은 만들지 않는다.
 - 참가 가능한 방 목록 REST API는 인증 회원에게 방 코드와 방장 닉네임만 제공하며 user ID, guest, 연결·게임 상태는 노출하지 않는다.
+- catalog 공개 예외는 HTTP GET
+  `/api/v1/pokemon-species/25` 한 경로로 제한한다.
 - error 응답은 안정적인 code만 제공하고 내부 예외와 stack trace를 감춘다.
 - log에는 login ID 원문 대신 user UUID를 우선 사용하고 question text와 session ID를 남기지 않는다.
 - CSP `img-src`는 self, data placeholder, 공식 artwork host만 허용한다.
