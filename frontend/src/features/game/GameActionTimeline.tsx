@@ -9,7 +9,6 @@ import {
   useRef,
 } from "react";
 
-import { formatNationalDexId } from "../pokemon/PokemonArtwork";
 import type { GameAction } from "../room/roomTypes";
 
 const TIMELINE_END_THRESHOLD = 32;
@@ -80,9 +79,7 @@ export function GameActionTimeline({
                   {action.type === "QUESTION"
                     ? action.question
                     : action.guessedPokemon?.koreanName ??
-                      formatNationalDexId(
-                        action.guessedPokemonNationalDexId,
-                      )}
+                      "포켓몬 이름을 확인할 수 없어요"}
                 </strong>
                 {action.type === "GUESS" ? (
                   <span>포켓몬 추측</span>

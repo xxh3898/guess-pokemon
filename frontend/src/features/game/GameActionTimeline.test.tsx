@@ -84,6 +84,38 @@ describe("GameActionTimeline", () => {
     );
   });
 
+  it("should_displayOnlyPokemonName_when_guessIsRendered", () => {
+    render(<GameActionTimeline actions={ACTIONS} />);
+    const timeline = screen.getByRole("list", {
+      name: "질문과 답변 기록 목록",
+    });
+
+    expect(within(timeline).getByText("라이츄")).toBeInTheDocument();
+    expect(within(timeline).getByText("피카츄")).toBeInTheDocument();
+    expect(within(timeline).queryByText("No.0026")).not.toBeInTheDocument();
+    expect(within(timeline).queryByText("No.0025")).not.toBeInTheDocument();
+  });
+
+  it("should_displayFriendlyFallbackWithoutNumber_when_guessSummaryIsMissing", () => {
+    const actionWithoutSummary: GameAction = {
+      correct: false,
+      createdAt: "2026-07-26T01:01:00Z",
+      guessedPokemon: null,
+      guessedPokemonNationalDexId: 26,
+      sequenceNumber: 1,
+      type: "GUESS",
+    };
+
+    render(
+      <GameActionTimeline actions={[actionWithoutSummary]} />,
+    );
+
+    expect(
+      screen.getByText("포켓몬 이름을 확인할 수 없어요"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No.0026")).not.toBeInTheDocument();
+  });
+
   it("should_followLatestAction_when_readerWasAtTimelineEnd", () => {
     const { rerender } = render(
       <GameActionTimeline actions={ACTIONS.slice(0, 2)} />,

@@ -489,6 +489,34 @@ create·join 직후에는 참가자를 연결 상태로 시작한다. room route
 
 `game.actions`의 질문 action은 `answer`와 함께 선택 코멘트인 `comment`를
 포함한다. 답변 전이거나 코멘트가 없으면 `comment`는 `null`이다.
+추측 action은 command와 기록 식별에 쓰는 `guessedPokemonNationalDexId`와
+화면 표시에 쓰는 `guessedPokemon` 요약을 함께 포함한다. REST 조회,
+재접속, 역할 선택 뒤 `ROOM_SNAPSHOT`에서도 같은 구조를 유지한다.
+
+```json
+{
+  "sequenceNumber": 10,
+  "type": "GUESS",
+  "question": null,
+  "answer": null,
+  "comment": null,
+  "guessedPokemonNationalDexId": 962,
+  "guessedPokemon": {
+    "nationalDexId": 962,
+    "koreanName": "떨구새",
+    "generation": 9,
+    "artworkUrl": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/962.png",
+    "artworkEnabled": true,
+    "types": ["FLYING", "DARK"]
+  },
+  "correct": false,
+  "createdAt": "2026-07-27T03:00:00Z",
+  "answeredAt": null
+}
+```
+
+클라이언트의 추측 기록에는 `guessedPokemon.koreanName`만 표시하고
+전국도감 번호는 노출하지 않는다.
 
 진행 중 질문자 DTO에는 `selectedPokemon` field 자체를 두지 않는다.
 경기가 끝나면 두 역할 모두 `ResultGameSnapshot`의 `answerPokemon`,

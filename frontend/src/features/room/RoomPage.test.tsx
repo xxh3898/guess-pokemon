@@ -1096,11 +1096,18 @@ describe("RoomPage", () => {
     const realtime = createRealtimeHarness();
     renderRoom({
       gateway: createRoomGateway({
-        get: vi.fn().mockResolvedValue(RESULT_SNAPSHOT),
+        get: vi
+          .fn()
+          .mockResolvedValue(RESULT_WITH_GUESS_SNAPSHOT),
       }),
       realtimeGateway: realtime.gateway,
     });
     await screen.findByRole("heading", { name: "승리했어요" });
+    const timeline = screen.getByRole("list", {
+      name: "질문과 답변 기록 목록",
+    });
+    expect(within(timeline).getByText("피카츄")).toBeInTheDocument();
+    expect(within(timeline).queryByText("No.0025")).not.toBeInTheDocument();
     act(() => {
       realtime.status("connected");
     });
@@ -1122,7 +1129,7 @@ describe("RoomPage", () => {
         eventType: "ROOM_SNAPSHOT",
         gameId: GAME_ID,
         payload: {
-          ...RESULT_SNAPSHOT,
+          ...RESULT_WITH_GUESS_SNAPSHOT,
           roleSelection: {
             opponentSelected: false,
             preferredRole: "SELECTOR",
@@ -1131,6 +1138,8 @@ describe("RoomPage", () => {
         },
       });
     });
+    expect(within(timeline).getByText("피카츄")).toBeInTheDocument();
+    expect(within(timeline).queryByText("No.0025")).not.toBeInTheDocument();
     fireEvent.click(
       await screen.findByRole("button", {
         name: /질문하고 맞히기/,
@@ -1523,6 +1532,25 @@ const RESULT_SNAPSHOT: ResultRoomSnapshot = {
   roundNumber: 1,
   stateVersion: 5,
   status: "RESULT",
+};
+const RESULT_WITH_GUESS_SNAPSHOT: ResultRoomSnapshot = {
+  ...RESULT_SNAPSHOT,
+  game: {
+    ...RESULT_SNAPSHOT.game,
+    actions: [
+      {
+        correct: true,
+        createdAt: "2026-07-25T03:00:00Z",
+        guessedPokemon: PIKACHU,
+        guessedPokemonNationalDexId: PIKACHU.nationalDexId,
+        sequenceNumber: 1,
+        type: "GUESS",
+      },
+    ],
+    endReason: "CORRECT_GUESS",
+    remainingActionCount: 19,
+    usedActionCount: 1,
+  },
 };
 
 function baseEvent(stateVersion: number) {

@@ -12,6 +12,7 @@ import com.guesspokemon.game.GameCommands.EndGameCommand;
 import com.guesspokemon.game.GameCommands.GuessPokemonCommand;
 import com.guesspokemon.game.GameCommands.StartGameCommand;
 import com.guesspokemon.game.GameTypes.GameAnswer;
+import com.guesspokemon.game.GameViews.ActionView;
 import com.guesspokemon.game.GameViews.ParticipantGameView;
 import com.guesspokemon.game.GameViews.QuestionerGameView;
 import com.guesspokemon.game.GameViews.SelectorGameView;
@@ -20,6 +21,7 @@ import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import com.guesspokemon.room.RoomDtos.JoinableRoomListResponse;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
+import com.guesspokemon.room.RoomDtos.RoomActionSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomRole;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
@@ -28,8 +30,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -435,10 +440,16 @@ public class RoomApplicationService {
                         gameCommandService.getView(
                                 room.code(),
                                 room.questionerUserId());
+        Map<Integer, PokemonSummary> pokemonSummaries =
+                pokemonSummariesFor(selectorView);
         PokemonSummary answerPokemon =
-                pokemonCatalogService.findByNationalDexId(
+                pokemonSummaries.get(
                         selectorView
                                 .selectedPokemonNationalDexId());
+        List<RoomActionSnapshot> actions =
+                toActionSnapshots(
+                        selectorView.actions(),
+                        pokemonSummaries);
         RoomGameSnapshot selectorSnapshot;
         RoomGameSnapshot questionerSnapshot;
         if (selectorView.status() == IN_PROGRESS) {
@@ -449,7 +460,7 @@ public class RoomApplicationService {
                             selectorView.usedActionCount(),
                             selectorView.remainingActionCount(),
                             answerPokemon,
-                            selectorView.actions());
+                            actions);
             questionerSnapshot =
                     new QuestionerGameSnapshot(
                             questionerView.gameId(),
@@ -457,7 +468,7 @@ public class RoomApplicationService {
                             questionerView.usedActionCount(),
                             questionerView
                                     .remainingActionCount(),
-                            questionerView.actions());
+                            actions);
         } else {
             ResultGameSnapshot resultSnapshot =
                     new ResultGameSnapshot(
@@ -469,7 +480,7 @@ public class RoomApplicationService {
                             selectorView.winnerUserId(),
                             selectorView.loserUserId(),
                             selectorView.endReason(),
-                            selectorView.actions());
+                            actions);
             selectorSnapshot = resultSnapshot;
             questionerSnapshot = resultSnapshot;
         }
@@ -484,6 +495,63 @@ public class RoomApplicationService {
                         room.questionerUserId(),
                         questionerSnapshot));
         return Map.copyOf(snapshots);
+    }
+
+    private Map<Integer, PokemonSummary> pokemonSummariesFor(
+            SelectorGameView selectorView) {
+        Set<Integer> nationalDexIds =
+                new LinkedHashSet<>();
+        nationalDexIds.add(
+                selectorView.selectedPokemonNationalDexId());
+        addGuessedPokemonNationalDexIds(
+                nationalDexIds,
+                selectorView.actions());
+        return pokemonCatalogService.findAllByNationalDexIds(
+                nationalDexIds);
+    }
+
+    private void addGuessedPokemonNationalDexIds(
+            Set<Integer> nationalDexIds,
+            List<ActionView> actions) {
+        actions.stream()
+                .map(ActionView::guessedPokemonNationalDexId)
+                .filter(Objects::nonNull)
+                .forEach(nationalDexIds::add);
+    }
+
+    private List<RoomActionSnapshot> toActionSnapshots(
+            List<ActionView> actions,
+            Map<Integer, PokemonSummary> pokemonSummaries) {
+        return actions.stream()
+                .map(
+                        action ->
+                                toActionSnapshot(
+                                        action,
+                                        pokemonSummaries))
+                .toList();
+    }
+
+    private RoomActionSnapshot toActionSnapshot(
+            ActionView action,
+            Map<Integer, PokemonSummary> pokemonSummaries) {
+        Integer guessedPokemonNationalDexId =
+                action.guessedPokemonNationalDexId();
+        PokemonSummary guessedPokemon =
+                guessedPokemonNationalDexId == null
+                        ? null
+                        : pokemonSummaries.get(
+                                guessedPokemonNationalDexId);
+        return new RoomActionSnapshot(
+                action.sequenceNumber(),
+                action.type(),
+                action.question(),
+                action.answer(),
+                action.comment(),
+                guessedPokemonNationalDexId,
+                guessedPokemon,
+                action.correct(),
+                action.createdAt(),
+                action.answeredAt());
     }
 
     public record JoinOutcome(

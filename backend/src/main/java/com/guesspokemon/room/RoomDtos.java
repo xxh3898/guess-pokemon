@@ -1,8 +1,9 @@
 package com.guesspokemon.room;
 
+import com.guesspokemon.game.GameTypes.GameActionType;
+import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
 import com.guesspokemon.game.GameTypes.GameStatus;
-import com.guesspokemon.game.GameViews.ActionView;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import java.time.Instant;
 import java.util.List;
@@ -45,6 +46,19 @@ public final class RoomDtos {
             boolean randomized) {
     }
 
+    public record RoomActionSnapshot(
+            int sequenceNumber,
+            GameActionType type,
+            String question,
+            GameAnswer answer,
+            String comment,
+            Integer guessedPokemonNationalDexId,
+            PokemonSummary guessedPokemon,
+            Boolean correct,
+            Instant createdAt,
+            Instant answeredAt) {
+    }
+
     public sealed interface RoomGameSnapshot
             permits SelectorGameSnapshot,
                     QuestionerGameSnapshot,
@@ -58,7 +72,7 @@ public final class RoomDtos {
 
         int remainingActionCount();
 
-        List<ActionView> actions();
+        List<RoomActionSnapshot> actions();
     }
 
     public record SelectorGameSnapshot(
@@ -67,7 +81,7 @@ public final class RoomDtos {
             int usedActionCount,
             int remainingActionCount,
             PokemonSummary selectedPokemon,
-            List<ActionView> actions)
+            List<RoomActionSnapshot> actions)
             implements RoomGameSnapshot {
 
         public SelectorGameSnapshot {
@@ -80,7 +94,7 @@ public final class RoomDtos {
             GameStatus status,
             int usedActionCount,
             int remainingActionCount,
-            List<ActionView> actions)
+            List<RoomActionSnapshot> actions)
             implements RoomGameSnapshot {
 
         public QuestionerGameSnapshot {
@@ -97,7 +111,7 @@ public final class RoomDtos {
             UUID winnerUserId,
             UUID loserUserId,
             GameEndReason endReason,
-            List<ActionView> actions)
+            List<RoomActionSnapshot> actions)
             implements RoomGameSnapshot {
 
         public ResultGameSnapshot {

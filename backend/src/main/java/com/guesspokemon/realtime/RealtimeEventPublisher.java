@@ -14,8 +14,6 @@ import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.RESULT_ROO
 import static com.guesspokemon.room.RoomDtos.RoomStatus.RESULT;
 
 import com.guesspokemon.game.GameTypes.GameRole;
-import com.guesspokemon.game.GameViews.ActionView;
-import com.guesspokemon.pokemon.PokemonCatalogService;
 import com.guesspokemon.realtime.RealtimeDtos.GameEndedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.GameEventEnvelope;
 import com.guesspokemon.realtime.RealtimeDtos.GameEventType;
@@ -38,6 +36,7 @@ import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.room.RoomApplicationService.TimeoutOutcome;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
+import com.guesspokemon.room.RoomDtos.RoomActionSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.room.RoomDtos.SelectorGameSnapshot;
@@ -52,15 +51,12 @@ import org.springframework.stereotype.Component;
 public class RealtimeEventPublisher {
 
     private final SimpMessagingTemplate messagingTemplate;
-    private final PokemonCatalogService pokemonCatalogService;
     private final Clock clock;
 
     public RealtimeEventPublisher(
             SimpMessagingTemplate messagingTemplate,
-            PokemonCatalogService pokemonCatalogService,
             Clock roomClock) {
         this.messagingTemplate = messagingTemplate;
-        this.pokemonCatalogService = pokemonCatalogService;
         this.clock = roomClock;
     }
 
@@ -98,7 +94,7 @@ public class RealtimeEventPublisher {
             CommandOutcome outcome) {
         RoomSnapshot representative =
                 outcome.snapshots().values().iterator().next();
-        ActionView action =
+        RoomActionSnapshot action =
                 representative.game().actions().getLast();
         QuestionAskedPayload payload =
                 new QuestionAskedPayload(
@@ -120,7 +116,7 @@ public class RealtimeEventPublisher {
             CommandOutcome outcome) {
         RoomSnapshot representative =
                 outcome.snapshots().values().iterator().next();
-        ActionView action =
+        RoomActionSnapshot action =
                 representative.game().actions().getLast();
         QuestionAnsweredPayload payload =
                 new QuestionAnsweredPayload(
@@ -147,15 +143,12 @@ public class RealtimeEventPublisher {
             CommandOutcome outcome) {
         RoomSnapshot representative =
                 outcome.snapshots().values().iterator().next();
-        ActionView action =
+        RoomActionSnapshot action =
                 representative.game().actions().getLast();
         GuessResolvedPayload payload =
                 new GuessResolvedPayload(
                         action.sequenceNumber(),
-                        pokemonCatalogService
-                                .findByNationalDexId(
-                                        action
-                                                .guessedPokemonNationalDexId()),
+                        action.guessedPokemon(),
                         Boolean.TRUE.equals(action.correct()),
                         representative
                                 .game()

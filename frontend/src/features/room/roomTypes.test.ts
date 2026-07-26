@@ -199,6 +199,7 @@ describe("roomTypes", () => {
               comment: null,
               correct: true,
               createdAt: "2026-07-25T05:02:00Z",
+              guessedPokemon: PIKACHU,
               guessedPokemonNationalDexId: 25,
               question: null,
               sequenceNumber: 2,
@@ -235,6 +236,7 @@ describe("roomTypes", () => {
             type: "QUESTION",
           },
           {
+            guessedPokemon: PIKACHU,
             guessedPokemonNationalDexId: 25,
             type: "GUESS",
           },
@@ -243,6 +245,44 @@ describe("roomTypes", () => {
       },
       status: "RESULT",
     });
+  });
+
+  it("should_rejectSnapshot_when_guessSummaryIdDoesNotMatch", () => {
+    expect(() =>
+      parseRoomSnapshot({
+        game: {
+          actions: [
+            {
+              answer: null,
+              answeredAt: null,
+              comment: null,
+              correct: false,
+              createdAt: "2026-07-25T05:02:00Z",
+              guessedPokemon: {
+                ...PIKACHU,
+                nationalDexId: 26,
+              },
+              guessedPokemonNationalDexId: 25,
+              question: null,
+              sequenceNumber: 1,
+              type: "GUESS",
+            },
+          ],
+          gameId: ACTIVE_GAME.gameId,
+          remainingActionCount: 19,
+          status: "IN_PROGRESS",
+          usedActionCount: 1,
+        },
+        me: QUESTIONER,
+        opponent: SELECTOR,
+        roleAssignment: null,
+        roleSelection: null,
+        roomCode: "AB3K7M",
+        roundNumber: 1,
+        stateVersion: 4,
+        status: "PLAYING",
+      }),
+    ).toThrow();
   });
 
   it("should_rejectSnapshot_when_pendingQuestionHasComment", () => {

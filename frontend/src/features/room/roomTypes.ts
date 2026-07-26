@@ -482,6 +482,8 @@ function parseGameAction(
     const comment = requireAnswerComment(action.comment);
     if (
       action.guessedPokemonNationalDexId !== null ||
+      (hasOwn(action, "guessedPokemon") &&
+        action.guessedPokemon !== null) ||
       action.correct !== null ||
       (answer === null && comment !== null) ||
       (answer === null) !== (answeredAt === null)
@@ -507,16 +509,29 @@ function parseGameAction(
   ) {
     throw ApiError.invalidResponse();
   }
+  const guessedPokemonNationalDexId = requireInteger(
+    action,
+    "guessedPokemonNationalDexId",
+    1,
+    1_025,
+  );
+  const guessedPokemon =
+    hasOwn(action, "guessedPokemon") &&
+    action.guessedPokemon !== null
+      ? parsePokemonSummary(action.guessedPokemon)
+      : null;
+  if (
+    guessedPokemon !== null &&
+    guessedPokemon.nationalDexId !==
+      guessedPokemonNationalDexId
+  ) {
+    throw ApiError.invalidResponse();
+  }
   return {
     correct: requireBoolean(action, "correct"),
     createdAt,
-    guessedPokemon: null,
-    guessedPokemonNationalDexId: requireInteger(
-      action,
-      "guessedPokemonNationalDexId",
-      1,
-      1_025,
-    ),
+    guessedPokemon,
+    guessedPokemonNationalDexId,
     sequenceNumber,
     type,
   };

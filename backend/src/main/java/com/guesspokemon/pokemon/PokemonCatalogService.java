@@ -8,6 +8,10 @@ import com.guesspokemon.pokemon.PokemonDtos.PokemonEvolutionDetails;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonPage;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import java.text.Normalizer;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -62,6 +66,31 @@ public class PokemonCatalogService {
     @Transactional(readOnly = true)
     public PokemonSummary findByNationalDexId(int nationalDexId) {
         return toSummary(findEnabledSpecies(nationalDexId));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Integer, PokemonSummary> findAllByNationalDexIds(
+            Collection<Integer> nationalDexIds) {
+        LinkedHashSet<Integer> requestedIds =
+                new LinkedHashSet<>(nationalDexIds);
+        if (requestedIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Integer, PokemonSummary> summaries =
+                new LinkedHashMap<>();
+        pokemonSpeciesRepository.findAllById(requestedIds)
+                .stream()
+                .filter(PokemonSpecies::isEnabled)
+                .forEach(
+                        species ->
+                                summaries.put(
+                                        species.getNationalDexId(),
+                                        toSummary(species)));
+        if (summaries.size() != requestedIds.size()) {
+            throw new ApiException(POKEMON_NOT_FOUND);
+        }
+        return Map.copyOf(summaries);
     }
 
     @Transactional(readOnly = true)

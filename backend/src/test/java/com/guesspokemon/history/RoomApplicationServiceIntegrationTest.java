@@ -30,6 +30,7 @@ import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
 import com.guesspokemon.room.RoomApplicationService.TimeoutOutcome;
 import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
+import com.guesspokemon.room.RoomDtos.RoomActionSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.room.RoomDtos.SelectorGameSnapshot;
 import com.guesspokemon.user.AppUser;
@@ -150,6 +151,14 @@ class RoomApplicationServiceIntegrationTest {
         assertEquals(
                 "피카츄",
                 resultGame.answerPokemon().koreanName());
+        RoomActionSnapshot guessAction =
+                resultGame.actions().getLast();
+        assertEquals(
+                PIKACHU_ID,
+                guessAction.guessedPokemonNationalDexId());
+        assertEquals(
+                "피카츄",
+                guessAction.guessedPokemon().koreanName());
 
         RolePreferenceOutcome hostPreference =
                 roomApplicationService
@@ -159,6 +168,22 @@ class RoomApplicationServiceIntegrationTest {
                                 UUID.randomUUID(),
                                 8,
                                 QUESTIONER);
+        assertFalse(hostPreference.rolesAssigned());
+        ResultGameSnapshot hostPreferenceGame =
+                assertInstanceOf(
+                        ResultGameSnapshot.class,
+                        hostPreference
+                                .snapshots()
+                                .get(testRoom.host().getId())
+                                .game());
+        assertEquals(
+                "피카츄",
+                hostPreferenceGame
+                        .actions()
+                        .getLast()
+                        .guessedPokemon()
+                        .koreanName());
+
         RolePreferenceOutcome guestPreference =
                 roomApplicationService
                         .changeRolePreference(
@@ -168,7 +193,6 @@ class RoomApplicationServiceIntegrationTest {
                                 9,
                                 SELECTOR);
 
-        assertFalse(hostPreference.rolesAssigned());
         assertTrue(guestPreference.rolesAssigned());
         RoomSnapshot nextRound =
                 guestPreference.snapshots()

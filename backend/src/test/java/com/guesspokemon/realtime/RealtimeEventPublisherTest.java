@@ -1,12 +1,16 @@
 package com.guesspokemon.realtime;
 
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
+import static com.guesspokemon.game.GameTypes.GameActionType.GUESS;
 import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
+import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
+import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.GUESS_RESOLVED;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_SNAPSHOT;
 import static com.guesspokemon.realtime.RealtimeDtos.GameEventType.ROOM_CLOSED;
 import static com.guesspokemon.realtime.RealtimeDtos.RoomClosedReason.RESULT_ROOM_LEFT;
 import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
 import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
+import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.RESULT;
 import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_ROLE_SELECTION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,17 +20,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.guesspokemon.pokemon.PokemonCatalogService;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import com.guesspokemon.pokemon.PokemonType;
 import com.guesspokemon.realtime.RealtimeDtos.GameEventEnvelope;
+import com.guesspokemon.realtime.RealtimeDtos.GuessResolvedPayload;
 import com.guesspokemon.realtime.RealtimeDtos.RoomClosedPayload;
+import com.guesspokemon.room.RoomApplicationService.CommandOutcome;
 import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
 import com.guesspokemon.room.RoomApplicationService.RolePreferenceOutcome;
+import com.guesspokemon.room.RoomDtos.QuestionerGameSnapshot;
 import com.guesspokemon.room.RoomDtos.ResultGameSnapshot;
 import com.guesspokemon.room.RoomDtos.RoleSelectionState;
+import com.guesspokemon.room.RoomDtos.RoomActionSnapshot;
 import com.guesspokemon.room.RoomDtos.RoomMember;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
+import com.guesspokemon.room.RoomDtos.SelectorGameSnapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -61,7 +69,6 @@ class RealtimeEventPublisherTest {
         RealtimeEventPublisher publisher =
                 new RealtimeEventPublisher(
                         messagingTemplate,
-                        mock(PokemonCatalogService.class),
                         Clock.fixed(
                                 Instant.parse(
                                         "2026-07-25T03:00:00Z"),
@@ -131,13 +138,112 @@ class RealtimeEventPublisherTest {
     }
 
     @Test
+    void should_publishPokemonSummary_when_guessIsResolved() {
+        SimpMessagingTemplate messagingTemplate =
+                mock(SimpMessagingTemplate.class);
+        RealtimeEventPublisher publisher =
+                new RealtimeEventPublisher(
+                        messagingTemplate,
+                        Clock.fixed(
+                                Instant.parse(
+                                        "2026-07-25T03:00:00Z"),
+                                ZoneOffset.UTC));
+        RoomMember selector =
+                new RoomMember(
+                        SELECTOR_ID,
+                        "레드",
+                        SELECTOR,
+                        true,
+                        null);
+        RoomMember questioner =
+                new RoomMember(
+                        QUESTIONER_ID,
+                        "그린",
+                        QUESTIONER,
+                        true,
+                        null);
+        RoomActionSnapshot guess =
+                new RoomActionSnapshot(
+                        1,
+                        GUESS,
+                        null,
+                        null,
+                        null,
+                        PIKACHU.nationalDexId(),
+                        PIKACHU,
+                        false,
+                        Instant.parse(
+                                "2026-07-25T02:59:00Z"),
+                        null);
+        RoomSnapshot selectorSnapshot =
+                new RoomSnapshot(
+                        "ABC234",
+                        PLAYING,
+                        4,
+                        1,
+                        selector,
+                        questioner,
+                        new SelectorGameSnapshot(
+                                GAME_ID,
+                                IN_PROGRESS,
+                                1,
+                                19,
+                                PIKACHU,
+                                List.of(guess)),
+                        null,
+                        null);
+        RoomSnapshot questionerSnapshot =
+                new RoomSnapshot(
+                        "ABC234",
+                        PLAYING,
+                        4,
+                        1,
+                        questioner,
+                        selector,
+                        new QuestionerGameSnapshot(
+                                GAME_ID,
+                                IN_PROGRESS,
+                                1,
+                                19,
+                                List.of(guess)),
+                        null,
+                        null);
+
+        publisher.publishGuessResolved(
+                new CommandOutcome(
+                        false,
+                        Map.of(
+                                SELECTOR_ID,
+                                selectorSnapshot,
+                                QUESTIONER_ID,
+                                questionerSnapshot)));
+
+        ArgumentCaptor<Object> eventCaptor =
+                ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate)
+                .convertAndSendToUser(
+                        eq(QUESTIONER_ID.toString()),
+                        eq(WebSocketConfig.GAME_EVENT_QUEUE),
+                        eventCaptor.capture());
+        GameEventEnvelope event =
+                assertInstanceOf(
+                        GameEventEnvelope.class,
+                        eventCaptor.getValue());
+        GuessResolvedPayload payload =
+                assertInstanceOf(
+                        GuessResolvedPayload.class,
+                        event.payload());
+        assertEquals(GUESS_RESOLVED, event.eventType());
+        assertEquals(PIKACHU, payload.guessedPokemon());
+    }
+
+    @Test
     void should_publishPrivateRolePreferenceSnapshots_when_oneParticipantSelects() {
         SimpMessagingTemplate messagingTemplate =
                 mock(SimpMessagingTemplate.class);
         RealtimeEventPublisher publisher =
                 new RealtimeEventPublisher(
                         messagingTemplate,
-                        mock(PokemonCatalogService.class),
                         Clock.fixed(
                                 Instant.parse(
                                         "2026-07-25T03:00:00Z"),
