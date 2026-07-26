@@ -39,6 +39,7 @@ import {
   formatNationalDexId,
 } from "../pokemon/PokemonArtwork";
 import { PokemonCatalogPicker } from "../pokemon/PokemonCatalogPicker";
+import { PokedexWindow } from "../pokemon/PokedexWindow";
 import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   type PokemonCatalogGateway,
@@ -158,7 +159,7 @@ export function RoomPage({
     );
   const questionerPokedexAllowed =
     questionerPokedexContext !== null;
-  const pokedexModalOpen =
+  const pokedexOpen =
     searchParams.get("pokedex") === "1" &&
     questionerPokedexAllowed;
 
@@ -710,8 +711,8 @@ export function RoomPage({
           </Modal>
         ) : null}
 
-        {pokedexModalOpen && questionerPokedexContext ? (
-          <QuestionerPokedexModal
+        {pokedexOpen && questionerPokedexContext ? (
+          <QuestionerPokedexWindow
             context={questionerPokedexContext}
             gateway={pokemonGateway}
             onClose={closePokedex}
@@ -1074,84 +1075,88 @@ interface QuestionerPokedexContext {
   stateVersion: number | null;
 }
 
-interface QuestionerPokedexModalProps {
+interface QuestionerPokedexWindowProps {
   context: QuestionerPokedexContext;
   gateway: PokemonCatalogGateway;
   onClose(): void;
   onGuess(pokemon: PokemonSummary): void;
 }
 
-function QuestionerPokedexModal({
+function QuestionerPokedexWindow({
   context,
   gateway,
   onClose,
   onGuess,
-}: QuestionerPokedexModalProps) {
+}: QuestionerPokedexWindowProps) {
   const [selectedPokemon, setSelectedPokemon] =
     useState<PokemonSummary | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <Modal
-      className="questioner-pokedex-modal"
-      closeLabel="전국도감 닫기"
-      onClose={onClose}
-      title="전국도감"
-    >
-      <div className="pokedex-guidance" role="status">
-        <p>
-          <Info aria-hidden="true" size={18} />
-          도감을 둘러보거나 포켓몬을 고르는 동안에는 기회를
-          사용하지 않아요.
-        </p>
-        <p>{context.detail}</p>
-      </div>
-      <PokemonCatalogPicker
-        disabledNationalDexIds={
-          context.alreadyGuessedNationalDexIds
-        }
-        gateway={gateway}
-        onSelect={setSelectedPokemon}
-        selectedPokemon={selectedPokemon}
-      />
-      <footer>
-        <div>
-          <span>선택한 포켓몬</span>
-          <strong>
-            {selectedPokemon
-              ? `${formatNationalDexId(
+    <>
+      <PokedexWindow
+        footer={
+          <div className="questioner-pokedex-footer">
+            <div>
+              <span>선택한 포켓몬</span>
+              <strong>
+                {selectedPokemon
+                  ? `${formatNationalDexId(
+                      selectedPokemon.nationalDexId,
+                    )} ${selectedPokemon.koreanName}`
+                  : "아직 선택하지 않았어요"}
+              </strong>
+              {selectedPokemon ? (
+                <PokemonTypeBadges
+                  types={selectedPokemon.types}
+                />
+              ) : null}
+            </div>
+            <button
+              className="secondary-game-button"
+              onClick={onClose}
+              type="button"
+            >
+              닫기
+            </button>
+            <button
+              className="primary-game-button"
+              disabled={
+                !selectedPokemon ||
+                !context.canGuess ||
+                context.alreadyGuessedNationalDexIds.has(
                   selectedPokemon.nationalDexId,
-                )} ${selectedPokemon.koreanName}`
-              : "아직 선택하지 않았어요"}
-          </strong>
-          {selectedPokemon ? (
-            <PokemonTypeBadges types={selectedPokemon.types} />
-          ) : null}
+                )
+              }
+              onClick={() => {
+                setConfirming(true);
+              }}
+              type="button"
+            >
+              이 포켓몬 추측
+            </button>
+          </div>
+        }
+        onClose={onClose}
+        title="전국도감"
+      >
+        <div className="pokedex-guidance" role="status">
+          <p>
+            <Info aria-hidden="true" size={18} />
+            도감을 둘러보거나 포켓몬을 고르는 동안에는 기회를
+            사용하지 않아요.
+          </p>
+          <p>{context.detail}</p>
         </div>
-        <button
-          className="secondary-game-button"
-          onClick={onClose}
-          type="button"
-        >
-          닫기
-        </button>
-        <button
-          className="primary-game-button"
-          disabled={
-            !selectedPokemon ||
-            !context.canGuess ||
-            context.alreadyGuessedNationalDexIds.has(
-              selectedPokemon.nationalDexId,
-            )
+        <PokemonCatalogPicker
+          disabledNationalDexIds={
+            context.alreadyGuessedNationalDexIds
           }
-          onClick={() => {
-            setConfirming(true);
-          }}
-          type="button"
-        >
-          이 포켓몬 추측
-        </button>
-      </footer>
+          gateway={gateway}
+          onSelect={setSelectedPokemon}
+          selectedPokemon={selectedPokemon}
+        />
+      </PokedexWindow>
       {confirming &&
       selectedPokemon &&
       context.canGuess &&
@@ -1195,7 +1200,7 @@ function QuestionerPokedexModal({
           </div>
         </Modal>
       ) : null}
-    </Modal>
+    </>
   );
 }
 

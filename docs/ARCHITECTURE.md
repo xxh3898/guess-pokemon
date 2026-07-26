@@ -254,7 +254,18 @@ src/
   `PokemonSummary.types`를 사용해도 questioner snapshot에는
   `selectedPokemon` 자체를 두지 않는다.
 - STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
-- 질문자 전국도감 모달은 `?pokedex=1` 라우트 검색 파라미터로 열어 브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와 `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는 파라미터를 제거한다.
+- 질문자 전국도감은 `?pokedex=1` 라우트 검색 파라미터로 열어
+  브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와
+  `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는
+  파라미터를 제거한다.
+- `PokedexWindow`는 PC에서 backdrop과 `aria-modal`이 없는
+  비모달 dialog로 렌더링한다. Pointer Events drag, viewport clamp,
+  좌우 고정, 방향키 이동을 제공하고 resize 때 좌표를 다시 제한한다.
+  모바일에서는 이동 control 없는 `aria-modal` 전체 화면 dialog로
+  전환한다.
+  header와 선택 footer는 고정하고 catalog 결과 영역만 스크롤한다.
+  최종 추측 확인은 기존 차단형 `Modal`을 별도 sibling으로 렌더링해
+  전국도감보다 높은 z-index와 차단형 `aria-modal` 의미를 유지한다.
 - 도감 검색·필터·페이지 이동·포켓몬 선택은 게임 명령을 만들지 않는다. 질문자의 최종 추측 버튼은 최신 snapshot의 미답변 질문, 처리 중인 명령, 남은 횟수를 확인한 뒤에만 활성화하고 실제 승패와 행동 횟수는 서버의 STOMP 명령 검증을 따른다.
 - 질문자의 경기 도감은 최신 snapshot의 `GUESS` action에서 이미 추측한 전국도감 번호를 계산해 해당 카드를 비활성화한다. 이 UI 검사는 사전 안내이며 같은 경기 중복 여부의 최종 판정은 server domain이 맡는다.
 - frontend `PokemonSummary` parser는 `types`가 지원 코드 18개 중 중복 없는 1~2개인지 검증한다. 누락·미지원·중복·길이 초과 응답은 안전한 API 응답 오류로 처리한다.

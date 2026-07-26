@@ -593,10 +593,6 @@
   min-width: 12rem;
 }
 
-.questioner-pokedex-modal {
-  max-width: 64rem;
-}
-
 .pokedex-guidance {
   background: var(--blue-soft);
   border: 1px solid rgb(37 112 239 / 28%);
@@ -625,31 +621,29 @@
   text-align: center;
 }
 
-.questioner-pokedex-modal > footer {
+.questioner-pokedex-footer {
   align-items: center;
-  border-top: 1px solid var(--line);
   display: grid;
   gap: 0.65rem;
   grid-template-columns: 1fr auto auto;
-  margin-top: 1rem;
-  padding-top: 0.9rem;
+  width: 100%;
 }
 
-.questioner-pokedex-modal > footer > div {
+.questioner-pokedex-footer > div {
   display: flex;
   flex-direction: column;
 }
 
-.questioner-pokedex-modal > footer > div > span {
+.questioner-pokedex-footer > div > span {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-.questioner-pokedex-modal > footer strong {
+.questioner-pokedex-footer strong {
   color: var(--blue-dark);
 }
 
-.questioner-pokedex-modal > footer .pokemon-type-badges {
+.questioner-pokedex-footer .pokemon-type-badges {
   justify-content: flex-start;
   margin-top: 0.4rem;
 }
@@ -722,26 +716,11 @@
     margin: 0;
   }
 
-  .questioner-pokedex-modal {
-    height: 100vh;
-    max-height: 100vh;
-  }
-
-  .modal-dialog.questioner-pokedex-modal {
-    padding-bottom: 0;
-  }
-
-  .questioner-pokedex-modal > footer {
-    background: var(--paper);
-    bottom: 0;
-    box-shadow: 0 -10px 24px rgb(17 43 78 / 8%);
+  .questioner-pokedex-footer {
     grid-template-columns: 1fr 1fr;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    position: sticky;
-    z-index: 2;
   }
 
-  .questioner-pokedex-modal > footer > div {
+  .questioner-pokedex-footer > div {
     grid-column: 1 / -1;
   }
 }

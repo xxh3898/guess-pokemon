@@ -429,9 +429,12 @@ describe("RoomPage", () => {
     );
 
     expect(router.state.location.search).toBe("?pokedex=1");
-    expect(
-      screen.getByRole("dialog", { name: "전국도감" }),
-    ).toBeInTheDocument();
+    const pokedex = screen.getByRole("dialog", {
+      name: "전국도감",
+    });
+    expect(pokedex).toBeInTheDocument();
+    expect(pokedex).not.toHaveAttribute("aria-modal");
+    expect(pokedex.closest(".modal-backdrop")).toBeNull();
     expect(
       screen.getByText("게임이 시작되면 포켓몬을 추측할 수 있어요."),
     ).toBeInTheDocument();
@@ -659,6 +662,29 @@ describe("RoomPage", () => {
         },
       });
     });
+  });
+
+  it("should_closePokedexRouteState_when_escapePressed", async () => {
+    const { router } = renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(QUESTIONER_ACTIVE_SNAPSHOT),
+      }),
+    });
+    await screen.findByText("내 역할 · 질문자");
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "전국도감" }),
+    ).not.toBeInTheDocument();
   });
 
   it("should_closePokedexRouteState_when_guessPublishes", async () => {
@@ -926,13 +952,15 @@ describe("RoomPage", () => {
       }),
     });
     await screen.findByText("내 역할 · 질문자");
-    const event = new Event("beforeunload", {
-      cancelable: true,
+    await waitFor(() => {
+      const event = new Event("beforeunload", {
+        cancelable: true,
+      });
+
+      window.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
     });
-
-    window.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(true);
   });
 
   it("should_explainActiveGameGuard_when_logoutIsRequested", async () => {
