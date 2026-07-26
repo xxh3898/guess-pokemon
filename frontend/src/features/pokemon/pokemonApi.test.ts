@@ -15,6 +15,19 @@ const PIKACHU = {
   types: ["ELECTRIC"],
 };
 
+const PICHU = {
+  ...PIKACHU,
+  generation: 2,
+  koreanName: "피츄",
+  nationalDexId: 172,
+};
+
+const RAICHU = {
+  ...PIKACHU,
+  koreanName: "라이츄",
+  nationalDexId: 26,
+};
+
 describe("pokemonApi", () => {
   it("should_sendNormalizedSearchQuery_when_filterIsGiven", async () => {
     const fetcher = vi.fn().mockResolvedValue(
@@ -64,6 +77,43 @@ describe("pokemonApi", () => {
     );
   });
 
+  it("should_fetchEvolutionDetails_when_nationalDexIdExists", async () => {
+    const payload = {
+      nextEvolutions: [RAICHU],
+      pokemon: PIKACHU,
+      previousEvolution: PICHU,
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(payload));
+    const gateway =
+      createPokemonCatalogGateway(new HttpClient(fetcher));
+
+    await expect(
+      gateway.findEvolutionDetails(25),
+    ).resolves.toEqual(payload);
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/v1/pokemon-species/25/evolutions",
+    );
+  });
+
+  it("should_rejectEvolutionDetails_when_responsePokemonDoesNotMatchRequest", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      jsonResponse({
+        nextEvolutions: [],
+        pokemon: RAICHU,
+        previousEvolution: PIKACHU,
+      }),
+    );
+    const gateway =
+      createPokemonCatalogGateway(new HttpClient(fetcher));
+
+    await expect(
+      gateway.findEvolutionDetails(25),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
   it("should_rejectBeforeFetch_when_searchConditionIsInvalid", async () => {
     const fetcher = vi.fn();
     const gateway =
@@ -78,6 +128,9 @@ describe("pokemonApi", () => {
     ).rejects.toBeInstanceOf(ApiError);
     await expect(
       gateway.findByNationalDexId(0),
+    ).rejects.toBeInstanceOf(ApiError);
+    await expect(
+      gateway.findEvolutionDetails(1_026),
     ).rejects.toBeInstanceOf(ApiError);
     expect(fetcher).not.toHaveBeenCalled();
   });

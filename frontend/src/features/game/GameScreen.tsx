@@ -1,7 +1,6 @@
 import {
   Check,
   CircleHelp,
-  LockKeyhole,
   Search,
   Send,
   UserRound,
@@ -18,11 +17,7 @@ import {
   MAX_ANSWER_COMMENT_LENGTH,
   countAnswerCommentCharacters,
 } from "../../shared/game/answerComment";
-import {
-  PokemonArtwork,
-  formatNationalDexId,
-} from "../pokemon/PokemonArtwork";
-import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
+import type { PokemonEvolutionGateway } from "../pokemon/pokemonApi";
 import {
   MAX_GAME_ACTION_COUNT,
   type ActiveRoomSnapshot,
@@ -30,9 +25,11 @@ import {
   type QuestionGameAction,
 } from "../room/roomTypes";
 import { GameActionTimeline } from "./GameActionTimeline";
+import { SelectedPokemonCard } from "./SelectedPokemonCard";
 
 interface GameScreenProps {
   commandPending: boolean;
+  evolutionGateway: PokemonEvolutionGateway;
   onAnswer(answer: GameAnswer, comment: string): boolean;
   onAsk(question: string): void;
   onOpenPokedex(): void;
@@ -41,6 +38,7 @@ interface GameScreenProps {
 
 export function GameScreen({
   commandPending,
+  evolutionGateway,
   onAnswer,
   onAsk,
   onOpenPokedex,
@@ -60,28 +58,12 @@ export function GameScreen({
     >
       <aside className="game-role-column">
         {isSelector ? (
-          <section className="secret-pokemon-card panel-card">
-            <p className="role-pill selector-pill">
-              내 역할 · 출제자
-            </p>
-            <span>내가 선택한 포켓몬</span>
-            <PokemonArtwork
-              pokemon={snapshot.game.selectedPokemon}
-            />
-            <h2>
-              {formatNationalDexId(
-                snapshot.game.selectedPokemon.nationalDexId,
-              )}{" "}
-              {snapshot.game.selectedPokemon.koreanName}
-            </h2>
-            <PokemonTypeBadges
-              types={snapshot.game.selectedPokemon.types}
-            />
-            <p className="secret-copy">
-              <LockKeyhole aria-hidden="true" size={16} />
-              정답은 상대에게 비공개
-            </p>
-          </section>
+          <SelectedPokemonCard
+            evolutionGateway={evolutionGateway}
+            onOpenPokedex={onOpenPokedex}
+            paused={snapshot.status === "PAUSED"}
+            pokemon={snapshot.game.selectedPokemon}
+          />
         ) : (
           <RoleCard
             label="내 역할 · 질문자"

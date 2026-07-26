@@ -71,6 +71,12 @@ export interface PokemonPage {
   readonly totalPages: number;
 }
 
+export interface PokemonEvolutionDetails {
+  readonly nextEvolutions: readonly PokemonSummary[];
+  readonly pokemon: PokemonSummary;
+  readonly previousEvolution: PokemonSummary | null;
+}
+
 export function parsePokemonSummary(
   payload: unknown,
 ): PokemonSummary {
@@ -135,6 +141,54 @@ export function parsePokemonPage(payload: unknown): PokemonPage {
     size,
     totalElements,
     totalPages,
+  };
+}
+
+export function parsePokemonEvolutionDetails(
+  payload: unknown,
+): PokemonEvolutionDetails {
+  const evolutionDetails = requireRecord(payload);
+  const previousEvolutionPayload =
+    evolutionDetails.previousEvolution;
+  if (!Array.isArray(evolutionDetails.nextEvolutions)) {
+    throw ApiError.invalidResponse();
+  }
+
+  const pokemon = parsePokemonSummary(
+    evolutionDetails.pokemon,
+  );
+  const previousEvolution =
+    previousEvolutionPayload === null
+      ? null
+      : parsePokemonSummary(previousEvolutionPayload);
+  const nextEvolutions =
+    evolutionDetails.nextEvolutions.map(parsePokemonSummary);
+
+  if (
+    previousEvolution?.nationalDexId === pokemon.nationalDexId ||
+    nextEvolutions.some(
+      (candidate) =>
+        candidate.nationalDexId === pokemon.nationalDexId,
+    ) ||
+    (previousEvolution !== null &&
+      nextEvolutions.some(
+        (candidate) =>
+          candidate.nationalDexId ===
+          previousEvolution.nationalDexId,
+      )) ||
+    new Set(
+      nextEvolutions.map(
+        (candidate) => candidate.nationalDexId,
+      ),
+    ).size !== nextEvolutions.length
+  ) {
+    throw ApiError.invalidResponse();
+  }
+
+  return {
+    nextEvolutions,
+    pokemon,
+    previousEvolution,
   };
 }
 

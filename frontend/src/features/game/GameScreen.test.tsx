@@ -3,13 +3,16 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { PokemonEvolutionGateway } from "../pokemon/pokemonApi";
+import type { PokemonEvolutionDetails } from "../pokemon/pokemonTypes";
 import type {
   QuestionerActiveRoomSnapshot,
   SelectorActiveRoomSnapshot,
 } from "../room/roomTypes";
-import { GameScreen } from "./GameScreen";
+import { GameScreen as GameScreenComponent } from "./GameScreen";
 
 const PIKACHU = {
   artworkEnabled: true,
@@ -18,6 +21,13 @@ const PIKACHU = {
   koreanName: "피카츄",
   nationalDexId: 25,
   types: ["ELECTRIC"] as const,
+};
+
+const EVOLUTION_GATEWAY: PokemonEvolutionGateway = {
+  findEvolutionDetails: vi.fn(
+    () =>
+      new Promise<PokemonEvolutionDetails>(() => undefined),
+  ),
 };
 
 describe("GameScreen", () => {
@@ -41,12 +51,13 @@ describe("GameScreen", () => {
   });
 
   it("should_renderSelectedPokemonType_when_selectorScreenOpens", () => {
+    const onOpenPokedex = vi.fn();
     const { container } = render(
       <GameScreen
         commandPending={false}
         onAnswer={vi.fn()}
         onAsk={vi.fn()}
-        onOpenPokedex={vi.fn()}
+        onOpenPokedex={onOpenPokedex}
         snapshot={selectorSnapshot()}
       />,
     );
@@ -55,6 +66,11 @@ describe("GameScreen", () => {
       screen.getByRole("heading", { name: /피카츄/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("전기")).toBeInTheDocument();
+    expect(screen.getByText("1세대")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    expect(onOpenPokedex).toHaveBeenCalledOnce();
     expectCommandBeforeTimeline(container);
   });
 
@@ -355,6 +371,20 @@ describe("GameScreen", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 });
+
+function GameScreen(
+  props: Omit<
+    ComponentProps<typeof GameScreenComponent>,
+    "evolutionGateway"
+  >,
+) {
+  return (
+    <GameScreenComponent
+      evolutionGateway={EVOLUTION_GATEWAY}
+      {...props}
+    />
+  );
+}
 
 function questionerSnapshot(): QuestionerActiveRoomSnapshot {
   return {

@@ -5,8 +5,10 @@ import {
   httpClient,
 } from "../../shared/api/HttpClient";
 import {
+  parsePokemonEvolutionDetails,
   parsePokemonPage,
   parsePokemonSummary,
+  type PokemonEvolutionDetails,
   type PokemonPage,
   type PokemonSummary,
 } from "./pokemonTypes";
@@ -32,10 +34,33 @@ export interface PokemonCatalogGateway {
   ): Promise<PokemonPage>;
 }
 
+export interface PokemonEvolutionGateway {
+  findEvolutionDetails(
+    nationalDexId: number,
+    signal?: AbortSignal,
+  ): Promise<PokemonEvolutionDetails>;
+}
+
+export interface PokemonGateway
+  extends PokemonCatalogGateway,
+    PokemonEvolutionGateway {}
+
 export function createPokemonCatalogGateway(
   client: HttpClient,
-): PokemonCatalogGateway {
+): PokemonGateway {
   return {
+    async findEvolutionDetails(nationalDexId, signal) {
+      requireIntegerInRange(nationalDexId, 1, 1_025);
+      const payload = await client.get(
+        `/api/v1/pokemon-species/${nationalDexId}/evolutions`,
+        signal,
+      );
+      const details = parsePokemonEvolutionDetails(payload);
+      if (details.pokemon.nationalDexId !== nationalDexId) {
+        throw ApiError.invalidResponse();
+      }
+      return details;
+    },
     async findByNationalDexId(nationalDexId, signal) {
       requireIntegerInRange(nationalDexId, 1, 1_025);
       const payload = await client.get(

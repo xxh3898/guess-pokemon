@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parsePokemonEvolutionDetails,
   parsePokemonPage,
   parsePokemonSummary,
 } from "./pokemonTypes";
@@ -13,6 +14,19 @@ const PIKACHU = {
   koreanName: "피카츄",
   nationalDexId: 25,
   types: ["ELECTRIC"],
+};
+
+const PICHU = {
+  ...PIKACHU,
+  generation: 2,
+  koreanName: "피츄",
+  nationalDexId: 172,
+};
+
+const RAICHU = {
+  ...PIKACHU,
+  koreanName: "라이츄",
+  nationalDexId: 26,
 };
 
 describe("pokemonTypes", () => {
@@ -107,5 +121,66 @@ describe("pokemonTypes", () => {
         totalPages: 1,
       }),
     ).toThrow();
+  });
+
+  it("should_parsePokemonEvolutionDetails_when_relationsAreValid", () => {
+    expect(
+      parsePokemonEvolutionDetails({
+        nextEvolutions: [RAICHU],
+        pokemon: PIKACHU,
+        previousEvolution: PICHU,
+      }),
+    ).toEqual({
+      nextEvolutions: [RAICHU],
+      pokemon: PIKACHU,
+      previousEvolution: PICHU,
+    });
+  });
+
+  it("should_parseEmptyPokemonEvolutionDetails_when_relationsDoNotExist", () => {
+    expect(
+      parsePokemonEvolutionDetails({
+        nextEvolutions: [],
+        pokemon: PIKACHU,
+        previousEvolution: null,
+      }),
+    ).toEqual({
+      nextEvolutions: [],
+      pokemon: PIKACHU,
+      previousEvolution: null,
+    });
+  });
+
+  it("should_rejectPokemonEvolutionDetails_when_relationContractIsInvalid", () => {
+    for (const payload of [
+      {
+        nextEvolutions: null,
+        pokemon: PIKACHU,
+        previousEvolution: PICHU,
+      },
+      {
+        nextEvolutions: [RAICHU],
+        pokemon: PIKACHU,
+      },
+      {
+        nextEvolutions: [PIKACHU],
+        pokemon: PIKACHU,
+        previousEvolution: PICHU,
+      },
+      {
+        nextEvolutions: [RAICHU, RAICHU],
+        pokemon: PIKACHU,
+        previousEvolution: PICHU,
+      },
+      {
+        nextEvolutions: [PICHU],
+        pokemon: PIKACHU,
+        previousEvolution: PICHU,
+      },
+    ]) {
+      expect(() =>
+        parsePokemonEvolutionDetails(payload),
+      ).toThrow();
+    }
   });
 });

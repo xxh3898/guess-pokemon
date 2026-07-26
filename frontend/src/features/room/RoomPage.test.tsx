@@ -25,7 +25,7 @@ import type {
   RoomRealtimeSession,
 } from "../../shared/realtime/RoomRealtimeGateway";
 import type { WaitingRoomEvent } from "../../shared/realtime/realtimeTypes";
-import type { PokemonCatalogGateway } from "../pokemon/pokemonApi";
+import type { PokemonGateway } from "../pokemon/pokemonApi";
 import {
   createAuthContextValue,
   TEST_CURRENT_USER,
@@ -449,12 +449,14 @@ describe("RoomPage", () => {
   });
 
   it("should_keepAnswerSecretOutOfDom_when_questionerGameLoads", async () => {
+    const pokemonGateway = createPokemonGateway([PIKACHU]);
     renderRoom({
       gateway: createRoomGateway({
         get: vi
           .fn()
           .mockResolvedValue(QUESTIONER_ACTIVE_SNAPSHOT),
       }),
+      pokemonGateway,
     });
 
     expect(
@@ -465,12 +467,60 @@ describe("RoomPage", () => {
     expect(document.body.innerHTML).not.toContain(
       PIKACHU.artworkUrl,
     );
+    expect(
+      pokemonGateway.findEvolutionDetails,
+    ).not.toHaveBeenCalled();
   });
 
-  it("should_removePokedexRouteState_when_selectorOpensDirectUrl", async () => {
+  it("should_allowBrowseOnlyPokedex_when_selectorOpensPokedex", async () => {
+    const realtime = createRealtimeHarness();
     const { router } = renderRoom({
       gateway: createRoomGateway({
         get: vi.fn().mockResolvedValue(SELECTOR_ACTIVE_SNAPSHOT),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByText("내가 선택한 포켓몬");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+
+    expect(router.state.location.search).toBe("?pokedex=1");
+    const pokedex = screen.getByRole("dialog", {
+      name: "전국도감",
+    });
+    fireEvent.click(
+      await within(pokedex).findByRole("button", {
+        name: /피카츄/,
+      }),
+    );
+    expect(
+      within(pokedex).getByText(
+        "도감에서 포켓몬을 살펴봐도 정답은 바뀌지 않아요.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pokedex).queryByRole("button", {
+        name: "이 포켓몬 추측",
+      }),
+    ).not.toBeInTheDocument();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.search).toBe("");
+  });
+
+  it("should_removePokedexRouteState_when_selectorGameIsPaused", async () => {
+    const { router } = renderRoom({
+      gateway: createRoomGateway({
+        get: vi.fn().mockResolvedValue({
+          ...SELECTOR_ACTIVE_SNAPSHOT,
+          status: "PAUSED",
+        }),
       }),
       initialEntry: "/rooms/AB3K7M?pokedex=1",
     });
@@ -1038,7 +1088,7 @@ interface RenderRoomOptions {
   gateway?: RoomGateway;
   initialEntry?: string;
   realtimeGateway?: RoomRealtimeGateway;
-  pokemonGateway?: PokemonCatalogGateway;
+  pokemonGateway?: PokemonGateway;
   writeClipboard?: (value: string) => Promise<void>;
 }
 
@@ -1332,8 +1382,13 @@ const COMMAND_ID = "98835cf8-c6f2-4576-a900-b26519ddbbed";
 
 function createPokemonGateway(
   content: readonly typeof PIKACHU[] = [],
-): PokemonCatalogGateway {
+): PokemonGateway {
   return {
+    findEvolutionDetails: vi.fn().mockResolvedValue({
+      nextEvolutions: [],
+      pokemon: PIKACHU,
+      previousEvolution: null,
+    }),
     findByNationalDexId: vi.fn().mockResolvedValue({
       artworkEnabled: true,
       artworkUrl: "https://example.com/25.png",

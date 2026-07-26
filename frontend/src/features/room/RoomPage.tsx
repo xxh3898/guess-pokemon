@@ -43,6 +43,7 @@ import { PokedexWindow } from "../pokemon/PokedexWindow";
 import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   type PokemonCatalogGateway,
+  type PokemonGateway,
   pokemonCatalogGateway,
 } from "../pokemon/pokemonApi";
 import type { PokemonSummary } from "../pokemon/pokemonTypes";
@@ -96,7 +97,7 @@ interface PendingCommand {
 
 interface RoomPageProps {
   gateway?: RoomGateway;
-  pokemonGateway?: PokemonCatalogGateway;
+  pokemonGateway?: PokemonGateway;
   realtimeGateway?: RoomRealtimeGateway;
   writeClipboard?: ClipboardWriter;
 }
@@ -152,16 +153,14 @@ export function RoomPage({
   const activeSnapshot = isActiveSnapshot(snapshot)
     ? snapshot
     : null;
-  const questionerPokedexContext =
-    getQuestionerPokedexContext(
-      snapshot,
-      pendingCommand !== null,
-    );
-  const questionerPokedexAllowed =
-    questionerPokedexContext !== null;
+  const pokedexContext = getGamePokedexContext(
+    snapshot,
+    pendingCommand !== null,
+  );
+  const pokedexAllowed = pokedexContext !== null;
   const pokedexOpen =
     searchParams.get("pokedex") === "1" &&
-    questionerPokedexAllowed;
+    pokedexAllowed;
 
   const setPendingCommand = useCallback(
     (command: PendingCommand | null) => {
@@ -229,7 +228,7 @@ export function RoomPage({
     const legacyGuessOpen = searchParams.get("guess") === "1";
     const invalidPokedexOpen =
       searchParams.get("pokedex") === "1" &&
-      !questionerPokedexAllowed;
+      !pokedexAllowed;
     if (!legacyGuessOpen && !invalidPokedexOpen) {
       return;
     }
@@ -245,7 +244,7 @@ export function RoomPage({
       { replace: true },
     );
   }, [
-    questionerPokedexAllowed,
+    pokedexAllowed,
     searchParams,
     setSearchParams,
     snapshot,
@@ -592,6 +591,7 @@ export function RoomPage({
           <>
             <GameScreen
               commandPending={pendingCommand !== null}
+              evolutionGateway={pokemonGateway}
               onAnswer={(answer, comment) =>
                 sendCommand(
                   "answer",
@@ -711,20 +711,20 @@ export function RoomPage({
           </Modal>
         ) : null}
 
-        {pokedexOpen && questionerPokedexContext ? (
-          <QuestionerPokedexWindow
-            context={questionerPokedexContext}
+        {pokedexOpen && pokedexContext ? (
+          <GamePokedexWindow
+            context={pokedexContext}
             gateway={pokemonGateway}
             onClose={closePokedex}
             onGuess={(pokemon) => {
               if (
-                !questionerPokedexContext.canGuess ||
-                questionerPokedexContext.stateVersion === null
+                !pokedexContext.canGuess ||
+                pokedexContext.stateVersion === null
               ) {
                 return;
               }
               const expectedStateVersion =
-                questionerPokedexContext.stateVersion;
+                pokedexContext.stateVersion;
               const published = sendCommand(
                 "guess",
                 expectedStateVersion,
@@ -1068,26 +1068,27 @@ function QuestionerSelectionWaitView({
   );
 }
 
-interface QuestionerPokedexContext {
+interface GamePokedexContext {
   alreadyGuessedNationalDexIds: ReadonlySet<number>;
   canGuess: boolean;
   detail: string;
+  showGuessAction: boolean;
   stateVersion: number | null;
 }
 
-interface QuestionerPokedexWindowProps {
-  context: QuestionerPokedexContext;
+interface GamePokedexWindowProps {
+  context: GamePokedexContext;
   gateway: PokemonCatalogGateway;
   onClose(): void;
   onGuess(pokemon: PokemonSummary): void;
 }
 
-function QuestionerPokedexWindow({
+function GamePokedexWindow({
   context,
   gateway,
   onClose,
   onGuess,
-}: QuestionerPokedexWindowProps) {
+}: GamePokedexWindowProps) {
   const [selectedPokemon, setSelectedPokemon] =
     useState<PokemonSummary | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -1096,9 +1097,19 @@ function QuestionerPokedexWindow({
     <>
       <PokedexWindow
         footer={
-          <div className="questioner-pokedex-footer">
+          <div
+            className={`game-pokedex-footer ${
+              context.showGuessAction
+                ? "is-questioner"
+                : "is-selector"
+            }`}
+          >
             <div>
-              <span>선택한 포켓몬</span>
+              <span>
+                {context.showGuessAction
+                  ? "선택한 포켓몬"
+                  : "살펴보는 포켓몬"}
+              </span>
               <strong>
                 {selectedPokemon
                   ? `${formatNationalDexId(
@@ -1119,32 +1130,40 @@ function QuestionerPokedexWindow({
             >
               닫기
             </button>
-            <button
-              className="primary-game-button"
-              disabled={
-                !selectedPokemon ||
-                !context.canGuess ||
-                context.alreadyGuessedNationalDexIds.has(
-                  selectedPokemon.nationalDexId,
-                )
-              }
-              onClick={() => {
-                setConfirming(true);
-              }}
-              type="button"
-            >
-              이 포켓몬 추측
-            </button>
+            {context.showGuessAction ? (
+              <button
+                className="primary-game-button"
+                disabled={
+                  !selectedPokemon ||
+                  !context.canGuess ||
+                  context.alreadyGuessedNationalDexIds.has(
+                    selectedPokemon.nationalDexId,
+                  )
+                }
+                onClick={() => {
+                  setConfirming(true);
+                }}
+                type="button"
+              >
+                이 포켓몬 추측
+              </button>
+            ) : null}
           </div>
         }
         onClose={onClose}
         title="전국도감"
       >
-        <div className="pokedex-guidance" role="status">
+        <div
+          className={`pokedex-guidance ${
+            context.showGuessAction ? "" : "is-selector"
+          }`.trim()}
+          role="status"
+        >
           <p>
             <Info aria-hidden="true" size={18} />
-            도감을 둘러보거나 포켓몬을 고르는 동안에는 기회를
-            사용하지 않아요.
+            {context.showGuessAction
+              ? "도감을 둘러보거나 포켓몬을 고르는 동안에는 기회를 사용하지 않아요."
+              : "도감에서 포켓몬을 살펴봐도 정답은 바뀌지 않아요."}
           </p>
           <p>{context.detail}</p>
         </div>
@@ -1159,6 +1178,7 @@ function QuestionerPokedexWindow({
       </PokedexWindow>
       {confirming &&
       selectedPokemon &&
+      context.showGuessAction &&
       context.canGuess &&
       !context.alreadyGuessedNationalDexIds.has(
         selectedPokemon.nationalDexId,
@@ -1296,22 +1316,40 @@ function isActiveSnapshot(
   );
 }
 
-function getQuestionerPokedexContext(
+function getGamePokedexContext(
   snapshot: RoomSnapshot | null,
   commandPending: boolean,
-): QuestionerPokedexContext | null {
-  if (!snapshot || snapshot.me.role !== "QUESTIONER") {
+): GamePokedexContext | null {
+  if (!snapshot) {
     return null;
   }
-  if (snapshot.status === "WAITING_FOR_SELECTION") {
+  if (
+    snapshot.status === "WAITING_FOR_SELECTION" &&
+    snapshot.me.role === "QUESTIONER"
+  ) {
     return {
       alreadyGuessedNationalDexIds: new Set(),
       canGuess: false,
       detail: "게임이 시작되면 포켓몬을 추측할 수 있어요.",
+      showGuessAction: true,
       stateVersion: null,
     };
   }
   if (
+    snapshot.status === "PLAYING" &&
+    snapshot.me.role === "SELECTOR" &&
+    "selectedPokemon" in snapshot.game
+  ) {
+    return {
+      alreadyGuessedNationalDexIds: new Set(),
+      canGuess: false,
+      detail: "질문에 답할 때 참고해 보세요.",
+      showGuessAction: false,
+      stateVersion: null,
+    };
+  }
+  if (
+    snapshot.me.role !== "QUESTIONER" ||
     snapshot.status !== "PLAYING" ||
     "selectedPokemon" in snapshot.game
   ) {
@@ -1332,6 +1370,7 @@ function getQuestionerPokedexContext(
       canGuess: false,
       detail:
         "이전 요청을 처리하는 동안에는 도감만 볼 수 있어요.",
+      showGuessAction: true,
       stateVersion: snapshot.stateVersion,
     };
   }
@@ -1344,6 +1383,7 @@ function getQuestionerPokedexContext(
       canGuess: false,
       detail:
         "출제자의 답변을 기다리는 동안에는 도감만 볼 수 있어요.",
+      showGuessAction: true,
       stateVersion: snapshot.stateVersion,
     };
   }
@@ -1352,6 +1392,7 @@ function getQuestionerPokedexContext(
       alreadyGuessedNationalDexIds,
       canGuess: false,
       detail: "남은 기회를 모두 사용해 지금은 추측할 수 없어요.",
+      showGuessAction: true,
       stateVersion: snapshot.stateVersion,
     };
   }
@@ -1361,6 +1402,7 @@ function getQuestionerPokedexContext(
     detail:
       "최종 추측을 보내면 기회 1회를 사용해요. " +
       `현재 ${snapshot.game.remainingActionCount}회 남았어요.`,
+    showGuessAction: true,
     stateVersion: snapshot.stateVersion,
   };
 }
