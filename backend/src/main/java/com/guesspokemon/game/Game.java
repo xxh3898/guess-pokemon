@@ -6,6 +6,7 @@ import static com.guesspokemon.game.GameRuleException.GameRuleError.DUPLICATE_CO
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_ROLE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.NO_PENDING_QUESTION;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.POKEMON_ALREADY_GUESSED;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
 import static com.guesspokemon.game.GameTypes.GameEndReason.BOTH_DISCONNECTED;
@@ -314,6 +315,7 @@ final class Game {
         if (guessedPokemonId <= 0) {
             throw new GameRuleException(VALIDATION_FAILED);
         }
+        rejectAlreadyGuessedPokemon(guessedPokemonId);
         int nextActionCount = actionCount + 1;
         boolean correct = guessedPokemonId == answerPokemonId;
         GameAction action =
@@ -616,6 +618,20 @@ final class Game {
         Objects.requireNonNull(commandId);
         if (processedCommandIds.contains(commandId)) {
             throw new GameRuleException(DUPLICATE_COMMAND);
+        }
+    }
+
+    private void rejectAlreadyGuessedPokemon(int pokemonId) {
+        boolean alreadyGuessed =
+                actions.stream()
+                        .anyMatch(
+                                action ->
+                                        Objects.equals(
+                                                action.guessedPokemonId(),
+                                                pokemonId));
+        if (alreadyGuessed) {
+            throw new GameRuleException(
+                    POKEMON_ALREADY_GUESSED);
         }
     }
 

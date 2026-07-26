@@ -1,6 +1,7 @@
 package com.guesspokemon.game;
 
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.POKEMON_ALREADY_GUESSED;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.POKEMON_NOT_FOUND;
 import static com.guesspokemon.game.GameTypes.GameAnswer.NO;
 import static com.guesspokemon.game.GameTypes.GameEndReason.RECONNECT_TIMEOUT;
@@ -41,6 +42,7 @@ class GameCommandServiceTest {
     private static final UUID QUESTIONER_USER_ID =
             UUID.fromString("1151e14d-7bed-47da-a771-a82369173849");
     private static final int PIKACHU_ID = 25;
+    private static final int RAICHU_ID = 26;
     private static final long INITIAL_STATE_VERSION = 3;
     private static final String ROOM_CODE = "ABCD12";
     private static final Instant CLOCK_INSTANT =
@@ -158,6 +160,35 @@ class GameCommandServiceTest {
         assertEquals(INITIAL_STATE_VERSION, current.stateVersion());
         assertEquals(0, current.usedActionCount());
         assertEquals(List.of(), current.actions());
+    }
+
+    @Test
+    void should_skipPersistenceAndKeepState_when_pokemonWasAlreadyGuessed() {
+        gameCommandService.startGame(startCommand(ROOM_CODE));
+        ParticipantGameView afterFirstGuess =
+                gameCommandService.guessPokemon(
+                        new GuessPokemonCommand(
+                                ROOM_CODE,
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                RAICHU_ID));
+
+        assertRuleError(
+                POKEMON_ALREADY_GUESSED,
+                () ->
+                        gameCommandService.guessPokemon(
+                                new GuessPokemonCommand(
+                                        ROOM_CODE,
+                                        QUESTIONER_USER_ID,
+                                        UUID.randomUUID(),
+                                        RAICHU_ID)));
+
+        assertEquals(1, persistencePort.appendedActions.size());
+        assertEquals(
+                afterFirstGuess,
+                gameCommandService.getView(
+                        ROOM_CODE,
+                        QUESTIONER_USER_ID));
     }
 
     @Test

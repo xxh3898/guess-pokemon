@@ -27,6 +27,7 @@ public final class GameRuleException extends RuntimeException {
         NO_PENDING_QUESTION,
         ACTION_LIMIT_REACHED,
         DUPLICATE_COMMAND,
+        POKEMON_ALREADY_GUESSED,
         STALE_ROOM_STATE,
         POKEMON_NOT_FOUND,
         VALIDATION_FAILED,

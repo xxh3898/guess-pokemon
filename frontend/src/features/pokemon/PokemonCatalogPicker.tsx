@@ -29,14 +29,18 @@ const GENERATIONS = Array.from(
   { length: 9 },
   (_, index) => index + 1,
 );
+const EMPTY_DISABLED_NATIONAL_DEX_IDS: ReadonlySet<number> =
+  new Set();
 
 interface PokemonCatalogPickerProps {
+  disabledNationalDexIds?: ReadonlySet<number>;
   gateway?: PokemonCatalogGateway;
   onSelect(pokemon: PokemonSummary): void;
   selectedPokemon: PokemonSummary | null;
 }
 
 export function PokemonCatalogPicker({
+  disabledNationalDexIds = EMPTY_DISABLED_NATIONAL_DEX_IDS,
   gateway = pokemonCatalogGateway,
   onSelect,
   selectedPokemon,
@@ -143,6 +147,7 @@ export function PokemonCatalogPicker({
       </div>
 
       <CatalogContent
+        disabledNationalDexIds={disabledNationalDexIds}
         error={error}
         loading={loading}
         onRetry={() => {
@@ -189,6 +194,7 @@ export function PokemonCatalogPicker({
 }
 
 interface CatalogContentProps {
+  disabledNationalDexIds: ReadonlySet<number>;
   error: string | null;
   loading: boolean;
   onRetry(): void;
@@ -198,6 +204,7 @@ interface CatalogContentProps {
 }
 
 function CatalogContent({
+  disabledNationalDexIds,
   error,
   loading,
   onRetry,
@@ -242,6 +249,9 @@ function CatalogContent({
       className="pokemon-card-grid"
     >
       {result.content.map((pokemon) => {
+        const disabled = disabledNationalDexIds.has(
+          pokemon.nationalDexId,
+        );
         const selected =
           selectedPokemon?.nationalDexId ===
           pokemon.nationalDexId;
@@ -251,6 +261,7 @@ function CatalogContent({
             className={`pokemon-card ${
               selected ? "is-selected" : ""
             }`}
+            disabled={disabled}
             key={pokemon.nationalDexId}
             onClick={() => {
               onSelect(pokemon);
@@ -261,6 +272,11 @@ function CatalogContent({
             <span>{formatNationalDexId(pokemon.nationalDexId)}</span>
             <strong>{pokemon.koreanName}</strong>
             <PokemonTypeBadges types={pokemon.types} />
+            {disabled ? (
+              <span className="pokemon-card-status">
+                이미 추측함
+              </span>
+            ) : null}
           </button>
         );
       })}

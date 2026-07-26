@@ -150,6 +150,7 @@ com.guesspokemon
 - framework와 분리한 순수 Java state machine
 - `WAITING_FOR_SELECTION`, `PLAYING`, `PAUSED`, `RESULT` 전이
 - 역할, 질문/추측 순서, 20회, 승패 계산
+- 같은 aggregate의 기존 추측 포켓몬 재제출 거절
 - 정답 포켓몬은 aggregate private field로 유지
 - 기존 state를 직접 바꾸지 않고 immutable candidate를 만들어 persistence commit 뒤 교체
 
@@ -248,6 +249,7 @@ src/
 - STOMP command는 화면이 본 `expectedStateVersion`과 매번 새로 만든 UUID를 함께 보내며, 성공 event나 더 최신 snapshot 또는 matching error가 올 때까지 같은 종류의 중복 입력을 막는다.
 - 질문자 전국도감 모달은 `?pokedex=1` 라우트 검색 파라미터로 열어 브라우저 뒤로가기로 닫는다. `WAITING_FOR_SELECTION` 질문자와 `PLAYING` 질문자만 접근하며 `PAUSED`, `RESULT`, 출제자 상태에서는 파라미터를 제거한다.
 - 도감 검색·필터·페이지 이동·포켓몬 선택은 게임 명령을 만들지 않는다. 질문자의 최종 추측 버튼은 최신 snapshot의 미답변 질문, 처리 중인 명령, 남은 횟수를 확인한 뒤에만 활성화하고 실제 승패와 행동 횟수는 서버의 STOMP 명령 검증을 따른다.
+- 질문자의 경기 도감은 최신 snapshot의 `GUESS` action에서 이미 추측한 전국도감 번호를 계산해 해당 카드를 비활성화한다. 이 UI 검사는 사전 안내이며 같은 경기 중복 여부의 최종 판정은 server domain이 맡는다.
 - frontend `PokemonSummary` parser는 `types`가 지원 코드 18개 중 중복 없는 1~2개인지 검증한다. 누락·미지원·중복·길이 초과 응답은 안전한 API 응답 오류로 처리한다.
 - `PokemonTypeBadges`는 API 순서를 유지하면서 고정 mapping으로 한국어 label과 type별 class를 출력한다. 색상은 보조 정보로만 쓰고 label text를 항상 남기며, 좁은 카드에서는 배지 단위로 줄바꿈한다.
 - 질문자에게는 공개 전국도감·자신이 고른 추측 후보·경기 종료 정답의 타입만 표시한다. 출제자에게는 정답 선택 후보·확인·selector 전용 경기 snapshot의 타입을 표시한다.
@@ -314,7 +316,7 @@ room code는 `I`, `O`, `0`, `1`을 제외한 6자리 대문자·숫자로 만든
 7. transaction commit 뒤 game memory와 room 상태 교체
 8. room lock 해제 뒤 participant별 event 생성·전송
 
-질문은 pending 상태를 만든다. 답변 코멘트는 선택 입력이며 domain에서 앞뒤 공백 제거와 NFC 정규화를 적용한다. 정규화한 값이 비어 있으면 null로 저장하고, Unicode code point 기준 200자를 넘으면 거절한다. 답변과 코멘트를 기존 question action에 함께 저장한 뒤 다음 행동을 허용하므로 코멘트는 행동 횟수를 추가로 사용하지 않는다. 추측은 서버가 `pokemon_species_id`를 정답과 비교해 즉시 결과를 확정한다.
+질문은 pending 상태를 만든다. 답변 코멘트는 선택 입력이며 domain에서 앞뒤 공백 제거와 NFC 정규화를 적용한다. 정규화한 값이 비어 있으면 null로 저장하고, Unicode code point 기준 200자를 넘으면 거절한다. 답변과 코멘트를 기존 question action에 함께 저장한 뒤 다음 행동을 허용하므로 코멘트는 행동 횟수를 추가로 사용하지 않는다. 추측은 서버가 같은 `Game` aggregate의 기존 `GUESS` action을 먼저 확인하고, 이미 사용한 `pokemon_species_id`면 `POKEMON_ALREADY_GUESSED`로 거절한다. 이때 immutable candidate와 DB action을 만들지 않으므로 행동 횟수와 state version도 유지한다. 처음 추측한 포켓몬이면 정답과 비교해 즉시 결과를 확정한다.
 
 game start는 game 1건과 participant 2건을 한 transaction에 저장한다. 질문·답변·선택 코멘트·추측도 action과 game count·version·필요한 participant result를 같은 transaction에 반영한다. `answer_comment`는 답변이 끝난 `QUESTION`에만 허용하는 DB `CHECK`로 domain 규칙을 한 번 더 지킨다. command service는 persistence bean의 transaction이 commit된 뒤에만 immutable candidate를 registry current state로 교체한다. DB 실패 시 이전 memory aggregate를 그대로 유지한다.
 

@@ -844,6 +844,13 @@ payload:
 
 권한: 질문자
 
+같은 active game에서 이미 추측한 `nationalDexId`를 새 command로 다시
+보내면 `POKEMON_ALREADY_GUESSED`를 반환한다. 이때 행동 횟수,
+`stateVersion`, 경기 기록은 바뀌지 않는다. 같은 `commandId`를 재전송한
+경우에는 기존 멱등성 오류인 `DUPLICATE_COMMAND`를 우선 반환한다.
+재대결로 새 game이 시작되면 이전 game에서 추측한 포켓몬도 다시 추측할
+수 있다.
+
 ### 12.5 재접속 resume
 
 destination:
@@ -1093,6 +1100,7 @@ destination:
 - `NO_PENDING_QUESTION`
 - `ACTION_LIMIT_REACHED`
 - `POKEMON_NOT_FOUND`
+- `POKEMON_ALREADY_GUESSED`
 - `DUPLICATE_COMMAND`
 - `STALE_ROOM_STATE`
 - `VALIDATION_FAILED`

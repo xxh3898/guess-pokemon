@@ -414,6 +414,9 @@ class RealtimeCommandController {
                 GameRuleException.GameRuleError.DUPLICATE_COMMAND,
                 "이미 처리한 요청입니다.");
         messages.put(
+                GameRuleException.GameRuleError.POKEMON_ALREADY_GUESSED,
+                "이 경기에서 이미 추측한 포켓몬입니다.");
+        messages.put(
                 GameRuleException.GameRuleError.STALE_ROOM_STATE,
                 "방 상태가 바뀌었습니다. 최신 상태를 다시 불러와 주세요.");
         messages.put(

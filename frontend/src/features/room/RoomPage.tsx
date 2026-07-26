@@ -1068,6 +1068,7 @@ function QuestionerSelectionWaitView({
 }
 
 interface QuestionerPokedexContext {
+  alreadyGuessedNationalDexIds: ReadonlySet<number>;
   canGuess: boolean;
   detail: string;
   stateVersion: number | null;
@@ -1106,6 +1107,9 @@ function QuestionerPokedexModal({
         <p>{context.detail}</p>
       </div>
       <PokemonCatalogPicker
+        disabledNationalDexIds={
+          context.alreadyGuessedNationalDexIds
+        }
         gateway={gateway}
         onSelect={setSelectedPokemon}
         selectedPokemon={selectedPokemon}
@@ -1133,7 +1137,13 @@ function QuestionerPokedexModal({
         </button>
         <button
           className="primary-game-button"
-          disabled={!selectedPokemon || !context.canGuess}
+          disabled={
+            !selectedPokemon ||
+            !context.canGuess ||
+            context.alreadyGuessedNationalDexIds.has(
+              selectedPokemon.nationalDexId,
+            )
+          }
           onClick={() => {
             setConfirming(true);
           }}
@@ -1142,7 +1152,12 @@ function QuestionerPokedexModal({
           이 포켓몬 추측
         </button>
       </footer>
-      {confirming && selectedPokemon && context.canGuess ? (
+      {confirming &&
+      selectedPokemon &&
+      context.canGuess &&
+      !context.alreadyGuessedNationalDexIds.has(
+        selectedPokemon.nationalDexId,
+      ) ? (
         <Modal
           className="pokemon-confirm-modal"
           onClose={() => {
@@ -1285,6 +1300,7 @@ function getQuestionerPokedexContext(
   }
   if (snapshot.status === "WAITING_FOR_SELECTION") {
     return {
+      alreadyGuessedNationalDexIds: new Set(),
       canGuess: false,
       detail: "게임이 시작되면 포켓몬을 추측할 수 있어요.",
       stateVersion: null,
@@ -1297,9 +1313,17 @@ function getQuestionerPokedexContext(
     return null;
   }
 
+  const alreadyGuessedNationalDexIds = new Set(
+    snapshot.game.actions.flatMap((action) =>
+      action.type === "GUESS"
+        ? [action.guessedPokemonNationalDexId]
+        : [],
+    ),
+  );
   const lastAction = snapshot.game.actions.at(-1);
   if (commandPending) {
     return {
+      alreadyGuessedNationalDexIds,
       canGuess: false,
       detail:
         "이전 요청을 처리하는 동안에는 도감만 볼 수 있어요.",
@@ -1311,6 +1335,7 @@ function getQuestionerPokedexContext(
     lastAction.answer === null
   ) {
     return {
+      alreadyGuessedNationalDexIds,
       canGuess: false,
       detail:
         "출제자의 답변을 기다리는 동안에는 도감만 볼 수 있어요.",
@@ -1319,12 +1344,14 @@ function getQuestionerPokedexContext(
   }
   if (snapshot.game.remainingActionCount === 0) {
     return {
+      alreadyGuessedNationalDexIds,
       canGuess: false,
       detail: "남은 기회를 모두 사용해 지금은 추측할 수 없어요.",
       stateVersion: snapshot.stateVersion,
     };
   }
   return {
+    alreadyGuessedNationalDexIds,
     canGuess: true,
     detail:
       "최종 추측을 보내면 기회 1회를 사용해요. " +

@@ -293,6 +293,64 @@ class RealtimeCommandIntegrationTest {
                             .get("payload")
                             .get("comment")
                             .stringValue());
+
+            send(
+                    guestSocket.session(),
+                    "/app/rooms/"
+                            + roomCode
+                            + "/guess",
+                    commandJson(
+                            UUID.randomUUID(),
+                            5,
+                            """
+                            {"nationalDexId":26}
+                            """));
+            awaitEvent(
+                    hostSocket.events(),
+                    "GUESS_RESOLVED");
+            JsonNode firstGuess =
+                    awaitEvent(
+                            guestSocket.events(),
+                            "GUESS_RESOLVED");
+            assertEquals(
+                    6,
+                    firstGuess
+                            .get("stateVersion")
+                            .asLong());
+
+            send(
+                    guestSocket.session(),
+                    "/app/rooms/"
+                            + roomCode
+                            + "/guess",
+                    commandJson(
+                            UUID.randomUUID(),
+                            6,
+                            """
+                            {"nationalDexId":26}
+                            """));
+            JsonNode repeatedGuessError =
+                    awaitMessage(
+                            guestSocket.errors());
+            assertEquals(
+                    "POKEMON_ALREADY_GUESSED",
+                    repeatedGuessError
+                            .get("code")
+                            .stringValue());
+            assertEquals(
+                    "이 경기에서 이미 추측한 포켓몬입니다.",
+                    repeatedGuessError
+                            .get("message")
+                            .stringValue());
+            assertTrue(
+                    repeatedGuessError
+                            .get("recoverable")
+                            .asBoolean());
+            assertEquals(
+                    6,
+                    repeatedGuessError
+                            .get("latestStateVersion")
+                            .asLong());
         } finally {
             disconnect(hostSocket);
             disconnect(guestSocket);

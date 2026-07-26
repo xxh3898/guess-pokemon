@@ -95,6 +95,27 @@ describe("PokemonCatalogPicker", () => {
     });
   });
 
+  it("should_disablePokemonAndSkipSelection_when_nationalDexIdIsDisabled", async () => {
+    const onSelect = vi.fn();
+    render(
+      <PokemonCatalogPicker
+        disabledNationalDexIds={new Set([PIKACHU.nationalDexId])}
+        gateway={createGateway()}
+        onSelect={onSelect}
+        selectedPokemon={null}
+      />,
+    );
+
+    const card = await screen.findByRole("button", {
+      name: /피카츄.*이미 추측함/,
+    });
+
+    expect(card).toBeDisabled();
+    expect(within(card).getByText("이미 추측함")).toBeInTheDocument();
+    fireEvent.click(card);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("should_showEmptyState_when_searchHasNoResults", async () => {
     const gateway: PokemonCatalogGateway = {
       ...createGateway(),

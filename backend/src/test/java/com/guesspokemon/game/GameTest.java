@@ -6,6 +6,7 @@ import static com.guesspokemon.game.GameRuleException.GameRuleError.DUPLICATE_CO
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_ROLE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.NO_PENDING_QUESTION;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.POKEMON_ALREADY_GUESSED;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameAnswer.NO;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
@@ -410,6 +411,94 @@ class GameTest {
     }
 
     @Test
+    void should_rejectGuessWithoutChangingState_when_pokemonWasAlreadyGuessed() {
+        Game afterFirstGuess =
+                newGame()
+                        .guess(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                1,
+                                STARTED_AT.plusSeconds(1))
+                        .candidate();
+        ParticipantGameView before =
+                afterFirstGuess.viewFor(QUESTIONER_USER_ID);
+
+        assertRuleError(
+                POKEMON_ALREADY_GUESSED,
+                () ->
+                        afterFirstGuess.guess(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                1,
+                                STARTED_AT.plusSeconds(2)));
+
+        assertEquals(
+                before,
+                afterFirstGuess.viewFor(QUESTIONER_USER_ID));
+    }
+
+    @Test
+    void should_rejectDuplicateCommand_when_sameGuessCommandIsRetried() {
+        UUID commandId = UUID.randomUUID();
+        Game afterFirstGuess =
+                newGame()
+                        .guess(
+                                QUESTIONER_USER_ID,
+                                commandId,
+                                UUID.randomUUID(),
+                                1,
+                                STARTED_AT.plusSeconds(1))
+                        .candidate();
+
+        assertRuleError(
+                DUPLICATE_COMMAND,
+                () ->
+                        afterFirstGuess.guess(
+                                QUESTIONER_USER_ID,
+                                commandId,
+                                UUID.randomUUID(),
+                                1,
+                                STARTED_AT.plusSeconds(2)));
+    }
+
+    @Test
+    void should_allowSamePokemonGuess_when_gameIsDifferent() {
+        newGame()
+                .guess(
+                        QUESTIONER_USER_ID,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        1,
+                        STARTED_AT.plusSeconds(1))
+                .candidate();
+        Game nextGame =
+                Game.start(
+                                UUID.randomUUID(),
+                                ROUND_GROUP_ID,
+                                SELECTOR_USER_ID,
+                                QUESTIONER_USER_ID,
+                                ANSWER_POKEMON_ID,
+                                UUID.randomUUID(),
+                                INITIAL_STATE_VERSION,
+                                STARTED_AT.plusSeconds(2))
+                        .guess(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                1,
+                                STARTED_AT.plusSeconds(3))
+                        .candidate();
+
+        assertEquals(
+                1,
+                nextGame
+                        .viewFor(QUESTIONER_USER_ID)
+                        .usedActionCount());
+    }
+
+    @Test
     void should_completeWithSelectorWin_when_twentiethQuestionIsAnswered() {
         Game afterNineteenActions =
                 advanceWithWrongGuesses(newGame(), 19);
@@ -477,7 +566,7 @@ class GameTest {
                                 QUESTIONER_USER_ID,
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
-                                1,
+                                20,
                                 STARTED_AT.plusSeconds(20))
                         .candidate();
         ParticipantGameView view =
@@ -605,7 +694,7 @@ class GameTest {
                                     QUESTIONER_USER_ID,
                                     UUID.randomUUID(),
                                     UUID.randomUUID(),
-                                    1,
+                                    sequence,
                                     STARTED_AT.plusSeconds(sequence))
                             .candidate();
         }

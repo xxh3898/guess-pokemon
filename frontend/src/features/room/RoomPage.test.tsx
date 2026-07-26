@@ -705,6 +705,39 @@ describe("RoomPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("should_disableAlreadyGuessedPokemon_when_pokedexOpens", async () => {
+    const realtime = createRealtimeHarness();
+    renderRoom({
+      gateway: createRoomGateway({
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            QUESTIONER_AFTER_WRONG_GUESS_SNAPSHOT,
+          ),
+      }),
+      pokemonGateway: createPokemonGateway([PIKACHU]),
+      realtimeGateway: realtime.gateway,
+    });
+    await screen.findByText("내 역할 · 질문자");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "전국도감 보기" }),
+    );
+    const alreadyGuessedCard = await screen.findByRole("button", {
+      name: /피카츄.*이미 추측함/,
+    });
+
+    expect(alreadyGuessedCard).toBeDisabled();
+    expect(
+      within(alreadyGuessedCard).getByText("이미 추측함"),
+    ).toBeInTheDocument();
+    fireEvent.click(alreadyGuessedCard);
+    expect(
+      screen.getByRole("button", { name: "이 포켓몬 추측" }),
+    ).toBeDisabled();
+    expect(realtime.guessPokemon).not.toHaveBeenCalled();
+  });
+
   it("should_showResult_when_guessAndEndShareStateVersion", async () => {
     const scrollTo = vi
       .spyOn(window, "scrollTo")
@@ -1147,6 +1180,26 @@ const QUESTIONER_ACTIVE_SNAPSHOT: QuestionerActiveRoomSnapshot = {
   stateVersion: 3,
   status: "PLAYING",
 };
+const QUESTIONER_AFTER_WRONG_GUESS_SNAPSHOT: QuestionerActiveRoomSnapshot =
+  {
+    ...QUESTIONER_ACTIVE_SNAPSHOT,
+    game: {
+      ...QUESTIONER_ACTIVE_SNAPSHOT.game,
+      actions: [
+        {
+          correct: false,
+          createdAt: "2026-07-25T03:00:00Z",
+          guessedPokemon: PIKACHU,
+          guessedPokemonNationalDexId: PIKACHU.nationalDexId,
+          sequenceNumber: 1,
+          type: "GUESS",
+        },
+      ],
+      remainingActionCount: 19,
+      usedActionCount: 1,
+    },
+    stateVersion: 4,
+  };
 const QUESTIONER_PENDING_SNAPSHOT: QuestionerActiveRoomSnapshot = {
   ...QUESTIONER_ACTIVE_SNAPSHOT,
   game: {

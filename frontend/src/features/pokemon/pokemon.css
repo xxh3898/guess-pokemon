@@ -80,7 +80,7 @@
   padding: 0.55rem;
 }
 
-.pokemon-card:hover,
+.pokemon-card:not(:disabled):hover,
 .pokemon-card.is-selected {
   border-color: var(--mint);
   box-shadow: 0 5px 18px rgb(8 153 126 / 10%);
@@ -91,6 +91,13 @@
   background: var(--mint-soft);
 }
 
+.pokemon-card:disabled {
+  background: rgb(238 242 247 / 82%);
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.72;
+}
+
 .pokemon-card > span:not(.pokemon-artwork) {
   color: var(--muted);
   font-size: 0.72rem;
@@ -99,6 +106,16 @@
 .pokemon-card > strong {
   font-size: 0.9rem;
   margin-top: 0.15rem;
+}
+
+.pokemon-card > .pokemon-card-status {
+  background: var(--coral-soft);
+  border-radius: 999px;
+  color: #c13932;
+  font-size: 0.68rem;
+  font-weight: 800;
+  margin-top: 0.45rem;
+  padding: 0.25rem 0.5rem;
 }
 
 .pokemon-type-badges {
