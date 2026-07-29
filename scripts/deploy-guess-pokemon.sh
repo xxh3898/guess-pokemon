@@ -92,7 +92,6 @@ trap 'exit 143' TERM
 
 compose() {
   "${DOCKER_BIN}" \
-    --config "${docker_config_dir}" \
     compose \
     --project-directory "${APP_DIR}" \
     --env-file "${ENV_FILE}" \
@@ -216,7 +215,6 @@ registry_token=
 API_IMAGE="${new_api_image}" \
 WEB_IMAGE="${new_web_image}" \
   "${DOCKER_BIN}" \
-    --config "${docker_config_dir}" \
     compose \
     --project-directory "${APP_DIR}" \
     --env-file "${ENV_FILE}" \
@@ -258,6 +256,7 @@ write_image_env "${new_api_image}" "${new_web_image}"
 if compose up \
   --detach \
   --no-build \
+  --pull never \
   --remove-orphans \
   --wait \
   --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
@@ -279,6 +278,7 @@ if [[ -n "${previous_sha}" ]]; then
   if compose up \
     --detach \
     --no-build \
+    --pull never \
     --remove-orphans \
     --wait \
     --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
