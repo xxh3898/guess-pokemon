@@ -18,7 +18,7 @@ const [
   read("../docs/OPERATIONS.md"),
 ]);
 
-test("should_validateDevAndPullRequestsBeforeRelease", () => {
+test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () => {
   assert.match(
     validateWorkflow,
     /push:\n    branches:\n      - dev/,
@@ -33,7 +33,34 @@ test("should_validateDevAndPullRequestsBeforeRelease", () => {
     validateWorkflow,
     /run: ENV_FILE=\.env\.example \.\/scripts\/verify-compose\.sh/,
   );
+  assert.match(validateWorkflow, /frontend:\n    name: Frontend checks/);
+  assert.match(validateWorkflow, /backend:\n    name: Backend checks/);
+  assert.match(
+    validateWorkflow,
+    /infrastructure:\n    name: Infrastructure checks/,
+  );
+  assert.match(
+    validateWorkflow,
+    /backend-image:\n    name: Backend ARM64 image\n    runs-on: ubuntu-24\.04-arm/,
+  );
+  assert.match(
+    validateWorkflow,
+    /frontend-image:\n    name: Frontend ARM64 image\n    runs-on: ubuntu-24\.04-arm/,
+  );
+  for (const jobId of [
+    "infrastructure",
+    "frontend",
+    "backend",
+    "backend-image",
+    "frontend-image",
+  ]) {
+    assert.doesNotMatch(
+      workflowJob(validateWorkflow, jobId),
+      /^    needs:/m,
+    );
+  }
   assert.match(validateWorkflow, /platforms: linux\/arm64/g);
+  assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
 });
 
 test("should_publishBothShaImagesOnlyFromMain", () => {
@@ -57,6 +84,15 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
     deployWorkflow,
     /\$\{\{ env\.WEB_IMAGE_NAME \}\}:\$\{\{ github\.sha \}\}/,
   );
+  assert.match(
+    deployWorkflow,
+    /publish:\n    name: Publish ARM64 images[\s\S]*runs-on: ubuntu-24\.04-arm/,
+  );
+  assert.match(
+    workflowJob(deployWorkflow, "publish"),
+    /^    needs:\n      - validate/m,
+  );
+  assert.doesNotMatch(deployWorkflow, /docker\/setup-qemu-action/);
   assert.match(
     deployWorkflow,
     /needs:\n      - publish[\s\S]*packages: read[\s\S]*id-token: write/,
@@ -181,4 +217,19 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
 
 function read(path) {
   return readFile(new URL(path, import.meta.url), "utf8");
+}
+
+function workflowJob(workflow, jobId) {
+  const header = `\n  ${jobId}:\n`;
+  const start = workflow.indexOf(header);
+
+  assert.ok(start >= 0, `Missing workflow job: ${jobId}`);
+
+  const bodyStart = start + header.length;
+  const remaining = workflow.slice(bodyStart);
+  const nextJobOffset = remaining.search(/\n  [A-Za-z0-9_-]+:\n/);
+
+  return nextJobOffset >= 0
+    ? workflow.slice(start, bodyStart + nextJobOffset)
+    : workflow.slice(start);
 }
