@@ -29,7 +29,8 @@ docker compose version >/dev/null 2>&1 ||
 [[ -f "${environment_file}" ]] ||
   fail "환경 파일을 찾지 못했습니다: ${environment_file}"
 
-normalized_profiles=",${COMPOSE_PROFILES//[[:space:]]/},"
+compose_profiles="${COMPOSE_PROFILES:-}"
+normalized_profiles=",${compose_profiles//[[:space:]]/},"
 if [[ "${normalized_profiles}" == *",quick-tunnel,"* ]] &&
   [[ "${normalized_profiles}" == *",named-tunnel,"* ]]; then
   fail "quick-tunnel과 named-tunnel profile은 동시에 사용할 수 없습니다."

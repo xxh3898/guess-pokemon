@@ -240,6 +240,10 @@ test("should_renderEveryComposeVariant_without_startingServices", () => {
   assert.match(verifyScript, /\.env\.production\.example/);
   assert.match(
     verifyScript,
+    /compose_profiles="\$\{COMPOSE_PROFILES:-\}"/,
+  );
+  assert.match(
+    verifyScript,
     /quick-tunnel과 named-tunnel profile은 동시에 사용할 수 없습니다/,
   );
   assert.doesNotMatch(verifyScript, /\bup\b|\bstart\b|\bdown\b/);
