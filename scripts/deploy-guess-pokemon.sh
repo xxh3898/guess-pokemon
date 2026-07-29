@@ -10,6 +10,8 @@ readonly BACKUP_SCRIPT=/Users/homeserver/Server/scripts/backup/backup-guess-poke
 readonly API_IMAGE_REPOSITORY=ghcr.io/xxh3898/guess-pokemon-api
 readonly WEB_IMAGE_REPOSITORY=ghcr.io/xxh3898/guess-pokemon-web
 readonly HEALTH_TIMEOUT_SECONDS=180
+readonly ACTIVE_GAME_POLL_INTERVAL_SECONDS=60
+readonly ACTIVE_GAME_WAIT_TIMEOUT_SECONDS=900
 
 usage() {
   printf 'Usage: deploy-guess-pokemon.sh <commit-sha> <registry-user>\n' >&2
@@ -97,6 +99,65 @@ compose() {
     --env-file "${ENV_FILE}" \
     --file "${COMPOSE_FILE}" \
     "$@"
+}
+
+read_active_game_count() {
+  local active_game_count
+
+  active_game_count="$(
+    # Variables expand inside the database container, not in this host shell.
+    # shellcheck disable=SC2016
+    compose exec -T db /bin/sh -ceu '
+      exec psql \
+        --username "${POSTGRES_USER}" \
+        --dbname "${POSTGRES_DB}" \
+        --tuples-only \
+        --no-align \
+        --command "SELECT count(*) FROM game WHERE status = '\''IN_PROGRESS'\''"
+    ' \
+      | /usr/bin/tr -d '[:space:]'
+  )"
+
+  if [[ ! "${active_game_count}" =~ ^[0-9]+$ ]]; then
+    fail "could not determine active game count"
+  fi
+
+  printf '%s' "${active_game_count}"
+}
+
+wait_for_no_active_games() {
+  local active_game_count
+  local elapsed_seconds=0
+  local sleep_seconds
+
+  while true; do
+    active_game_count="$(read_active_game_count)"
+
+    if ((active_game_count == 0)); then
+      if ((elapsed_seconds > 0)); then
+        printf 'No active games remain; deployment will continue\n'
+      fi
+      return
+    fi
+
+    if ((elapsed_seconds >= ACTIVE_GAME_WAIT_TIMEOUT_SECONDS)); then
+      fail "deployment timed out after ${ACTIVE_GAME_WAIT_TIMEOUT_SECONDS}s because ${active_game_count} game(s) are still in progress"
+    fi
+
+    sleep_seconds="${ACTIVE_GAME_POLL_INTERVAL_SECONDS}"
+    if ((elapsed_seconds + sleep_seconds > ACTIVE_GAME_WAIT_TIMEOUT_SECONDS)); then
+      sleep_seconds="$((ACTIVE_GAME_WAIT_TIMEOUT_SECONDS - elapsed_seconds))"
+    fi
+
+    printf \
+      'Waiting %ss before checking %s active game(s) again (%ss/%ss elapsed)\n' \
+      "${sleep_seconds}" \
+      "${active_game_count}" \
+      "${elapsed_seconds}" \
+      "${ACTIVE_GAME_WAIT_TIMEOUT_SECONDS}"
+    /bin/sleep "${sleep_seconds}"
+    elapsed_seconds="$((elapsed_seconds + sleep_seconds))"
+  done
 }
 
 read_env_value() {
@@ -227,27 +288,7 @@ if ! /usr/bin/grep -qx db <<<"${running_services}"; then
   fail "production db service must be running before deployment"
 fi
 
-in_progress_count="$(
-  # Variables expand inside the database container, not in this host shell.
-  # shellcheck disable=SC2016
-  compose exec -T db /bin/sh -ceu '
-    exec psql \
-      --username "${POSTGRES_USER}" \
-      --dbname "${POSTGRES_DB}" \
-      --tuples-only \
-      --no-align \
-      --command "SELECT count(*) FROM game WHERE status = '\''IN_PROGRESS'\''"
-  ' \
-    | /usr/bin/tr -d '[:space:]'
-)"
-
-if [[ ! "${in_progress_count}" =~ ^[0-9]+$ ]]; then
-  fail "could not determine active game count"
-fi
-
-if ((in_progress_count > 0)); then
-  fail "deployment stopped because ${in_progress_count} game(s) are in progress"
-fi
+wait_for_no_active_games
 
 "${BACKUP_SCRIPT}"
 
