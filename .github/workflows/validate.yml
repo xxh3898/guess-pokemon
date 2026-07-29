@@ -17,16 +17,85 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      infrastructure: ${{ steps.classify.outputs.infrastructure }}
+      backend_image: ${{ steps.classify.outputs.backend_image }}
+      frontend_image: ${{ steps.classify.outputs.frontend_image }}
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          case "${EVENT_NAME}" in
+            pull_request)
+              base_sha="${PR_BASE_SHA}"
+              ;;
+            push)
+              base_sha="${BEFORE_SHA}"
+              ;;
+            *)
+              base_sha=""
+              ;;
+          esac
+
+          if [[ -z "${base_sha}" \
+            || "${base_sha}" =~ ^0{40}$ ]] \
+            || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            ./scripts/classify-ci-paths.sh \
+              ".github/workflows/validate.yml"
+            exit 0
+          fi
+
+          mapfile -d '' -t changed_paths < <(
+            git diff \
+              --no-renames \
+              --name-only \
+              -z \
+              "${base_sha}" \
+              "${GITHUB_SHA}"
+          )
+          ./scripts/classify-ci-paths.sh "${changed_paths[@]}"
+
   infrastructure:
     name: Infrastructure checks
+    needs:
+      - changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
+      - name: Fail when change detection fails
+        if: needs.changes.result != 'success'
+        run: exit 1
+
+      - name: Skip unrelated infrastructure checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure != 'true'
+        run: echo "No infrastructure-related changes."
+
       - name: Check out repository
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Validate shell scripts
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
         run: |
           bash -n \
             scripts/backup-db.sh \
@@ -36,9 +105,11 @@ jobs:
             scripts/verify-compose.sh
 
       - name: Render Compose variants
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
         run: ENV_FILE=.env.example ./scripts/verify-compose.sh
 
       - name: Run infrastructure checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
         run: |
           docker compose \
             --file compose.test.yaml \
@@ -51,14 +122,27 @@ jobs:
 
   frontend:
     name: Frontend checks
+    needs:
+      - changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
+      - name: Fail when change detection fails
+        if: needs.changes.result != 'success'
+        run: exit 1
+
+      - name: Skip unrelated frontend checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend != 'true'
+        run: echo "No frontend-related changes."
+
       - name: Check out repository
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Run frontend checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'
         run: >
           docker compose
           --file compose.test.yaml
@@ -67,17 +151,31 @@ jobs:
 
   backend:
     name: Backend checks
+    needs:
+      - changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
+      - name: Fail when change detection fails
+        if: needs.changes.result != 'success'
+        run: exit 1
+
+      - name: Skip unrelated backend checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend != 'true'
+        run: echo "No backend-related changes."
+
       - name: Check out repository
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Prepare Gradle user home
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
         run: mkdir -p "${RUNNER_TEMP}/gradle-user-home"
 
       - name: Restore Gradle dependency cache
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -86,6 +184,7 @@ jobs:
           key: gradle-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/**/*.gradle*', 'backend/gradle/wrapper/gradle-wrapper.properties') }}
 
       - name: Run backend checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
         env:
           BACKEND_GRADLE_USER_HOME_VOLUME: ${{ runner.temp }}/gradle-user-home
         run: >
@@ -96,17 +195,31 @@ jobs:
 
   backend-image:
     name: Backend ARM64 image
+    needs:
+      - changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
 
     steps:
+      - name: Fail when change detection fails
+        if: needs.changes.result != 'success'
+        run: exit 1
+
+      - name: Skip unrelated backend image build
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image != 'true'
+        run: echo "No backend image-related changes."
+
       - name: Check out repository
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build backend ARM64 verification image
+        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -119,17 +232,31 @@ jobs:
 
   frontend-image:
     name: Frontend ARM64 image
+    needs:
+      - changes
+    if: ${{ always() }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
 
     steps:
+      - name: Fail when change detection fails
+        if: needs.changes.result != 'success'
+        run: exit 1
+
+      - name: Skip unrelated frontend image build
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image != 'true'
+        run: echo "No frontend image-related changes."
+
       - name: Check out repository
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build frontend ARM64 verification image
+        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
