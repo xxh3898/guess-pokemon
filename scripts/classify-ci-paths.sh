@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-set -Eeuo pipefail
+set -eu
 
 backend=false
 frontend=false
@@ -32,7 +32,7 @@ while IFS= read -r changed_path; do
   esac
 done
 
-if [[ "${all}" == "true" ]]; then
+if [ "${all}" = "true" ]; then
   backend=true
   frontend=true
   infrastructure=true
@@ -40,12 +40,16 @@ if [[ "${all}" == "true" ]]; then
   frontend_image=true
 fi
 
-output_file="${GITHUB_OUTPUT:-/dev/stdout}"
-
-{
+write_outputs() {
   printf 'backend=%s\n' "${backend}"
   printf 'frontend=%s\n' "${frontend}"
   printf 'infrastructure=%s\n' "${infrastructure}"
   printf 'backend_image=%s\n' "${backend_image}"
   printf 'frontend_image=%s\n' "${frontend_image}"
-} >>"${output_file}"
+}
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  write_outputs >>"${GITHUB_OUTPUT}"
+else
+  write_outputs
+fi

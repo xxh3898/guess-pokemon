@@ -338,16 +338,16 @@ function read(path) {
 
 function classifyPaths(paths) {
   const result = spawnSync(
-    "bash",
-    [new URL("./classify-ci-paths.sh", import.meta.url).pathname],
+    new URL("./classify-ci-paths.sh", import.meta.url).pathname,
+    [],
     {
       encoding: "utf8",
       input: `${paths.join("\n")}\n`,
     },
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(pathClassifier, /set -Eeuo pipefail/);
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  assert.match(pathClassifier, /^#!\/bin\/sh\n\nset -eu$/m);
 
   return Object.fromEntries(
     result.stdout
