@@ -69,11 +69,15 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   assert.match(validateWorkflow, /changes:\n    name: Detect changes/);
   assert.match(
     validateWorkflow,
-    /git diff --name-only "\$\{base_sha\}" "\$\{GITHUB_SHA\}"/,
+    /mapfile -d '' -t changed_paths < <\([\s\S]*git diff[\s\S]*--no-renames[\s\S]*--name-only[\s\S]*-z/,
   );
   assert.match(
     validateWorkflow,
-    /printf '%s\\n' "\.github\/workflows\/validate\.yml"/,
+    /\.\/scripts\/classify-ci-paths\.sh "\$\{changed_paths\[@\]\}"/,
+  );
+  assert.match(
+    validateWorkflow,
+    /\.\/scripts\/classify-ci-paths\.sh \\\n\s+"\.github\/workflows\/validate\.yml"/,
   );
   assert.match(validateWorkflow, /platforms: linux\/arm64/g);
   assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
@@ -116,6 +120,29 @@ test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
     infrastructure: "true",
     backend_image: "false",
     frontend_image: "false",
+  });
+});
+
+test("should_runBothScopes_when_fileMovesFromFrontendToBackend", () => {
+  assert.deepEqual(
+    classifyPaths(["frontend/src/old.ts", "backend/src/main/java/New.java"]),
+    {
+      backend: "true",
+      frontend: "true",
+      infrastructure: "false",
+      backend_image: "true",
+      frontend_image: "true",
+    },
+  );
+});
+
+test("should_preserveNonAsciiPath_when_frontendFileChanges", () => {
+  assert.deepEqual(classifyPaths(["frontend/src/포켓몬.ts"]), {
+    backend: "false",
+    frontend: "true",
+    infrastructure: "false",
+    backend_image: "false",
+    frontend_image: "true",
   });
 });
 
@@ -339,10 +366,9 @@ function read(path) {
 function classifyPaths(paths) {
   const result = spawnSync(
     new URL("./classify-ci-paths.sh", import.meta.url).pathname,
-    [],
+    paths,
     {
       encoding: "utf8",
-      input: `${paths.join("\n")}\n`,
     },
   );
 

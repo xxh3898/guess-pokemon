@@ -9,7 +9,7 @@ backend_image=false
 frontend_image=false
 all=false
 
-while IFS= read -r changed_path; do
+for changed_path in "$@"; do
   case "${changed_path}" in
     .github/workflows/* | .dockerignore | compose.test.yaml | scripts/classify-ci-paths.sh)
       all=true

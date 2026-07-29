@@ -58,13 +58,20 @@ jobs:
           if [[ -z "${base_sha}" \
             || "${base_sha}" =~ ^0{40}$ ]] \
             || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            printf '%s\n' ".github/workflows/validate.yml" \
-              | ./scripts/classify-ci-paths.sh
+            ./scripts/classify-ci-paths.sh \
+              ".github/workflows/validate.yml"
             exit 0
           fi
 
-          git diff --name-only "${base_sha}" "${GITHUB_SHA}" \
-            | ./scripts/classify-ci-paths.sh
+          mapfile -d '' -t changed_paths < <(
+            git diff \
+              --no-renames \
+              --name-only \
+              -z \
+              "${base_sha}" \
+              "${GITHUB_SHA}"
+          )
+          ./scripts/classify-ci-paths.sh "${changed_paths[@]}"
 
   infrastructure:
     name: Infrastructure checks
