@@ -506,7 +506,11 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - base production-like 구성은 `web`, `api`, `db` 세 service를 유지한다.
 - `compose.tunnel.yaml`은 base 구성에 Quick Tunnel과 remotely-managed named tunnel profile을 추가한다.
 - Quick과 named connector는 동시에 실행하지 않고 profile을 지정하지 않으면 둘 다 생성하지 않는다.
-- `db`는 external port를 publish하지 않고 Docker network에만 expose한다.
+- `db`는 external port를 publish하지 않고 외부 통신이 차단된 `application` network에만 참여한다.
+- `api`는 host port와 공유 `edge` network를 사용하지 않는다. DB 통신용
+  `application`과 프로젝트 전용 `egress` bridge에만 참여하며, 실루엣
+  원본 HTTPS 요청은 catalog URL의 scheme·host allowlist를 통과한
+  `raw.githubusercontent.com`으로 제한한다.
 - named volume을 PostgreSQL 18의 `/var/lib/postgresql`에 mount해 data를 보관한다.
 - Tunnel override는 `web`의 host port를 loopback에만 bind하고 `SESSION_COOKIE_SECURE=true`를 강제한다.
 - cloudflared는 별도 `tunnel-origin` network에서 `web:80`에만 접근하고 DB·API default network에는 참여하지 않는다.

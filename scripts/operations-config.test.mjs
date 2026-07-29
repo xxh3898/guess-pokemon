@@ -115,7 +115,7 @@ test("should_forceSecureCookieAndLoopbackOrigin_when_tunnelOverrideIsUsed", () =
   );
 });
 
-test("should_isolateProductionDatabaseAndExposeOnlyWebToEdge", () => {
+test("should_isolateProductionDatabaseAndGiveOnlyApiEgress", () => {
   const db = serviceBlock(productionCompose, "db");
   const api = serviceBlock(productionCompose, "api");
   const web = serviceBlock(productionCompose, "web");
@@ -124,14 +124,20 @@ test("should_isolateProductionDatabaseAndExposeOnlyWebToEdge", () => {
   assert.doesNotMatch(api, /\n\s+ports:/);
   assert.doesNotMatch(web, /\n\s+ports:/);
   assert.match(db, /\n    networks:\n      - application/);
-  assert.match(api, /\n    networks:\n      - application/);
+  assert.doesNotMatch(db, /\n      - egress/);
+  assert.match(
+    api,
+    /\n    networks:\n      - application\n      - egress/,
+  );
+  assert.doesNotMatch(api, /\n      - edge/);
+  assert.doesNotMatch(web, /\n\s+egress:/);
   assert.match(
     web,
     /\n    networks:\n      application:\n      edge:\n        aliases:\n          - guess-pokemon-web/,
   );
   assert.match(
     productionCompose,
-    /application:\n    internal: true[\s\S]*edge:\n    external: true\n    name: edge/,
+    /application:\n    internal: true\n  egress:\n    driver: bridge\n  edge:\n    external: true\n    name: edge/,
   );
 });
 
