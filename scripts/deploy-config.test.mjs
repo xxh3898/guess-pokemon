@@ -281,26 +281,46 @@ test("should_useTailscaleAndRestrictedSshForDeployment", () => {
     /\^deploy-guess-pokemon\[\[:space:\]\]\(\[0-9a-fA-F\]\{40\}\)\[\[:space:\]\]\(\[A-Za-z0-9_-\]\+\)\$/,
   );
   assert.doesNotMatch(restrictedWrapper, /eval|bash -c|sh -c/);
+  assert.match(
+    workflowJob(deployWorkflow, "deploy"),
+    /^    timeout-minutes: 30$/m,
+  );
 });
 
-test("should_backupAndRejectActiveGamesBeforeImageReplacement", () => {
+test("should_waitForActiveGamesBeforeBackupAndImageReplacement", () => {
   const activeGameCheck = deployScript.indexOf(
     "SELECT count(*) FROM game WHERE status",
   );
+  const activeGameWait = deployScript.lastIndexOf(
+    "\nwait_for_no_active_games\n",
+  );
   const backup = deployScript.indexOf(
     '"${BACKUP_SCRIPT}"',
-    activeGameCheck,
+    activeGameWait,
   );
   const imageWrite = deployScript.indexOf(
     'write_image_env "${new_api_image}" "${new_web_image}"',
   );
 
   assert.ok(activeGameCheck >= 0);
-  assert.ok(backup > activeGameCheck);
+  assert.ok(activeGameWait > activeGameCheck);
+  assert.ok(backup > activeGameWait);
   assert.ok(imageWrite > backup);
   assert.match(
     deployScript,
-    /deployment stopped because \$\{in_progress_count\} game\(s\) are in progress/,
+    /readonly ACTIVE_GAME_POLL_INTERVAL_SECONDS=60/,
+  );
+  assert.match(
+    deployScript,
+    /readonly ACTIVE_GAME_WAIT_TIMEOUT_SECONDS=900/,
+  );
+  assert.match(
+    deployScript,
+    /\/bin\/sleep "\$\{sleep_seconds\}"/,
+  );
+  assert.match(
+    deployScript,
+    /deployment timed out after \$\{ACTIVE_GAME_WAIT_TIMEOUT_SECONDS\}s because \$\{active_game_count\} game\(s\) are still in progress/,
   );
 });
 
@@ -376,7 +396,14 @@ test("should_validateArchiveBeforePruningExpiredProjectBackups", () => {
 test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
   assert.match(operations, /`dev` push와 `main` 대상 PR/);
   assert.match(operations, /`main` push에서만 두 ARM64 image/);
-  assert.match(operations, /진행 중 game이 1건 이상이면 배포를 중단한다/);
+  assert.match(
+    operations,
+    /진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간/,
+  );
+  assert.match(
+    operations,
+    /15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다/,
+  );
   assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
 });

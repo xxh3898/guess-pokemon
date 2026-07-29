@@ -386,11 +386,20 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 
 1. 두 SHA image를 pull하고 production Compose를 render한다.
 2. DB가 실행 중인지 확인한다.
-3. 진행 중 game이 1건 이상이면 배포를 중단한다.
-4. custom-format DB backup과 archive 검증을 완료한다.
-5. API·web image tag를 함께 갱신한다.
-6. 전체 service health를 제한 시간 동안 기다린다.
-7. 실패하면 이전 API·web SHA를 함께 복구한다.
+3. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
+   기다린다.
+4. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
+   15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
+5. custom-format DB backup과 archive 검증을 완료한다.
+6. API·web image tag를 함께 갱신한다.
+7. 전체 service health를 제한 시간 동안 기다린다.
+8. 실패하면 이전 API·web SHA를 함께 복구한다.
+
+GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
+15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,
+최대 180초의 health check가 포함된다. 15분 대기 후 실패한 workflow는
+game 종료 뒤 `Re-run jobs` → `Re-run failed jobs`로 같은 commit을 다시
+배포할 수 있다.
 
 image rollback은 PostgreSQL volume을 삭제하지 않는다. Flyway가 새
 schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다.
