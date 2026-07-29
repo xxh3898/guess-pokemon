@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -9,6 +10,7 @@ const [
   restrictedWrapper,
   productionBackupScript,
   operations,
+  pathClassifier,
 ] = await Promise.all([
   read("../.github/workflows/validate.yml"),
   read("../.github/workflows/deploy.yml"),
@@ -16,6 +18,7 @@ const [
   read("./deploy-guess-pokemon-ci.sh"),
   read("./backup-production-db.sh"),
   read("../docs/OPERATIONS.md"),
+  read("./classify-ci-paths.sh"),
 ]);
 
 test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () => {
@@ -40,12 +43,12 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
     /infrastructure:\n    name: Infrastructure checks/,
   );
   assert.match(
-    validateWorkflow,
-    /backend-image:\n    name: Backend ARM64 image\n    runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "backend-image"),
+    /name: Backend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   assert.match(
-    validateWorkflow,
-    /frontend-image:\n    name: Frontend ARM64 image\n    runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "frontend-image"),
+    /name: Frontend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   for (const jobId of [
     "infrastructure",
@@ -54,13 +57,91 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
     "backend-image",
     "frontend-image",
   ]) {
-    assert.doesNotMatch(
+    assert.match(
       workflowJob(validateWorkflow, jobId),
-      /^    needs:/m,
+      /^    needs:\n      - changes/m,
+    );
+    assert.match(
+      workflowJob(validateWorkflow, jobId),
+      /- name: Skip unrelated/,
     );
   }
+  assert.match(validateWorkflow, /changes:\n    name: Detect changes/);
+  assert.match(
+    validateWorkflow,
+    /git diff --name-only "\$\{base_sha\}" "\$\{GITHUB_SHA\}"/,
+  );
+  assert.match(
+    validateWorkflow,
+    /printf '%s\\n' "\.github\/workflows\/validate\.yml"/,
+  );
   assert.match(validateWorkflow, /platforms: linux\/arm64/g);
   assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
+});
+
+test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
+  assert.deepEqual(classifyPaths(["frontend/src/App.tsx"]), {
+    backend: "false",
+    frontend: "true",
+    infrastructure: "false",
+    backend_image: "false",
+    frontend_image: "true",
+  });
+});
+
+test("should_runOnlyBackendChecks_when_backendSourceChanges", () => {
+  assert.deepEqual(classifyPaths(["backend/src/main/java/App.java"]), {
+    backend: "true",
+    frontend: "false",
+    infrastructure: "false",
+    backend_image: "true",
+    frontend_image: "false",
+  });
+});
+
+test("should_runInfraAndFrontendImage_when_nginxChanges", () => {
+  assert.deepEqual(classifyPaths(["infra/nginx/default.conf"]), {
+    backend: "false",
+    frontend: "false",
+    infrastructure: "true",
+    backend_image: "false",
+    frontend_image: "true",
+  });
+});
+
+test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
+  assert.deepEqual(classifyPaths(["docs/OPERATIONS.md"]), {
+    backend: "false",
+    frontend: "false",
+    infrastructure: "true",
+    backend_image: "false",
+    frontend_image: "false",
+  });
+});
+
+test("should_skipExpensiveChecks_when_unrelatedMetadataChanges", () => {
+  assert.deepEqual(classifyPaths(["AGENTS.md"]), {
+    backend: "false",
+    frontend: "false",
+    infrastructure: "false",
+    backend_image: "false",
+    frontend_image: "false",
+  });
+});
+
+test("should_runEveryCheck_when_classifierOrWorkflowChanges", () => {
+  for (const changedPath of [
+    "scripts/classify-ci-paths.sh",
+    ".github/workflows/validate.yml",
+  ]) {
+    assert.deepEqual(classifyPaths([changedPath]), {
+      backend: "true",
+      frontend: "true",
+      infrastructure: "true",
+      backend_image: "true",
+      frontend_image: "true",
+    });
+  }
 });
 
 test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
@@ -253,6 +334,27 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
 
 function read(path) {
   return readFile(new URL(path, import.meta.url), "utf8");
+}
+
+function classifyPaths(paths) {
+  const result = spawnSync(
+    "bash",
+    [new URL("./classify-ci-paths.sh", import.meta.url).pathname],
+    {
+      encoding: "utf8",
+      input: `${paths.join("\n")}\n`,
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(pathClassifier, /set -Eeuo pipefail/);
+
+  return Object.fromEntries(
+    result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => line.split("=")),
+  );
 }
 
 function workflowJob(workflow, jobId) {
