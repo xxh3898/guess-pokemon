@@ -29,7 +29,8 @@ docker compose version >/dev/null 2>&1 ||
 [[ -f "${environment_file}" ]] ||
   fail "환경 파일을 찾지 못했습니다: ${environment_file}"
 
-normalized_profiles=",${COMPOSE_PROFILES//[[:space:]]/},"
+compose_profiles="${COMPOSE_PROFILES:-}"
+normalized_profiles=",${compose_profiles//[[:space:]]/},"
 if [[ "${normalized_profiles}" == *",quick-tunnel,"* ]] &&
   [[ "${normalized_profiles}" == *",named-tunnel,"* ]]; then
   fail "quick-tunnel과 named-tunnel profile은 동시에 사용할 수 없습니다."
@@ -52,6 +53,10 @@ compose_command=(
 "${compose_command[@]}" \
   --file "${repository_root}/compose.tunnel.yaml" \
   --profile named-tunnel \
+  config --quiet
+docker compose \
+  --env-file "${repository_root}/.env.production.example" \
+  --file "${repository_root}/compose.production.yaml" \
   config --quiet
 
 if [[ "${verification_mode}" == "named" ]]; then
@@ -81,4 +86,4 @@ if [[ "${verification_mode}" == "named" ]]; then
     fail "비어 있지 않은 named tunnel token file이 필요합니다."
 fi
 
-printf 'Compose 구성 검증 완료: base, dev, quick-tunnel, named-tunnel\n'
+printf 'Compose 구성 검증 완료: base, dev, quick-tunnel, named-tunnel, production\n'

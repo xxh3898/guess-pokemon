@@ -12,7 +12,17 @@ services:
       && npm run build
       && npm audit --audit-level=high"
     volumes:
-      - ./frontend:/workspace:ro
+      - ./frontend/index.html:/workspace/index.html:ro
+      - ./frontend/package-lock.json:/workspace/package-lock.json:ro
+      - ./frontend/package.json:/workspace/package.json:ro
+      - ./frontend/public:/workspace/public:ro
+      - ./frontend/src:/workspace/src:ro
+      - ./frontend/tsconfig.app.json:/workspace/tsconfig.app.json:ro
+      - ./frontend/tsconfig.json:/workspace/tsconfig.json:ro
+      - ./frontend/tsconfig.node.json:/workspace/tsconfig.node.json:ro
+      - ./frontend/vite.config.test.ts:/workspace/vite.config.test.ts:ro
+      - ./frontend/vite.config.ts:/workspace/vite.config.ts:ro
+      - ./frontend/vitest.config.ts:/workspace/vitest.config.ts:ro
       - frontend-test-dist:/workspace/dist
       - frontend-test-node-modules:/workspace/node_modules
 
@@ -34,7 +44,7 @@ services:
         source: /var/run/docker.sock
         target: /var/run/docker.sock
       - backend-test-build:${PWD:?Run Docker Compose from the repository root}/backend/build
-      - backend-test-gradle-cache:/home/gradle/.gradle
+      - "${BACKEND_GRADLE_USER_HOME_VOLUME:-backend-test-gradle-cache}:/home/gradle/.gradle"
       - backend-test-project-cache:${PWD:?Run Docker Compose from the repository root}/backend/.gradle
 
   infra-test:
@@ -42,12 +52,16 @@ services:
     working_dir: /workspace
     command: >
       node --test
+      scripts/deploy-config.test.mjs
       scripts/nginx-config.test.mjs
       scripts/operations-config.test.mjs
     volumes:
+      - ./.github:/workspace/.github:ro
       - ./.env.example:/workspace/.env.example:ro
+      - ./.env.production.example:/workspace/.env.production.example:ro
       - ./README.md:/workspace/README.md:ro
       - ./compose.dev.yaml:/workspace/compose.dev.yaml:ro
+      - ./compose.production.yaml:/workspace/compose.production.yaml:ro
       - ./compose.test.yaml:/workspace/compose.test.yaml:ro
       - ./compose.tunnel.yaml:/workspace/compose.tunnel.yaml:ro
       - ./compose.yaml:/workspace/compose.yaml:ro
@@ -62,7 +76,7 @@ services:
     extra_hosts:
       - api:127.0.0.1
     volumes:
-      - ./infra/nginx/cloudflare-real-ip.conf:/etc/nginx/conf.d/00-cloudflare-real-ip.conf:ro
+      - ./infra/nginx/cloudflare-edge-real-ip.conf:/etc/nginx/conf.d/00-cloudflare-real-ip.conf:ro
       - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:

@@ -1028,6 +1028,11 @@ describe("RoomPage", () => {
     });
     const { router } = renderRoom({ gateway });
     await screen.findByText("내 역할 · 질문자");
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
 
     await act(async () => {
       await router.navigate("/lobby");

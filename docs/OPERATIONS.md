@@ -2,7 +2,7 @@
 
 - 작성일: 2026-07-25
 - 대상: Docker Compose 기반 MacBook 통합 테스트와 Mac mini 단일 서버 운영
-- 비범위: Cloudflare 계정 생성, 도메인 구매·DNS 위임, 운영 배포 실행, 운영 DB restore 실행
+- 비범위: 운영 배포 실행, 운영 DB restore 실행
 
 ## 1. 운영 원칙
 
@@ -303,7 +303,128 @@ named tunnel은 실행할 때와 같은 `compose.tunnel.yaml`과 profile을 지�
 - [ ] 실제 도메인과 Pokémon 관련 권리 범위를 검토했다.
 - [ ] HTTPS, REST, WSS, PC·모바일 핵심 흐름을 확인했다.
 
-## 12. 참고 문서
+## 12. Mac mini 공유 Tunnel 운영 구성
+
+Mac mini 운영에서는 저장소의 `compose.production.yaml`을 단독으로
+사용한다. GitHub Actions가 만든 backend·frontend image를 실행하며
+Mac mini에서 source build를 수행하지 않는다.
+공개 hostname은 `guess-pokemon.chochiho.cloud`이다.
+
+```text
+guess-pokemon.chochiho.cloud
+  -> Cloudflare home-mini tunnel
+  -> edge network의 guess-pokemon-web:80
+  -> application network의 api:8080
+  -> application network의 db:5432
+```
+
+- `db`, `api`는 host port와 `edge` network를 사용하지 않는다.
+- `web`만 `edge`에 `guess-pokemon-web` alias로 참여한다.
+- `application` network는 `internal: true`로 외부 연결을 차단한다.
+- Portfolio와 Compose project, 환경 파일, DB volume을 공유하지 않는다.
+- 운영 session cookie는 항상 `Secure=true`다.
+- 운영 image는 backend·frontend 모두 같은 40자리 commit SHA tag를
+  사용한다.
+
+공유 `cloudflared` connector는 `edge` network의 `172.18.0.2`에
+고정해야 한다. `infra/nginx/cloudflare-edge-real-ip.conf`는 이 한
+주소만 `CF-Connecting-IP` 전달자로 신뢰한다. connector 주소를 고정하지
+않고 container를 재생성하면 HSTS와 client IP별 rate limit가 의도대로
+작동하지 않는다.
+
+운영 환경 예시는 `.env.production.example`이다. 실제
+`POSTGRES_PASSWORD`와 image SHA는
+`/Users/homeserver/Server/apps/guess-pokemon/.env`에만 저장하고
+파일 mode를 `600`으로 제한한다.
+
+container를 시작하지 않고 운영 구성을 확인한다.
+
+```bash
+docker compose \
+  --env-file .env.production.example \
+  --file compose.production.yaml \
+  config --quiet
+```
+
+첫 배포 전에 MacBook DB의 최신 custom-format backup을 만들고 격리
+restore rehearsal을 통과해야 한다. 운영 DB restore, connector 재생성,
+public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한다.
+
+## 13. GitHub Actions 자동 배포
+
+- `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
+  frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
+- frontend, backend, infra, API image, Web image 검증은 독립 job으로
+  실행해 서로 기다리지 않는다.
+- `Detect changes`가 push 이전 SHA 또는 PR base SHA와 현재 SHA를 비교한다.
+  필수 check 5개는 항상 생성하고 관련 없는 job은 no-op으로 성공 처리한다.
+- `Detect changes`가 실패해도 필수 check 5개는 `always()`로 실행하며
+  change detection 실패를 각 check 실패로 전파한다.
+- `frontend/**` 변경은 frontend 검사·image만, `backend/**` 변경은
+  backend 검사·image만 실제 실행한다. `infra/nginx/default.conf` 변경은
+  infrastructure 검사와 frontend runtime image를 함께 검증한다.
+- workflow, `.dockerignore`, `compose.test.yaml`, 변경 감지 script 변경은
+  분류 안전성을 위해 전체 검증을 실행한다.
+- backend 검증은 runner의 Gradle wrapper·dependency cache를 test
+  container에 연결한다. Gradle test task 결과 cache는 사용하지 않아
+  각 validation에서 test를 다시 실행한다.
+- 두 ARM64 image 검증과 `main` publish는 `ubuntu-24.04-arm`에서
+  실행하며 QEMU emulation을 사용하지 않는다.
+- `main` branch protection이 PR의 다섯 validation check를 요구하므로
+  `main` push에서는 같은 전체 검증을 다시 실행하지 않는다.
+- `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
+- `main` 배포는 변경 경로와 무관하게 API·Web 동일 SHA image 두 개를
+  발행하고 함께 교체하는 rollback 계약을 유지한다.
+- 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
+  `home-mini`에 연결한다.
+- forced command wrapper는
+  `deploy-guess-pokemon <40자리-sha> <registry-user>`만 허용한다.
+- Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
+  종료 시 정리한다.
+
+배포 순서는 다음과 같다.
+
+1. 두 SHA image를 pull하고 production Compose를 render한다.
+2. DB가 실행 중인지 확인한다.
+3. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
+   기다린다.
+4. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
+   15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
+5. custom-format DB backup과 archive 검증을 완료한다.
+6. API·web image tag를 함께 갱신한다.
+7. 전체 service health를 제한 시간 동안 기다린다.
+8. 실패하면 이전 API·web SHA를 함께 복구한다.
+
+GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
+15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,
+최대 180초의 health check가 포함된다. 15분 대기 후 실패한 workflow는
+game 종료 뒤 `Re-run jobs` → `Re-run failed jobs`로 같은 commit을 다시
+배포할 수 있다.
+
+image rollback은 PostgreSQL volume을 삭제하지 않는다. Flyway가 새
+schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다.
+migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
+사용한다.
+
+## 14. 운영 backup과 3일 보존
+
+`scripts/backup-production-db.sh`를 Mac mini의
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`로
+설치한다.
+
+- 실행 중인 production DB만 대상으로 한다.
+- mode `600`의 temporary file에 custom-format dump를 기록한다.
+- `pg_restore --list`가 성공한 archive만 최종 이름으로 공개한다.
+- 새 backup이 성공한 뒤 3일을 초과한 Guess Pokémon archive만 정리한다.
+- 정확히
+  `guess-pokemon-production-YYYYMMDDTHHMMSSZ.dump` 형식인 파일만
+  정리 대상이다.
+- 최신 backup과 다른 프로젝트 backup은 건드리지 않는다.
+
+같은 Mac mini SSD의 backup은 장비 전체 장애를 복구하지 못한다.
+외장 SSD 또는 암호화한 원격 복사본은 별도 작업으로 추가한다.
+
+## 15. 참고 문서
 
 - [Cloudflare Tunnel 설정](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
 - [Cloudflare HTTP 요청 header](https://developers.cloudflare.com/fundamentals/reference/http-headers/)

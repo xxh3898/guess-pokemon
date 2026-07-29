@@ -13,6 +13,13 @@ const cloudflareRealIpConfig = await readFile(
   ),
   "utf8",
 );
+const cloudflareEdgeRealIpConfig = await readFile(
+  new URL(
+    "../infra/nginx/cloudflare-edge-real-ip.conf",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("should_trustOnlyTunnelConnectorAddresses_when_realIpIsEnabled", () => {
   assert.match(
@@ -37,10 +44,26 @@ test("should_trustOnlyTunnelConnectorAddresses_when_realIpIsEnabled", () => {
   );
 });
 
+test("should_trustOnlyPinnedSharedConnector_when_productionRuns", () => {
+  assert.match(
+    cloudflareEdgeRealIpConfig,
+    /set_real_ip_from 172\.18\.0\.2;/,
+  );
+  assert.match(
+    cloudflareEdgeRealIpConfig,
+    /real_ip_header CF-Connecting-IP;/,
+  );
+  assert.match(cloudflareEdgeRealIpConfig, /real_ip_recursive off;/);
+  assert.doesNotMatch(
+    cloudflareEdgeRealIpConfig,
+    /set_real_ip_from (?:0\.0\.0\.0\/0|10\.0\.0\.0\/8|172\.18\.0\.0\/16|192\.168\.0\.0\/16);/,
+  );
+});
+
 test("should_forwardExternalSchemeAndPort_when_requestComesFromTunnel", () => {
   assert.match(
     nginxConfig,
-    /map \$realip_remote_addr \$trusted_tunnel_request \{[\s\S]*172\.30\.77\.3 1;[\s\S]*172\.30\.77\.4 1;[\s\S]*default 0;[\s\S]*\}/,
+    /map \$realip_remote_addr \$trusted_tunnel_request \{[\s\S]*172\.18\.0\.2 1;[\s\S]*172\.30\.77\.3 1;[\s\S]*172\.30\.77\.4 1;[\s\S]*default 0;[\s\S]*\}/,
   );
   assert.match(
     nginxConfig,
