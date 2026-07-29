@@ -93,6 +93,16 @@ test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
   });
 });
 
+test("should_runInfrastructureAndFrontendChecks_when_frontendDockerfileChanges", () => {
+  assert.deepEqual(classifyPaths(["frontend/Dockerfile"]), {
+    backend: "false",
+    frontend: "true",
+    infrastructure: "true",
+    backend_image: "false",
+    frontend_image: "true",
+  });
+});
+
 test("should_runOnlyBackendChecks_when_backendSourceChanges", () => {
   assert.deepEqual(classifyPaths(["backend/src/main/java/App.java"]), {
     backend: "true",

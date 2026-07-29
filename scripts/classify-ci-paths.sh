@@ -18,6 +18,11 @@ for changed_path in "$@"; do
       backend=true
       backend_image=true
       ;;
+    frontend/Dockerfile)
+      frontend=true
+      infrastructure=true
+      frontend_image=true
+      ;;
     frontend/*)
       frontend=true
       frontend_image=true
