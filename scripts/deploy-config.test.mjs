@@ -66,10 +66,7 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
 test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
   const backendJob = workflowJob(validateWorkflow, "backend");
 
-  assert.match(
-    backendJob,
-    /GRADLE_USER_HOME: \$\{\{ runner\.temp \}\}\/gradle-user-home/,
-  );
+  assert.doesNotMatch(backendJob, /^    env:\n/m);
   assert.match(
     backendJob,
     /BACKEND_GRADLE_USER_HOME_VOLUME: \$\{\{ runner\.temp \}\}\/gradle-user-home/,
@@ -77,6 +74,14 @@ test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
   assert.match(
     backendJob,
     /uses: actions\/cache@[0-9a-f]{40} # v6\.1\.0/,
+  );
+  assert.match(
+    backendJob,
+    /\$\{\{ runner\.temp \}\}\/gradle-user-home\/caches/,
+  );
+  assert.match(
+    backendJob,
+    /\$\{\{ runner\.temp \}\}\/gradle-user-home\/wrapper/,
   );
   assert.match(backendJob, /backend\/\*\*\/\*\.gradle/);
   assert.match(
