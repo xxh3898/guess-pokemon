@@ -6,8 +6,10 @@ const [
   baseCompose,
   devCompose,
   tunnelCompose,
+  productionCompose,
   testCompose,
   envExample,
+  productionEnvExample,
   frontendDockerfile,
   backupScript,
   verifyScript,
@@ -18,8 +20,10 @@ const [
   read("../compose.yaml"),
   read("../compose.dev.yaml"),
   read("../compose.tunnel.yaml"),
+  read("../compose.production.yaml"),
   read("../compose.test.yaml"),
   read("../.env.example"),
+  read("../.env.production.example"),
   read("../frontend/Dockerfile"),
   read("./backup-db.sh"),
   read("./verify-compose.sh"),
@@ -111,6 +115,74 @@ test("should_forceSecureCookieAndLoopbackOrigin_when_tunnelOverrideIsUsed", () =
   );
 });
 
+test("should_isolateProductionDatabaseAndExposeOnlyWebToEdge", () => {
+  const db = serviceBlock(productionCompose, "db");
+  const api = serviceBlock(productionCompose, "api");
+  const web = serviceBlock(productionCompose, "web");
+
+  assert.doesNotMatch(db, /\n\s+ports:/);
+  assert.doesNotMatch(api, /\n\s+ports:/);
+  assert.doesNotMatch(web, /\n\s+ports:/);
+  assert.match(db, /\n    networks:\n      - application/);
+  assert.match(api, /\n    networks:\n      - application/);
+  assert.match(
+    web,
+    /\n    networks:\n      application:\n      edge:\n        aliases:\n          - guess-pokemon-web/,
+  );
+  assert.match(
+    productionCompose,
+    /application:\n    internal: true[\s\S]*edge:\n    external: true\n    name: edge/,
+  );
+});
+
+test("should_useImmutableShaImagesAndSecureSessionInProduction", () => {
+  assert.match(
+    productionCompose,
+    /image: \$\{API_IMAGE:\?API_IMAGE must be set\}/,
+  );
+  assert.match(
+    productionCompose,
+    /image: \$\{WEB_IMAGE:\?WEB_IMAGE must be set\}/,
+  );
+  assert.match(
+    productionEnvExample,
+    /API_IMAGE=ghcr\.io\/xxh3898\/guess-pokemon-api:[0-9a-f]{40}/,
+  );
+  assert.match(
+    productionEnvExample,
+    /WEB_IMAGE=ghcr\.io\/xxh3898\/guess-pokemon-web:[0-9a-f]{40}/,
+  );
+  assert.match(productionCompose, /SESSION_COOKIE_SECURE: "true"/);
+  assert.doesNotMatch(productionCompose, /\bbuild:/);
+});
+
+test("should_hardenProductionApplicationContainers", () => {
+  for (const serviceName of ["api", "web"]) {
+    const service = serviceBlock(productionCompose, serviceName);
+    assert.match(service, /\n    read_only: true/);
+    assert.match(
+      service,
+      /\n    security_opt:\n      - no-new-privileges:true/,
+    );
+    assert.match(service, /\n    pids_limit: [0-9]+/);
+    assert.match(
+      service,
+      /\n    logging:\n      driver: json-file\n      options:\n        max-size: 10m\n        max-file: "3"/,
+    );
+  }
+});
+
+test("should_mountPinnedSharedConnectorTrustInProduction", () => {
+  assert.match(
+    productionCompose,
+    /source: \.\/infra\/nginx\/cloudflare-edge-real-ip\.conf/,
+  );
+  assert.match(
+    productionCompose,
+    /target: \/etc\/nginx\/conf\.d\/00-cloudflare-real-ip\.conf/,
+  );
+});
+
 test("should_mountTokenAsFileOnly_when_namedTunnelRuns", () => {
   assert.match(
     tunnelCompose,
@@ -164,6 +236,12 @@ test("should_renderEveryComposeVariant_without_startingServices", () => {
   assert.match(verifyScript, /compose\.tunnel\.yaml/);
   assert.match(verifyScript, /--profile quick-tunnel/);
   assert.match(verifyScript, /--profile named-tunnel/);
+  assert.match(verifyScript, /compose\.production\.yaml/);
+  assert.match(verifyScript, /\.env\.production\.example/);
+  assert.match(
+    verifyScript,
+    /compose_profiles="\$\{COMPOSE_PROFILES:-\}"/,
+  );
   assert.match(
     verifyScript,
     /quick-tunnel과 named-tunnel profile은 동시에 사용할 수 없습니다/,
@@ -181,6 +259,38 @@ test("should_runStaticAndRuntimeNginxChecks_when_infraTestsRun", () => {
   assert.match(
     frontendDockerfile,
     /FROM nginx:1\.30\.4-alpine3\.24 AS runtime/,
+  );
+});
+
+test("should_keepFrontendInputsReadOnly_without_nestingOutputsUnderReadOnlyBind", () => {
+  const frontendTest = serviceBlock(testCompose, "frontend-test");
+
+  assert.doesNotMatch(frontendTest, /\.\/frontend:\/workspace:ro/);
+  for (const inputMount of [
+    "./frontend/index.html:/workspace/index.html:ro",
+    "./frontend/package-lock.json:/workspace/package-lock.json:ro",
+    "./frontend/package.json:/workspace/package.json:ro",
+    "./frontend/public:/workspace/public:ro",
+    "./frontend/src:/workspace/src:ro",
+    "./frontend/tsconfig.app.json:/workspace/tsconfig.app.json:ro",
+    "./frontend/tsconfig.json:/workspace/tsconfig.json:ro",
+    "./frontend/tsconfig.node.json:/workspace/tsconfig.node.json:ro",
+    "./frontend/vite.config.test.ts:/workspace/vite.config.test.ts:ro",
+    "./frontend/vite.config.ts:/workspace/vite.config.ts:ro",
+    "./frontend/vitest.config.ts:/workspace/vitest.config.ts:ro",
+  ]) {
+    assert.ok(
+      frontendTest.includes(inputMount),
+      `${inputMount} read-only mount is required`,
+    );
+  }
+  assert.match(
+    frontendTest,
+    /frontend-test-dist:\/workspace\/dist/,
+  );
+  assert.match(
+    frontendTest,
+    /frontend-test-node-modules:\/workspace\/node_modules/,
   );
 });
 
@@ -205,6 +315,14 @@ test("should_documentSafeOperations_when_publicationConfigIsUsed", () => {
   assert.match(
     operations,
     /자동 삭제도 하지 않는다/,
+  );
+  assert.match(
+    operations,
+    /`guess-pokemon\.chochiho\.cloud`/,
+  );
+  assert.match(
+    operations,
+    /`guess-pokemon-web`/,
   );
   assert.doesNotMatch(
     operations,

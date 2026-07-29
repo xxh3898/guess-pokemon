@@ -1,0 +1,94 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test and build ARM64 images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate shell scripts
+        run: |
+          bash -n \
+            scripts/backup-db.sh \
+            scripts/backup-production-db.sh \
+            scripts/deploy-guess-pokemon-ci.sh \
+            scripts/deploy-guess-pokemon.sh \
+            scripts/verify-compose.sh
+
+      - name: Render Compose variants
+        run: ENV_FILE=.env.example ./scripts/verify-compose.sh
+
+      - name: Run frontend checks
+        run: >
+          docker compose
+          --file compose.test.yaml
+          run --rm
+          frontend-test
+
+      - name: Run backend checks
+        run: >
+          docker compose
+          --file compose.test.yaml
+          run --rm
+          backend-test
+
+      - name: Run infrastructure checks
+        run: |
+          docker compose \
+            --file compose.test.yaml \
+            run --rm \
+            infra-test
+          docker compose \
+            --file compose.test.yaml \
+            run --rm \
+            nginx-config-test
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build backend ARM64 verification image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: guess-pokemon-api:verify
+          cache-from: type=gha,scope=guess-pokemon-api-arm64
+          cache-to: type=gha,mode=max,scope=guess-pokemon-api-arm64
+
+      - name: Build frontend ARM64 verification image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: frontend/Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: guess-pokemon-web:verify
+          cache-from: type=gha,scope=guess-pokemon-web-arm64
+          cache-to: type=gha,mode=max,scope=guess-pokemon-web-arm64
