@@ -262,6 +262,38 @@ test("should_runStaticAndRuntimeNginxChecks_when_infraTestsRun", () => {
   );
 });
 
+test("should_keepFrontendInputsReadOnly_without_nestingOutputsUnderReadOnlyBind", () => {
+  const frontendTest = serviceBlock(testCompose, "frontend-test");
+
+  assert.doesNotMatch(frontendTest, /\.\/frontend:\/workspace:ro/);
+  for (const inputMount of [
+    "./frontend/index.html:/workspace/index.html:ro",
+    "./frontend/package-lock.json:/workspace/package-lock.json:ro",
+    "./frontend/package.json:/workspace/package.json:ro",
+    "./frontend/public:/workspace/public:ro",
+    "./frontend/src:/workspace/src:ro",
+    "./frontend/tsconfig.app.json:/workspace/tsconfig.app.json:ro",
+    "./frontend/tsconfig.json:/workspace/tsconfig.json:ro",
+    "./frontend/tsconfig.node.json:/workspace/tsconfig.node.json:ro",
+    "./frontend/vite.config.test.ts:/workspace/vite.config.test.ts:ro",
+    "./frontend/vite.config.ts:/workspace/vite.config.ts:ro",
+    "./frontend/vitest.config.ts:/workspace/vitest.config.ts:ro",
+  ]) {
+    assert.ok(
+      frontendTest.includes(inputMount),
+      `${inputMount} read-only mount is required`,
+    );
+  }
+  assert.match(
+    frontendTest,
+    /frontend-test-dist:\/workspace\/dist/,
+  );
+  assert.match(
+    frontendTest,
+    /frontend-test-node-modules:\/workspace\/node_modules/,
+  );
+});
+
 test("should_documentSafeOperations_when_publicationConfigIsUsed", () => {
   assert.match(
     readme,

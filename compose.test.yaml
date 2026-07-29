@@ -12,7 +12,17 @@ services:
       && npm run build
       && npm audit --audit-level=high"
     volumes:
-      - ./frontend:/workspace:ro
+      - ./frontend/index.html:/workspace/index.html:ro
+      - ./frontend/package-lock.json:/workspace/package-lock.json:ro
+      - ./frontend/package.json:/workspace/package.json:ro
+      - ./frontend/public:/workspace/public:ro
+      - ./frontend/src:/workspace/src:ro
+      - ./frontend/tsconfig.app.json:/workspace/tsconfig.app.json:ro
+      - ./frontend/tsconfig.json:/workspace/tsconfig.json:ro
+      - ./frontend/tsconfig.node.json:/workspace/tsconfig.node.json:ro
+      - ./frontend/vite.config.test.ts:/workspace/vite.config.test.ts:ro
+      - ./frontend/vite.config.ts:/workspace/vite.config.ts:ro
+      - ./frontend/vitest.config.ts:/workspace/vitest.config.ts:ro
       - frontend-test-dist:/workspace/dist
       - frontend-test-node-modules:/workspace/node_modules
 
