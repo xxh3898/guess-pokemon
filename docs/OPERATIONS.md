@@ -350,7 +350,52 @@ docker compose \
 restore rehearsal을 통과해야 한다. 운영 DB restore, connector 재생성,
 public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한다.
 
-## 13. 참고 문서
+## 13. GitHub Actions 자동 배포
+
+- `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
+  frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
+- `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
+- 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
+  `home-mini`에 연결한다.
+- forced command wrapper는
+  `deploy-guess-pokemon <40자리-sha> <registry-user>`만 허용한다.
+- Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
+  종료 시 정리한다.
+
+배포 순서는 다음과 같다.
+
+1. 두 SHA image를 pull하고 production Compose를 render한다.
+2. DB가 실행 중인지 확인한다.
+3. 진행 중 game이 1건 이상이면 배포를 중단한다.
+4. custom-format DB backup과 archive 검증을 완료한다.
+5. API·web image tag를 함께 갱신한다.
+6. 전체 service health를 제한 시간 동안 기다린다.
+7. 실패하면 이전 API·web SHA를 함께 복구한다.
+
+image rollback은 PostgreSQL volume을 삭제하지 않는다. Flyway가 새
+schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다.
+migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
+사용한다.
+
+## 14. 운영 backup과 3일 보존
+
+`scripts/backup-production-db.sh`를 Mac mini의
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`로
+설치한다.
+
+- 실행 중인 production DB만 대상으로 한다.
+- mode `600`의 temporary file에 custom-format dump를 기록한다.
+- `pg_restore --list`가 성공한 archive만 최종 이름으로 공개한다.
+- 새 backup이 성공한 뒤 3일을 초과한 Guess Pokémon archive만 정리한다.
+- 정확히
+  `guess-pokemon-production-YYYYMMDDTHHMMSSZ.dump` 형식인 파일만
+  정리 대상이다.
+- 최신 backup과 다른 프로젝트 backup은 건드리지 않는다.
+
+같은 Mac mini SSD의 backup은 장비 전체 장애를 복구하지 못한다.
+외장 SSD 또는 암호화한 원격 복사본은 별도 작업으로 추가한다.
+
+## 15. 참고 문서
 
 - [Cloudflare Tunnel 설정](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
 - [Cloudflare HTTP 요청 header](https://developers.cloudflare.com/fundamentals/reference/http-headers/)

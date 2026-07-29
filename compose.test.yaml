@@ -42,9 +42,11 @@ services:
     working_dir: /workspace
     command: >
       node --test
+      scripts/deploy-config.test.mjs
       scripts/nginx-config.test.mjs
       scripts/operations-config.test.mjs
     volumes:
+      - ./.github:/workspace/.github:ro
       - ./.env.example:/workspace/.env.example:ro
       - ./.env.production.example:/workspace/.env.production.example:ro
       - ./README.md:/workspace/README.md:ro
