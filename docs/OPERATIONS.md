@@ -358,6 +358,8 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
   실행해 서로 기다리지 않는다.
 - `Detect changes`가 push 이전 SHA 또는 PR base SHA와 현재 SHA를 비교한다.
   필수 check 5개는 항상 생성하고 관련 없는 job은 no-op으로 성공 처리한다.
+- `Detect changes`가 실패해도 필수 check 5개는 `always()`로 실행하며
+  change detection 실패를 각 check 실패로 전파한다.
 - `frontend/**` 변경은 frontend 검사·image만, `backend/**` 변경은
   backend 검사·image만 실제 실행한다. `infra/nginx/default.conf` 변경은
   infrastructure 검사와 frontend runtime image를 함께 검증한다.

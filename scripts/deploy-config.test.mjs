@@ -63,7 +63,19 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
     );
     assert.match(
       workflowJob(validateWorkflow, jobId),
+      /^    if: \$\{\{ always\(\) \}\}$/m,
+    );
+    assert.match(
+      workflowJob(validateWorkflow, jobId),
+      /- name: Fail when change detection fails\n        if: needs\.changes\.result != 'success'\n        run: exit 1/,
+    );
+    assert.match(
+      workflowJob(validateWorkflow, jobId),
       /- name: Skip unrelated/,
+    );
+    assert.match(
+      workflowJob(validateWorkflow, jobId),
+      /if: needs\.changes\.result == 'success' && needs\.changes\.outputs\./,
     );
   }
   assert.match(validateWorkflow, /changes:\n    name: Detect changes/);
