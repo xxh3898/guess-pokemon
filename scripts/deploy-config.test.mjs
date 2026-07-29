@@ -63,6 +63,32 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
 });
 
+test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
+  const backendJob = workflowJob(validateWorkflow, "backend");
+
+  assert.match(
+    backendJob,
+    /GRADLE_USER_HOME: \$\{\{ runner\.temp \}\}\/gradle-user-home/,
+  );
+  assert.match(
+    backendJob,
+    /BACKEND_GRADLE_USER_HOME_VOLUME: \$\{\{ runner\.temp \}\}\/gradle-user-home/,
+  );
+  assert.match(
+    backendJob,
+    /uses: actions\/cache@[0-9a-f]{40} # v6\.1\.0/,
+  );
+  assert.match(backendJob, /backend\/\*\*\/\*\.gradle/);
+  assert.match(
+    backendJob,
+    /backend\/gradle\/wrapper\/gradle-wrapper\.properties/,
+  );
+  assert.doesNotMatch(
+    backendJob,
+    /--build-cache|--configuration-cache|org\.gradle\.caching/,
+  );
+});
+
 test("should_publishBothShaImagesOnlyFromMain", () => {
   assert.match(
     deployWorkflow,
@@ -88,9 +114,14 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
     deployWorkflow,
     /publish:\n    name: Publish ARM64 images[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
-  assert.match(
+  assert.doesNotMatch(deployWorkflow, /\n  validate:\n/);
+  assert.doesNotMatch(
     workflowJob(deployWorkflow, "publish"),
-    /^    needs:\n      - validate/m,
+    /^    needs:/m,
+  );
+  assert.doesNotMatch(
+    deployWorkflow,
+    /uses: \.\/\.github\/workflows\/validate\.yml/,
   );
   assert.doesNotMatch(deployWorkflow, /docker\/setup-qemu-action/);
   assert.match(

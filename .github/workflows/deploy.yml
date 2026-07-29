@@ -18,18 +18,9 @@ env:
   WEB_IMAGE_NAME: ghcr.io/xxh3898/guess-pokemon-web
 
 jobs:
-  validate:
-    name: Validate release
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/validate.yml
-    permissions:
-      contents: read
-
   publish:
     name: Publish ARM64 images
     if: github.ref == 'refs/heads/main'
-    needs:
-      - validate
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     permissions:

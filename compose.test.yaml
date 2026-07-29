@@ -44,7 +44,7 @@ services:
         source: /var/run/docker.sock
         target: /var/run/docker.sock
       - backend-test-build:${PWD:?Run Docker Compose from the repository root}/backend/build
-      - backend-test-gradle-cache:/home/gradle/.gradle
+      - "${BACKEND_GRADLE_USER_HOME_VOLUME:-backend-test-gradle-cache}:/home/gradle/.gradle"
       - backend-test-project-cache:${PWD:?Run Docker Compose from the repository root}/backend/.gradle
 
   infra-test:

@@ -262,6 +262,23 @@ test("should_runStaticAndRuntimeNginxChecks_when_infraTestsRun", () => {
   );
 });
 
+test("should_useCiGradleCacheMount_withoutChangingLocalDefault", () => {
+  const backendTest = serviceBlock(testCompose, "backend-test");
+
+  assert.match(
+    backendTest,
+    /\$\{BACKEND_GRADLE_USER_HOME_VOLUME:-backend-test-gradle-cache\}:\/home\/gradle\/\.gradle/,
+  );
+  assert.match(
+    testCompose,
+    /\n  backend-test-gradle-cache:\n/,
+  );
+  assert.doesNotMatch(
+    backendTest,
+    /--build-cache|--configuration-cache|org\.gradle\.caching/,
+  );
+});
+
 test("should_keepFrontendInputsReadOnly_without_nestingOutputsUnderReadOnlyBind", () => {
   const frontendTest = serviceBlock(testCompose, "frontend-test");
 
