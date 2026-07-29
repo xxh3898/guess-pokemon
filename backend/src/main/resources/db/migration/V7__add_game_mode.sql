@@ -3,9 +3,6 @@ ALTER TABLE game
         DEFAULT 'TWENTY_QUESTIONS';
 
 ALTER TABLE game
-    ALTER COLUMN mode DROP DEFAULT;
-
-ALTER TABLE game
     DROP CONSTRAINT ck_game_end_reason,
     DROP CONSTRAINT ck_game_lifecycle;
 
