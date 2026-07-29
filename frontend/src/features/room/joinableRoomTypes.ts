@@ -7,11 +7,13 @@ import {
   isValidRoomCode,
   normalizeRoomCode,
 } from "./roomCode";
+import type { GameMode } from "./roomTypes";
 
 export const MAX_JOINABLE_ROOM_COUNT = 50;
 
 export interface JoinableRoomSummary {
   readonly hostNickname: string;
+  readonly mode?: GameMode;
   readonly roomCode: string;
 }
 
@@ -35,6 +37,11 @@ export function parseJoinableRoomListResponse(
     const room = requireRecord(item);
     const roomCode = requireString(room, "roomCode");
     const hostNickname = requireString(room, "hostNickname");
+    const hasMode = room.mode !== undefined;
+    const mode =
+      room.mode === undefined
+        ? "TWENTY_QUESTIONS"
+        : requireGameMode(room.mode);
     if (
       normalizeRoomCode(roomCode) !== roomCode ||
       !isValidRoomCode(roomCode) ||
@@ -46,9 +53,20 @@ export function parseJoinableRoomListResponse(
     roomCodes.add(roomCode);
     return {
       hostNickname,
+      ...(hasMode ? { mode } : {}),
       roomCode,
     };
   });
 
   return { rooms };
+}
+
+function requireGameMode(value: unknown): GameMode {
+  if (
+    value !== "TWENTY_QUESTIONS" &&
+    value !== "SILHOUETTE"
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return value;
 }

@@ -72,6 +72,26 @@ describe("realtimeTypes", () => {
     });
   });
 
+  it("should_parseThreeActionLimit_when_silhouetteRoundStarts", () => {
+    expect(
+      parseRoomRealtimeEvent(
+        eventBody("ROUND_STARTED", GAME_ID, 5, {
+          myRole: "QUESTIONER",
+          opponentRole: "SELECTOR",
+          remainingActionCount: 3,
+          roundNumber: 1,
+          usedActionCount: 0,
+        }),
+      ),
+    ).toMatchObject({
+      eventType: "ROUND_STARTED",
+      payload: {
+        myRole: "QUESTIONER",
+        remainingActionCount: 3,
+      },
+    });
+  });
+
   it("should_rejectSelectorSecret_when_roundStartsForQuestioner", () => {
     expect(() =>
       parseRoomRealtimeEvent(

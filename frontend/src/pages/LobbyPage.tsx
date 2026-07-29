@@ -17,6 +17,7 @@ import {
   type RoomGateway,
   roomGateway,
 } from "../features/room/roomApi";
+import type { GameMode } from "../features/room/roomTypes";
 import { JoinableRoomList } from "../features/room/JoinableRoomList";
 import {
   validateRoomCode,
@@ -40,6 +41,8 @@ export function LobbyPage({
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState("");
+  const [gameMode, setGameMode] =
+    useState<GameMode>("TWENTY_QUESTIONS");
 
   if (!auth.currentUser) {
     return (
@@ -67,7 +70,10 @@ export function LobbyPage({
     setCreatingRoom(true);
     setCreateError(null);
     try {
-      const snapshot = await gateway.create();
+      const snapshot =
+        gameMode === "TWENTY_QUESTIONS"
+          ? await gateway.create()
+          : await gateway.create(gameMode);
       auth.setActiveRoomCode(snapshot.roomCode);
       navigate(`/rooms/${snapshot.roomCode}`);
     } catch (error) {
@@ -142,6 +148,25 @@ export function LobbyPage({
                 <h2>새 방 만들기</h2>
                 <p>새로운 방을 만들고 친구에게 방 코드를 알려주세요.</p>
               </div>
+              <fieldset className="game-mode-picker">
+                <legend>게임 모드</legend>
+                <GameModeOption
+                  checked={gameMode === "TWENTY_QUESTIONS"}
+                  description="질문과 추측으로 20번 안에 정답을 맞혀요."
+                  label="포켓몬 스무고개"
+                  onSelect={() => {
+                    setGameMode("TWENTY_QUESTIONS");
+                  }}
+                />
+                <GameModeOption
+                  checked={gameMode === "SILHOUETTE"}
+                  description="실루엣만 보고 3번 안에 정답을 맞혀요."
+                  label="실루엣 퀴즈"
+                  onSelect={() => {
+                    setGameMode("SILHOUETTE");
+                  }}
+                />
+              </fieldset>
               {createError ? (
                 <div className="card-error-message" role="alert">
                   <AlertCircle aria-hidden="true" size={17} />
@@ -165,7 +190,11 @@ export function LobbyPage({
                 ) : (
                   <Plus aria-hidden="true" size={18} />
                 )}
-                {creatingRoom ? "방 만드는 중..." : "방 만들기"}
+                {creatingRoom
+                  ? "방 만드는 중..."
+                  : gameMode === "SILHOUETTE"
+                    ? "실루엣 퀴즈 방 만들기"
+                    : "스무고개 방 만들기"}
               </button>
             </article>
 
@@ -256,6 +285,33 @@ export function LobbyPage({
         </section>
       </div>
     </main>
+  );
+}
+
+function GameModeOption({
+  checked,
+  description,
+  label,
+  onSelect,
+}: {
+  checked: boolean;
+  description: string;
+  label: string;
+  onSelect(): void;
+}) {
+  return (
+    <label className={`game-mode-option ${checked ? "is-selected" : ""}`}>
+      <input
+        checked={checked}
+        name="game-mode"
+        onChange={onSelect}
+        type="radio"
+      />
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+    </label>
   );
 }
 

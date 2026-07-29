@@ -88,6 +88,42 @@ describe("GameScreen", () => {
     expectCommandBeforeTimeline(container);
   });
 
+  it("should_renderOnlySilhouetteGuessControls_when_silhouetteGameOpens", () => {
+    const base = questionerSnapshot();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...base,
+          game: {
+            ...base.game,
+            remainingActionCount: 3,
+          },
+          mode: "SILHOUETTE",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("내 역할 · 도전자")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "정답 포켓몬 실루엣",
+      }),
+    ).toHaveAttribute(
+      "src",
+      "/api/v1/rooms/AB3K7M/silhouette",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "전국도감에서 추측하기",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("질문")).not.toBeInTheDocument();
+  });
+
   it("should_allowPokedexBrowsing_when_questionIsWaitingForAnswer", () => {
     const base = questionerSnapshot();
     const onOpenPokedex = vi.fn();

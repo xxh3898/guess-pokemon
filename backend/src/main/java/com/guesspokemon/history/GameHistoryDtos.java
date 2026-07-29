@@ -3,6 +3,7 @@ package com.guesspokemon.history;
 import com.guesspokemon.game.GameTypes.GameActionType;
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameResult;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
@@ -30,6 +31,7 @@ public final class GameHistoryDtos {
 
     public record GameListItem(
             UUID gameId,
+            GameMode mode,
             Instant startedAt,
             Instant endedAt,
             GameRole myRole,
@@ -47,6 +49,7 @@ public final class GameHistoryDtos {
 
     public record GameDetail(
             UUID gameId,
+            GameMode mode,
             GameStatus status,
             Instant startedAt,
             Instant endedAt,

@@ -3,6 +3,7 @@ package com.guesspokemon.game;
 import com.guesspokemon.game.GameTypes.GameActionType;
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameResult;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
@@ -35,6 +36,7 @@ public interface GamePersistencePort {
     record GameState(
             UUID gameId,
             UUID roundGroupId,
+            GameMode mode,
             int answerPokemonNationalDexId,
             GameStatus status,
             GameEndReason endReason,
@@ -43,6 +45,31 @@ public interface GamePersistencePort {
             Instant startedAt,
             Instant endedAt,
             List<ParticipantState> participants) {
+
+        public GameState(
+                UUID gameId,
+                UUID roundGroupId,
+                int answerPokemonNationalDexId,
+                GameStatus status,
+                GameEndReason endReason,
+                int actionCount,
+                long stateVersion,
+                Instant startedAt,
+                Instant endedAt,
+                List<ParticipantState> participants) {
+            this(
+                    gameId,
+                    roundGroupId,
+                    GameMode.TWENTY_QUESTIONS,
+                    answerPokemonNationalDexId,
+                    status,
+                    endReason,
+                    actionCount,
+                    stateVersion,
+                    startedAt,
+                    endedAt,
+                    participants);
+        }
 
         public GameState {
             participants = List.copyOf(participants);

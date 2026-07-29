@@ -10,6 +10,7 @@ import static com.guesspokemon.common.error.ApiErrorCode.USER_ALREADY_IN_ACTIVE_
 import static com.guesspokemon.common.error.ApiErrorCode.VALIDATION_FAILED;
 
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.room.RoomDtos.JoinableRoomSummary;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import java.time.Clock;
@@ -87,7 +88,18 @@ public class RoomRegistry {
     }
 
     public RoomSnapshot create(UUID userId, String nickname) {
+        return create(
+                userId,
+                nickname,
+                GameMode.TWENTY_QUESTIONS);
+    }
+
+    public RoomSnapshot create(
+            UUID userId,
+            String nickname,
+            GameMode mode) {
         requireParticipant(userId, nickname);
+        Objects.requireNonNull(mode);
         mutationLock.lock();
         try {
             Instant now = clock.instant();
@@ -100,7 +112,13 @@ public class RoomRegistry {
             }
 
             String roomCode = allocateRoomCode();
-            Room room = new Room(roomCode, userId, nickname, now);
+            Room room =
+                    new Room(
+                            roomCode,
+                            userId,
+                            nickname,
+                            mode,
+                            now);
             rooms.put(roomCode, room);
             activeRoomByUser.put(userId, roomCode);
             LOGGER.info("Room created hostUserId={}", userId);
@@ -125,7 +143,8 @@ public class RoomRegistry {
                             room ->
                                     new JoinableRoomSummary(
                                             room.code(),
-                                            room.hostNickname()))
+                                            room.hostNickname(),
+                                            room.mode()))
                     .toList();
         } finally {
             mutationLock.unlock();

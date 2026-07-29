@@ -136,7 +136,8 @@ com.guesspokemon
 ### `room`
 
 - `ConcurrentHashMap` 기반 `RoomRegistry`
-- 방 코드, 두 참가자, 현재 round, 역할 선호·배정, 연결 상태, 만료
+- 방 코드, 생성 시 고정한 `GameMode`, 두 참가자, 현재 round, 역할
+  선호·배정, 연결 상태, 만료
 - 사용자당 활성 방 하나
 - room map과 사용자 index를 함께 바꾸는 create·join·leave·expire는 짧은 registry lock 안에서 처리
 - 방별 직렬 실행 경계
@@ -155,9 +156,13 @@ com.guesspokemon
 
 - framework와 분리한 순수 Java state machine
 - `WAITING_FOR_SELECTION`, `PLAYING`, `PAUSED`, `RESULT` 전이
-- 역할, 질문/추측 순서, 20회, 승패 계산
+- `TWENTY_QUESTIONS`의 질문·추측 20회와 `SILHOUETTE`의 추측 3회,
+  역할, 순서, 승패 계산
 - 같은 aggregate의 기존 추측 포켓몬 재제출 거절
 - 정답 포켓몬은 aggregate private field로 유지
+- 실루엣 도전자에게는 정답 식별자가 없는 방별 고정 endpoint만
+  제공하고 서버가 원본 alpha를 제외한 RGB pixel을 모두 검정으로
+  변환한다. CSS filter와 원본 artwork URL 전달은 사용하지 않는다.
 - 기존 state를 직접 바꾸지 않고 immutable candidate를 만들어 persistence commit 뒤 교체
 
 ### `history`

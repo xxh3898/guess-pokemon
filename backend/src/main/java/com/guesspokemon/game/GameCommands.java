@@ -2,6 +2,7 @@ package com.guesspokemon.game;
 
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -15,15 +16,36 @@ public final class GameCommands {
             UUID roundGroupId,
             UUID selectorUserId,
             UUID questionerUserId,
+            GameMode mode,
             int answerPokemonNationalDexId,
             UUID commandId,
             long initialStateVersion) {
+
+        public StartGameCommand(
+                String roomCode,
+                UUID roundGroupId,
+                UUID selectorUserId,
+                UUID questionerUserId,
+                int answerPokemonNationalDexId,
+                UUID commandId,
+                long initialStateVersion) {
+            this(
+                    roomCode,
+                    roundGroupId,
+                    selectorUserId,
+                    questionerUserId,
+                    GameMode.TWENTY_QUESTIONS,
+                    answerPokemonNationalDexId,
+                    commandId,
+                    initialStateVersion);
+        }
 
         public StartGameCommand {
             requireRoomCode(roomCode);
             Objects.requireNonNull(roundGroupId);
             Objects.requireNonNull(selectorUserId);
             Objects.requireNonNull(questionerUserId);
+            Objects.requireNonNull(mode);
             Objects.requireNonNull(commandId);
             if (answerPokemonNationalDexId <= 0
                     || initialStateVersion < 0) {

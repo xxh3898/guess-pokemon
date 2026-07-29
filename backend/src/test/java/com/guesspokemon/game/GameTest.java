@@ -13,6 +13,8 @@ import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
 import static com.guesspokemon.game.GameTypes.GameEndReason.BOTH_DISCONNECTED;
 import static com.guesspokemon.game.GameTypes.GameEndReason.PLAYER_LEFT;
 import static com.guesspokemon.game.GameTypes.GameEndReason.QUESTION_LIMIT;
+import static com.guesspokemon.game.GameTypes.GameEndReason.GUESS_LIMIT;
+import static com.guesspokemon.game.GameTypes.GameMode.SILHOUETTE;
 import static com.guesspokemon.game.GameTypes.GameResult.NONE;
 import static com.guesspokemon.game.GameTypes.GameStatus.ABORTED;
 import static com.guesspokemon.game.GameTypes.GameRole.QUESTIONER;
@@ -604,6 +606,47 @@ class GameTest {
     }
 
     @Test
+    void should_completeWithSelectorWin_when_thirdSilhouetteGuessIsWrong() {
+        Game game = newSilhouetteGame();
+        for (int guessedPokemonId = 1;
+                guessedPokemonId <= 3;
+                guessedPokemonId++) {
+            game =
+                    game.guess(
+                                    QUESTIONER_USER_ID,
+                                    UUID.randomUUID(),
+                                    UUID.randomUUID(),
+                                    guessedPokemonId,
+                                    STARTED_AT.plusSeconds(guessedPokemonId))
+                            .candidate();
+        }
+
+        ParticipantGameView view =
+                game.viewFor(QUESTIONER_USER_ID);
+
+        assertEquals(COMPLETED, view.status());
+        assertEquals(GUESS_LIMIT, view.endReason());
+        assertEquals(SELECTOR_USER_ID, view.winnerUserId());
+        assertEquals(3, view.usedActionCount());
+        assertEquals(0, view.remainingActionCount());
+    }
+
+    @Test
+    void should_rejectQuestion_when_gameModeIsSilhouette() {
+        Game game = newSilhouetteGame();
+
+        assertRuleError(
+                INVALID_GAME_STATE,
+                () ->
+                        game.ask(
+                                QUESTIONER_USER_ID,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "질문할 수 있나요?",
+                                STARTED_AT.plusSeconds(1)));
+    }
+
+    @Test
     void should_rejectCommand_when_gameIsCompleted() {
         Game completed =
                 newGame()
@@ -678,6 +721,19 @@ class GameTest {
                 ROUND_GROUP_ID,
                 SELECTOR_USER_ID,
                 QUESTIONER_USER_ID,
+                ANSWER_POKEMON_ID,
+                UUID.randomUUID(),
+                INITIAL_STATE_VERSION,
+                STARTED_AT);
+    }
+
+    private Game newSilhouetteGame() {
+        return Game.start(
+                GAME_ID,
+                ROUND_GROUP_ID,
+                SELECTOR_USER_ID,
+                QUESTIONER_USER_ID,
+                SILHOUETTE,
                 ANSWER_POKEMON_ID,
                 UUID.randomUUID(),
                 INITIAL_STATE_VERSION,

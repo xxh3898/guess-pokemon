@@ -150,6 +150,76 @@
   margin-top: auto;
 }
 
+.game-mode-picker {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.game-mode-picker legend {
+  margin-bottom: 8px;
+  color: var(--navy);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.game-mode-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  border: 1px solid #c7d5e4;
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+}
+
+.game-mode-option.is-selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(59, 142, 239, 0.13);
+}
+
+.game-mode-option input {
+  margin-top: 3px;
+  accent-color: var(--blue);
+}
+
+.game-mode-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.game-mode-option strong {
+  color: var(--navy);
+  font-size: 0.88rem;
+}
+
+.game-mode-option small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.game-mode-badge {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #24578f;
+  background: var(--paper-blue);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.game-mode-badge.mode-silhouette {
+  color: #24578f;
+  background: #e7f1ff;
+}
+
 .room-join-form {
   display: grid;
   gap: 9px;

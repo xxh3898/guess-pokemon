@@ -591,6 +591,7 @@ export function RoomPage({
         {snapshot.status === "WAITING_FOR_SELECTION" ? (
           <>
             <RoleAssignmentNotice
+              mode={snapshot.mode}
               randomized={snapshot.roleAssignment.randomized}
               role={snapshot.me.role}
             />
@@ -823,6 +824,15 @@ function RoomHeader({
         >
           <Copy aria-hidden="true" size={17} />
         </button>
+        <span
+          className={`game-mode-badge mode-${(
+            snapshot.mode ?? "TWENTY_QUESTIONS"
+          ).toLowerCase()}`}
+        >
+          {snapshot.mode === "SILHOUETTE"
+            ? "실루엣 퀴즈"
+            : "포켓몬 스무고개"}
+        </span>
       </div>
       {snapshot.opponent &&
       snapshot.me.role !== null &&
@@ -830,7 +840,7 @@ function RoomHeader({
         <div className="room-role-badges">
           <span className="questioner-badge">
             <UserRound aria-hidden="true" size={16} />
-            질문자
+            {snapshot.mode === "SILHOUETTE" ? "도전자" : "질문자"}
           </span>
           <span className="selector-badge">
             <UserRound aria-hidden="true" size={16} />
@@ -986,6 +996,7 @@ function RoleSelectionView({
         commandPending={commandPending}
         connected={connected}
         me={snapshot.me}
+        mode={snapshot.mode}
         onSelect={onSelect}
         opponent={snapshot.opponent}
         selection={snapshot.roleSelection}
@@ -1013,9 +1024,11 @@ function RoleSelectionView({
 }
 
 function RoleAssignmentNotice({
+  mode,
   randomized,
   role,
 }: {
+  mode: RoomSnapshot["mode"];
   randomized: boolean;
   role: RoomRole | null;
 }) {
@@ -1042,7 +1055,12 @@ function RoleAssignmentNotice({
         </strong>
         <span>
           이번 라운드는{" "}
-          {role === "SELECTOR" ? "출제자" : "질문자"}예요.
+          {role === "SELECTOR"
+            ? "출제자"
+            : mode === "SILHOUETTE"
+              ? "도전자"
+              : "질문자"}
+          예요.
         </span>
       </div>
     </div>
@@ -1175,7 +1193,9 @@ function QuestionerSelectionWaitView({
 }) {
   return (
     <section className="selection-wait-view">
-      <p className="role-pill blue-pill">질문자</p>
+      <p className="role-pill blue-pill">
+        {snapshot.mode === "SILHOUETTE" ? "도전자" : "질문자"}
+      </p>
       <LoaderCircle
         aria-hidden="true"
         className="spin-icon"

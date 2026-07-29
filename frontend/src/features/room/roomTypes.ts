@@ -18,6 +18,8 @@ import {
 import { isValidRoomCode, normalizeRoomCode } from "./roomCode";
 
 export const MAX_GAME_ACTION_COUNT = 20;
+export const MAX_SILHOUETTE_GUESS_COUNT = 3;
+export type GameMode = "TWENTY_QUESTIONS" | "SILHOUETTE";
 
 export type RoomStatus =
   | "WAITING_FOR_OPPONENT"
@@ -38,6 +40,7 @@ export type GameAnswer = "YES" | "NO" | "UNKNOWN";
 export type GameEndReason =
   | "CORRECT_GUESS"
   | "QUESTION_LIMIT"
+  | "GUESS_LIMIT"
   | "PLAYER_LEFT"
   | "RECONNECT_TIMEOUT"
   | "BOTH_DISCONNECTED"
@@ -108,6 +111,7 @@ export interface RoleAssignmentState {
 
 interface RoomSnapshotBase {
   readonly me: RoomMember;
+  readonly mode?: GameMode;
   readonly roomCode: string;
   readonly roundNumber: number;
   readonly stateVersion: number;
@@ -186,6 +190,14 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
     requireString(response, "roomCode"),
   );
   const status = requireRoomStatus(response.status);
+  const hasMode = response.mode !== undefined;
+  const mode = requireGameMode(
+    response.mode ?? "TWENTY_QUESTIONS",
+  );
+  const maxActionCount =
+    mode === "SILHOUETTE"
+      ? MAX_SILHOUETTE_GUESS_COUNT
+      : MAX_GAME_ACTION_COUNT;
   const me = parseRoomMember(response.me);
   const opponent =
     response.opponent === null
@@ -193,6 +205,7 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
       : parseRoomMember(response.opponent);
   const base = {
     me,
+    ...(hasMode ? { mode } : {}),
     roomCode,
     roundNumber: requireInteger(response, "roundNumber", 1),
     stateVersion: requireInteger(response, "stateVersion", 1),
@@ -277,7 +290,10 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
     }
     return {
       ...base,
-      game: parseResultGameSnapshot(response.game),
+      game: parseResultGameSnapshot(
+        response.game,
+        maxActionCount,
+      ),
       opponent,
       roleAssignment: null,
       roleSelection: parseRoleSelectionState(
@@ -296,8 +312,14 @@ export function parseRoomSnapshot(payload: unknown): RoomSnapshot {
   }
   const game =
     me.role === "SELECTOR"
-      ? parseSelectorGameSnapshot(response.game)
-      : parseQuestionerGameSnapshot(response.game);
+      ? parseSelectorGameSnapshot(
+          response.game,
+          maxActionCount,
+        )
+      : parseQuestionerGameSnapshot(
+          response.game,
+          maxActionCount,
+        );
   return {
     ...base,
     game,
@@ -341,12 +363,13 @@ function parseRoomMember(payload: unknown): RoomMember {
 
 function parseSelectorGameSnapshot(
   payload: unknown,
+  maxActionCount: number,
 ): SelectorGameSnapshot {
   const game = requireRecord(payload);
   if (hasOwn(game, "answerPokemon")) {
     throw ApiError.invalidResponse();
   }
-  const base = parseGameSnapshotBase(game);
+  const base = parseGameSnapshotBase(game, maxActionCount);
   if (requireGameStatus(game.status) !== "IN_PROGRESS") {
     throw ApiError.invalidResponse();
   }
@@ -359,6 +382,7 @@ function parseSelectorGameSnapshot(
 
 function parseQuestionerGameSnapshot(
   payload: unknown,
+  maxActionCount: number,
 ): QuestionerGameSnapshot {
   const game = requireRecord(payload);
   if (
@@ -367,7 +391,7 @@ function parseQuestionerGameSnapshot(
   ) {
     throw ApiError.invalidResponse();
   }
-  const base = parseGameSnapshotBase(game);
+  const base = parseGameSnapshotBase(game, maxActionCount);
   if (requireGameStatus(game.status) !== "IN_PROGRESS") {
     throw ApiError.invalidResponse();
   }
@@ -379,12 +403,13 @@ function parseQuestionerGameSnapshot(
 
 function parseResultGameSnapshot(
   payload: unknown,
+  maxActionCount: number,
 ): ResultGameSnapshot {
   const game = requireRecord(payload);
   if (hasOwn(game, "selectedPokemon")) {
     throw ApiError.invalidResponse();
   }
-  const base = parseGameSnapshotBase(game);
+  const base = parseGameSnapshotBase(game, maxActionCount);
   const status = requireGameStatus(game.status);
   const winnerUserId = requireNullableUuid(game, "winnerUserId");
   const loserUserId = requireNullableUuid(game, "loserUserId");
@@ -419,6 +444,7 @@ function parseResultGameSnapshot(
 
 function parseGameSnapshotBase(
   game: Record<string, unknown>,
+  maxActionCount: number,
 ): GameSnapshotBase {
   if (!Array.isArray(game.actions)) {
     throw ApiError.invalidResponse();
@@ -427,20 +453,20 @@ function parseGameSnapshotBase(
     game,
     "usedActionCount",
     0,
-    MAX_GAME_ACTION_COUNT,
+    maxActionCount,
   );
   const remainingActionCount = requireInteger(
     game,
     "remainingActionCount",
     0,
-    MAX_GAME_ACTION_COUNT,
+    maxActionCount,
   );
   const actions = game.actions.map((action, index) =>
     parseGameAction(action, index + 1),
   );
   if (
     usedActionCount + remainingActionCount !==
-      MAX_GAME_ACTION_COUNT ||
+      maxActionCount ||
     actions.length !== usedActionCount
   ) {
     throw ApiError.invalidResponse();
@@ -621,6 +647,16 @@ function requireRoomRole(value: unknown): RoomRole {
   return value;
 }
 
+function requireGameMode(value: unknown): GameMode {
+  if (
+    value !== "TWENTY_QUESTIONS" &&
+    value !== "SILHOUETTE"
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return value;
+}
+
 function requireGameStatus(value: unknown): GameStatus {
   if (
     value !== "IN_PROGRESS" &&
@@ -663,6 +699,7 @@ function requireGameEndReason(
   if (
     value !== "CORRECT_GUESS" &&
     value !== "QUESTION_LIMIT" &&
+    value !== "GUESS_LIMIT" &&
     value !== "PLAYER_LEFT" &&
     value !== "RECONNECT_TIMEOUT" &&
     value !== "BOTH_DISCONNECTED" &&

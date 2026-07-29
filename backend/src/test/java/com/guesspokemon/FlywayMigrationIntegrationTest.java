@@ -22,6 +22,8 @@ class FlywayMigrationIntegrationTest {
             "answer_comment_upgrade_test";
     private static final String EVOLUTION_UPGRADE_SCHEMA =
             "pokemon_evolution_upgrade_test";
+    private static final String GAME_MODE_UPGRADE_SCHEMA =
+            "game_mode_upgrade_test";
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -72,7 +74,7 @@ class FlywayMigrationIntegrationTest {
                         .single();
 
         assertEquals(0, migrationsExecuted);
-        assertEquals(6L, historyCount);
+        assertEquals(7L, historyCount);
     }
 
     @Test
@@ -561,6 +563,7 @@ class FlywayMigrationIntegrationTest {
                         .dataSource(dataSource)
                         .schemas(EVOLUTION_UPGRADE_SCHEMA)
                         .defaultSchema(EVOLUTION_UPGRADE_SCHEMA)
+                        .target("6")
                         .load();
         assertEquals(
                 1,
@@ -581,6 +584,131 @@ class FlywayMigrationIntegrationTest {
                         .single();
 
         assertEquals(2L, preservedRowCount);
+    }
+
+    @Test
+    void should_backfillTwentyQuestionsMode_when_v6DatabaseMigratesToV7() {
+        Flyway legacyFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(GAME_MODE_UPGRADE_SCHEMA)
+                        .defaultSchema(GAME_MODE_UPGRADE_SCHEMA)
+                        .target("6")
+                        .load();
+        assertEquals(
+                6,
+                legacyFlyway.migrate().migrationsExecuted);
+        JdbcClient upgradeJdbcClient = JdbcClient.create(dataSource);
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.pokemon_species (
+                            national_dex_id,
+                            slug,
+                            korean_name,
+                            generation,
+                            primary_type,
+                            secondary_type,
+                            artwork_url,
+                            catalog_version,
+                            source_updated_at,
+                            enabled,
+                            evolves_from_national_dex_id
+                        )
+                        VALUES (
+                            25,
+                            'pikachu',
+                            '피카츄',
+                            1,
+                            'ELECTRIC',
+                            NULL,
+                            'https://example.test/25.png',
+                            'pokeapi-v2-upgrade',
+                            CURRENT_TIMESTAMP,
+                            TRUE,
+                            NULL
+                        )
+                        """
+                                .formatted(GAME_MODE_UPGRADE_SCHEMA))
+                .update();
+        upgradeJdbcClient
+                .sql(
+                        """
+                        INSERT INTO %s.game (
+                            id,
+                            round_group_id,
+                            answer_pokemon_id,
+                            status,
+                            end_reason,
+                            action_count,
+                            state_version,
+                            started_at,
+                            ended_at,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (
+                            '77777777-7777-4777-8777-777777777777',
+                            '88888888-8888-4888-8888-888888888888',
+                            25,
+                            'IN_PROGRESS',
+                            NULL,
+                            0,
+                            1,
+                            CURRENT_TIMESTAMP,
+                            NULL,
+                            CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP
+                        )
+                        """
+                                .formatted(GAME_MODE_UPGRADE_SCHEMA))
+                .update();
+
+        Flyway currentFlyway =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas(GAME_MODE_UPGRADE_SCHEMA)
+                        .defaultSchema(GAME_MODE_UPGRADE_SCHEMA)
+                        .load();
+        assertEquals(
+                1,
+                currentFlyway.migrate().migrationsExecuted);
+
+        String mode =
+                upgradeJdbcClient
+                        .sql(
+                                """
+                                SELECT mode
+                                FROM %s.game
+                                WHERE id =
+                                    '77777777-7777-4777-8777-777777777777'
+                                """
+                                        .formatted(
+                                                GAME_MODE_UPGRADE_SCHEMA))
+                        .query(String.class)
+                        .single();
+        Long validatedConstraintCount =
+                upgradeJdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)
+                                FROM pg_constraint
+                                WHERE connamespace =
+                                    CAST(:schema AS regnamespace)
+                                  AND convalidated = TRUE
+                                  AND conname IN (
+                                      'ck_game_mode',
+                                      'ck_game_mode_action_count'
+                                  )
+                                """)
+                        .param(
+                                "schema",
+                                GAME_MODE_UPGRADE_SCHEMA)
+                        .query(Long.class)
+                        .single();
+
+        assertEquals("TWENTY_QUESTIONS", mode);
+        assertEquals(2L, validatedConstraintCount);
     }
 
     private void insertV4AnsweredQuestion(

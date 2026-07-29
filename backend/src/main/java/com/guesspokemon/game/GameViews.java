@@ -3,6 +3,7 @@ package com.guesspokemon.game;
 import com.guesspokemon.game.GameTypes.GameActionType;
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
 import java.time.Instant;
@@ -20,6 +21,8 @@ public final class GameViews {
         UUID gameId();
 
         GameStatus status();
+
+        GameMode mode();
 
         long stateVersion();
 
@@ -41,6 +44,7 @@ public final class GameViews {
     public record SelectorGameView(
             UUID gameId,
             GameStatus status,
+            GameMode mode,
             long stateVersion,
             int usedActionCount,
             int remainingActionCount,
@@ -52,6 +56,33 @@ public final class GameViews {
             List<ActionView> actions)
             implements ParticipantGameView {
 
+        public SelectorGameView(
+                UUID gameId,
+                GameStatus status,
+                long stateVersion,
+                int usedActionCount,
+                int remainingActionCount,
+                GameRole myRole,
+                int selectedPokemonNationalDexId,
+                UUID winnerUserId,
+                UUID loserUserId,
+                GameEndReason endReason,
+                List<ActionView> actions) {
+            this(
+                    gameId,
+                    status,
+                    GameMode.TWENTY_QUESTIONS,
+                    stateVersion,
+                    usedActionCount,
+                    remainingActionCount,
+                    myRole,
+                    selectedPokemonNationalDexId,
+                    winnerUserId,
+                    loserUserId,
+                    endReason,
+                    actions);
+        }
+
         public SelectorGameView {
             actions = List.copyOf(actions);
         }
@@ -60,6 +91,7 @@ public final class GameViews {
     public record QuestionerGameView(
             UUID gameId,
             GameStatus status,
+            GameMode mode,
             long stateVersion,
             int usedActionCount,
             int remainingActionCount,
@@ -69,6 +101,31 @@ public final class GameViews {
             GameEndReason endReason,
             List<ActionView> actions)
             implements ParticipantGameView {
+
+        public QuestionerGameView(
+                UUID gameId,
+                GameStatus status,
+                long stateVersion,
+                int usedActionCount,
+                int remainingActionCount,
+                GameRole myRole,
+                UUID winnerUserId,
+                UUID loserUserId,
+                GameEndReason endReason,
+                List<ActionView> actions) {
+            this(
+                    gameId,
+                    status,
+                    GameMode.TWENTY_QUESTIONS,
+                    stateVersion,
+                    usedActionCount,
+                    remainingActionCount,
+                    myRole,
+                    winnerUserId,
+                    loserUserId,
+                    endReason,
+                    actions);
+        }
 
         public QuestionerGameView {
             actions = List.copyOf(actions);

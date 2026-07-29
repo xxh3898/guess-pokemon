@@ -3,12 +3,14 @@ import {
   ClipboardPenLine,
   Clock3,
   MessagesSquare,
+  ScanSearch,
   Shuffle,
   UserRound,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type {
+  GameMode,
   RoleSelectionState,
   RoomMember,
   RoomRole,
@@ -17,6 +19,7 @@ import type {
 interface RolePreferencePanelProps {
   commandPending: boolean;
   connected: boolean;
+  mode?: GameMode;
   me: RoomMember;
   onSelect(role: RoomRole): void;
   opponent: RoomMember;
@@ -27,6 +30,7 @@ interface RolePreferencePanelProps {
 export function RolePreferencePanel({
   commandPending,
   connected,
+  mode = "TWENTY_QUESTIONS",
   me,
   onSelect,
   opponent,
@@ -54,7 +58,7 @@ export function RolePreferencePanel({
           member={me}
           status={
             selection.preferredRole
-              ? `내 선택 · ${roleLabel(selection.preferredRole)}`
+              ? `내 선택 · ${roleLabel(selection.preferredRole, mode)}`
               : "역할을 골라 주세요."
           }
           tone="blue"
@@ -79,7 +83,11 @@ export function RolePreferencePanel({
             selection.preferredRole === "SELECTOR"
           }
           icon={<ClipboardPenLine aria-hidden="true" size={30} />}
-          label="포켓몬을 정하고 답하기"
+          label={
+            mode === "SILHOUETTE"
+              ? "포켓몬을 정하기"
+              : "포켓몬을 정하고 답하기"
+          }
           onClick={() => {
             onSelect("SELECTOR");
           }}
@@ -93,13 +101,23 @@ export function RolePreferencePanel({
             commandPending ||
             selection.preferredRole === "QUESTIONER"
           }
-          icon={<MessagesSquare aria-hidden="true" size={30} />}
-          label="질문하고 맞히기"
+          icon={
+            mode === "SILHOUETTE" ? (
+              <ScanSearch aria-hidden="true" size={30} />
+            ) : (
+              <MessagesSquare aria-hidden="true" size={30} />
+            )
+          }
+          label={
+            mode === "SILHOUETTE"
+              ? "실루엣 보고 맞히기"
+              : "질문하고 맞히기"
+          }
           onClick={() => {
             onSelect("QUESTIONER");
           }}
           pressed={selection.preferredRole === "QUESTIONER"}
-          roleLabel="질문자"
+          roleLabel={mode === "SILHOUETTE" ? "도전자" : "질문자"}
           tone="questioner"
         />
       </div>
@@ -199,6 +217,9 @@ function RolePreferenceButton({
   );
 }
 
-function roleLabel(role: RoomRole): string {
-  return role === "SELECTOR" ? "출제자" : "질문자";
+function roleLabel(role: RoomRole, mode: GameMode): string {
+  if (role === "SELECTOR") {
+    return "출제자";
+  }
+  return mode === "SILHOUETTE" ? "도전자" : "질문자";
 }

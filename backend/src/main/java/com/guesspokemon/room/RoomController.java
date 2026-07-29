@@ -1,8 +1,11 @@
 package com.guesspokemon.room;
 
 import static com.guesspokemon.common.error.ApiErrorCode.AUTHENTICATION_REQUIRED;
+import static com.guesspokemon.game.GameTypes.GameMode.TWENTY_QUESTIONS;
 
 import com.guesspokemon.common.error.ApiException;
+import com.guesspokemon.game.GameTypes.GameMode;
+import com.guesspokemon.pokemon.PokemonSilhouetteService;
 import com.guesspokemon.realtime.RealtimeEventPublisher;
 import com.guesspokemon.realtime.RoomConnectionService;
 import com.guesspokemon.room.RoomApplicationService.JoinOutcome;
@@ -10,8 +13,11 @@ import com.guesspokemon.room.RoomApplicationService.LeaveOutcome;
 import com.guesspokemon.room.RoomDtos.JoinableRoomListResponse;
 import com.guesspokemon.room.RoomDtos.RoomSnapshot;
 import com.guesspokemon.security.AuthenticatedUser;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +25,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,27 +37,38 @@ public class RoomController {
     private final RoomApplicationService roomApplicationService;
     private final RealtimeEventPublisher eventPublisher;
     private final RoomConnectionService roomConnectionService;
+    private final PokemonSilhouetteService pokemonSilhouetteService;
 
     public RoomController(
             RoomApplicationService roomApplicationService,
             RealtimeEventPublisher eventPublisher,
-            RoomConnectionService roomConnectionService) {
+            RoomConnectionService roomConnectionService,
+            PokemonSilhouetteService pokemonSilhouetteService) {
         this.roomApplicationService = roomApplicationService;
         this.eventPublisher = eventPublisher;
         this.roomConnectionService = roomConnectionService;
+        this.pokemonSilhouetteService = pokemonSilhouetteService;
     }
 
     @PostMapping
     ResponseEntity<RoomSnapshot> create(
+            @Valid @RequestBody(required = false) CreateRoomRequest request,
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
         AuthenticatedUser user = requireAuthenticatedUser(authenticatedUser);
         RoomSnapshot snapshot =
                 roomApplicationService.create(
                         user.id(),
-                        user.nickname());
+                        user.nickname(),
+                        request == null
+                                ? TWENTY_QUESTIONS
+                                : request.mode());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .cacheControl(CacheControl.noStore())
                 .body(snapshot);
+    }
+
+    public record CreateRoomRequest(
+            @NotNull GameMode mode) {
     }
 
     @PostMapping("/{roomCode}/join")
@@ -90,6 +108,26 @@ public class RoomController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(snapshot);
+    }
+
+    @GetMapping(
+            value = "/{roomCode}/silhouette",
+            produces = MediaType.IMAGE_PNG_VALUE)
+    ResponseEntity<byte[]> silhouette(
+            @PathVariable String roomCode,
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
+        AuthenticatedUser user =
+                requireAuthenticatedUser(authenticatedUser);
+        int nationalDexId =
+                roomApplicationService.silhouettePokemonId(
+                        roomCode,
+                        user.id());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.IMAGE_PNG)
+                .body(
+                        pokemonSilhouetteService.getSilhouette(
+                                nationalDexId));
     }
 
     @DeleteMapping("/{roomCode}/members/me")

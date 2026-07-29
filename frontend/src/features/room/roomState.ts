@@ -6,6 +6,7 @@ import type {
 } from "../../shared/realtime/realtimeTypes";
 import {
   MAX_GAME_ACTION_COUNT,
+  MAX_SILHOUETTE_GUESS_COUNT,
   type ActiveRoomSnapshot,
   type GameAction,
   type QuestionGameAction,
@@ -356,7 +357,10 @@ function applyGameEnded(
       gameId: event.gameId,
       loserUserId: event.payload.loserUserId,
       remainingActionCount:
-        MAX_GAME_ACTION_COUNT - event.payload.usedActionCount,
+        (current.mode === "SILHOUETTE"
+          ? MAX_SILHOUETTE_GUESS_COUNT
+          : MAX_GAME_ACTION_COUNT) -
+        event.payload.usedActionCount,
       status: event.payload.status,
       usedActionCount: event.payload.usedActionCount,
       winnerUserId: event.payload.winnerUserId,

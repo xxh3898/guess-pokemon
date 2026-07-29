@@ -56,6 +56,7 @@ final class GameHistoryTestFixture {
                         INSERT INTO game (
                             id,
                             round_group_id,
+                            mode,
                             answer_pokemon_id,
                             status,
                             end_reason,
@@ -69,6 +70,7 @@ final class GameHistoryTestFixture {
                         VALUES (
                             :gameId,
                             :roundGroupId,
+                            'TWENTY_QUESTIONS',
                             :answerPokemonId,
                             :status,
                             :endReason,
@@ -111,6 +113,7 @@ final class GameHistoryTestFixture {
                         INSERT INTO game (
                             id,
                             round_group_id,
+                            mode,
                             answer_pokemon_id,
                             status,
                             end_reason,
@@ -124,6 +127,7 @@ final class GameHistoryTestFixture {
                         VALUES (
                             :gameId,
                             :roundGroupId,
+                            'TWENTY_QUESTIONS',
                             :answerPokemonId,
                             'IN_PROGRESS',
                             NULL,

@@ -20,10 +20,12 @@ export type GameEndReason =
   | "CORRECT_GUESS"
   | "PLAYER_LEFT"
   | "QUESTION_LIMIT"
+  | "GUESS_LIMIT"
   | "RECONNECT_TIMEOUT"
   | "SERVER_RESTART";
 export type GameResult = "LOSS" | "NONE" | "WIN";
 export type GameRole = "QUESTIONER" | "SELECTOR";
+export type GameMode = "TWENTY_QUESTIONS" | "SILHOUETTE";
 export type GameStatus = "ABORTED" | "COMPLETED";
 
 export interface HistoryOpponent {
@@ -37,6 +39,7 @@ export interface HistoryListItem {
   readonly endedAt: string;
   readonly endReason: GameEndReason;
   readonly gameId: string;
+  readonly mode?: GameMode;
   readonly myResult: GameResult;
   readonly myRole: GameRole;
   readonly opponent: HistoryOpponent;
@@ -77,6 +80,7 @@ export interface HistoryDetail {
   readonly endedAt: string;
   readonly endReason: GameEndReason;
   readonly gameId: string;
+  readonly mode?: GameMode;
   readonly participants: readonly HistoryParticipant[];
   readonly startedAt: string;
   readonly status: GameStatus;
@@ -89,6 +93,7 @@ const GAME_END_REASONS = [
   "CORRECT_GUESS",
   "PLAYER_LEFT",
   "QUESTION_LIMIT",
+  "GUESS_LIMIT",
   "RECONNECT_TIMEOUT",
   "SERVER_RESTART",
 ] as const;
@@ -140,11 +145,21 @@ export function parseHistoryDetail(payload: unknown): HistoryDetail {
     parseHistoryParticipant,
   );
   const actions = detail.actions.map(parseHistoryAction);
-  const actionCount = requireInteger(detail, "actionCount", 0, 20);
+  const hasMode = detail.mode !== undefined;
+  const mode = parseGameMode(detail.mode);
+  const maximum = mode === "SILHOUETTE" ? 3 : 20;
+  const actionCount = requireInteger(
+    detail,
+    "actionCount",
+    0,
+    maximum,
+  );
 
   if (
     !hasValidParticipants(participants, status) ||
     actionCount !== actions.length ||
+    (mode === "SILHOUETTE" &&
+      actions.some((action) => action.type !== "GUESS")) ||
     actions.some(
       (action, index) => action.sequenceNo !== index + 1,
     )
@@ -163,6 +178,7 @@ export function parseHistoryDetail(payload: unknown): HistoryDetail {
       GAME_END_REASONS,
     ),
     gameId: requireUuid(detail, "gameId"),
+    ...(hasMode ? { mode } : {}),
     participants,
     startedAt: requireDateTime(detail, "startedAt"),
     status,
@@ -171,9 +187,16 @@ export function parseHistoryDetail(payload: unknown): HistoryDetail {
 
 function parseHistoryListItem(payload: unknown): HistoryListItem {
   const item = requireRecord(payload);
+  const hasMode = item.mode !== undefined;
   const opponent = requireRecord(item.opponent);
+  const mode = parseGameMode(item.mode);
   return {
-    actionCount: requireInteger(item, "actionCount", 0, 20),
+    actionCount: requireInteger(
+      item,
+      "actionCount",
+      0,
+      mode === "SILHOUETTE" ? 3 : 20,
+    ),
     answerPokemon: parsePokemonSummary(item.answerPokemon),
     endedAt: requireDateTime(item, "endedAt"),
     endReason: requireEnum(
@@ -182,6 +205,7 @@ function parseHistoryListItem(payload: unknown): HistoryListItem {
       GAME_END_REASONS,
     ),
     gameId: requireUuid(item, "gameId"),
+    ...(hasMode ? { mode } : {}),
     myResult: requireEnum(item, "myResult", GAME_RESULTS),
     myRole: requireEnum(item, "myRole", GAME_ROLES),
     opponent: {
@@ -190,6 +214,19 @@ function parseHistoryListItem(payload: unknown): HistoryListItem {
     },
     startedAt: requireDateTime(item, "startedAt"),
   };
+}
+
+function parseGameMode(value: unknown): GameMode {
+  if (value === undefined) {
+    return "TWENTY_QUESTIONS";
+  }
+  if (
+    value !== "TWENTY_QUESTIONS" &&
+    value !== "SILHOUETTE"
+  ) {
+    throw ApiError.invalidResponse();
+  }
+  return value;
 }
 
 function parseHistoryParticipant(

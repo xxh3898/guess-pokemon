@@ -1,6 +1,7 @@
 import type {
   GameAnswer,
   GameEndReason,
+  GameMode,
   GameResult,
   GameRole,
 } from "./historyTypes";
@@ -69,6 +70,7 @@ export function gameEndReasonLabel(
   return {
     BOTH_DISCONNECTED: "양쪽 모두 이탈",
     CORRECT_GUESS: "정답 추측",
+    GUESS_LIMIT: "추측 3회 소진",
     PLAYER_LEFT: "참가자 이탈",
     QUESTION_LIMIT: "질문 20회 소진",
     RECONNECT_TIMEOUT: "재접속 시간 초과",
@@ -84,7 +86,13 @@ export function gameResultLabel(result: GameResult): string {
   }[result];
 }
 
-export function gameRoleLabel(role: GameRole): string {
+export function gameRoleLabel(
+  role: GameRole,
+  mode: GameMode = "TWENTY_QUESTIONS",
+): string {
+  if (role === "QUESTIONER" && mode === "SILHOUETTE") {
+    return "도전자";
+  }
   return {
     QUESTIONER: "질문자",
     SELECTOR: "출제자",

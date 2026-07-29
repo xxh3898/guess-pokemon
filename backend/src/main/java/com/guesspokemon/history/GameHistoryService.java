@@ -16,6 +16,7 @@ import com.guesspokemon.common.error.ApiException;
 import com.guesspokemon.game.GameTypes.GameActionType;
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameResult;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
@@ -124,14 +125,18 @@ public class GameHistoryService {
                         .map(this::toAction)
                         .toList();
         GameStatus status = enumValue(GameStatus.class, game.getStatus());
+        GameMode mode =
+                enumValue(GameMode.class, game.getMode());
         validateDetail(
                 currentUserId,
+                mode,
                 status,
                 game.getActionCount(),
                 participants,
                 actions);
         return new GameDetail(
                 game.getGameId(),
+                mode,
                 status,
                 game.getStartedAt(),
                 game.getEndedAt(),
@@ -154,6 +159,7 @@ public class GameHistoryService {
     private GameListItem toListItem(GameListRow row) {
         return new GameListItem(
                 row.getGameId(),
+                enumValue(GameMode.class, row.getMode()),
                 row.getStartedAt(),
                 row.getEndedAt(),
                 enumValue(GameRole.class, row.getMyRole()),
@@ -253,13 +259,21 @@ public class GameHistoryService {
 
     private void validateDetail(
             UUID currentUserId,
+            GameMode mode,
             GameStatus status,
             Short actionCount,
             List<GameParticipant> participants,
             List<GameActionItem> actions) {
         if (participants.size() != 2
                 || actionCount == null
-                || actionCount != actions.size()) {
+                || actionCount != actions.size()
+                || (mode == GameMode.SILHOUETTE
+                        && (actionCount > 3
+                                || actions.stream()
+                                        .anyMatch(
+                                                action ->
+                                                        action.type()
+                                                                != GUESS)))) {
             throw invalidHistoryState();
         }
         Set<UUID> userIds = new HashSet<>();

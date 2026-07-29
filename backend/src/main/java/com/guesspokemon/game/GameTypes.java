@@ -11,6 +11,11 @@ public final class GameTypes {
         ABORTED
     }
 
+    public enum GameMode {
+        TWENTY_QUESTIONS,
+        SILHOUETTE
+    }
+
     public enum GameRole {
         SELECTOR,
         QUESTIONER
@@ -25,6 +30,7 @@ public final class GameTypes {
     public enum GameEndReason {
         CORRECT_GUESS,
         QUESTION_LIMIT,
+        GUESS_LIMIT,
         PLAYER_LEFT,
         RECONNECT_TIMEOUT,
         BOTH_DISCONNECTED,
