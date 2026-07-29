@@ -53,6 +53,10 @@ compose_command=(
   --file "${repository_root}/compose.tunnel.yaml" \
   --profile named-tunnel \
   config --quiet
+docker compose \
+  --env-file "${repository_root}/.env.production.example" \
+  --file "${repository_root}/compose.production.yaml" \
+  config --quiet
 
 if [[ "${verification_mode}" == "named" ]]; then
   token_file="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-}"
@@ -81,4 +85,4 @@ if [[ "${verification_mode}" == "named" ]]; then
     fail "비어 있지 않은 named tunnel token file이 필요합니다."
 fi
 
-printf 'Compose 구성 검증 완료: base, dev, quick-tunnel, named-tunnel\n'
+printf 'Compose 구성 검증 완료: base, dev, quick-tunnel, named-tunnel, production\n'

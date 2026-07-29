@@ -2,7 +2,7 @@
 
 - 작성일: 2026-07-25
 - 대상: Docker Compose 기반 MacBook 통합 테스트와 Mac mini 단일 서버 운영
-- 비범위: Cloudflare 계정 생성, 도메인 구매·DNS 위임, 운영 배포 실행, 운영 DB restore 실행
+- 비범위: 운영 배포 실행, 운영 DB restore 실행
 
 ## 1. 운영 원칙
 
@@ -303,7 +303,54 @@ named tunnel은 실행할 때와 같은 `compose.tunnel.yaml`과 profile을 지�
 - [ ] 실제 도메인과 Pokémon 관련 권리 범위를 검토했다.
 - [ ] HTTPS, REST, WSS, PC·모바일 핵심 흐름을 확인했다.
 
-## 12. 참고 문서
+## 12. Mac mini 공유 Tunnel 운영 구성
+
+Mac mini 운영에서는 저장소의 `compose.production.yaml`을 단독으로
+사용한다. GitHub Actions가 만든 backend·frontend image를 실행하며
+Mac mini에서 source build를 수행하지 않는다.
+공개 hostname은 `guess-pokemon.chochiho.cloud`이다.
+
+```text
+guess-pokemon.chochiho.cloud
+  -> Cloudflare home-mini tunnel
+  -> edge network의 guess-pokemon-web:80
+  -> application network의 api:8080
+  -> application network의 db:5432
+```
+
+- `db`, `api`는 host port와 `edge` network를 사용하지 않는다.
+- `web`만 `edge`에 `guess-pokemon-web` alias로 참여한다.
+- `application` network는 `internal: true`로 외부 연결을 차단한다.
+- Portfolio와 Compose project, 환경 파일, DB volume을 공유하지 않는다.
+- 운영 session cookie는 항상 `Secure=true`다.
+- 운영 image는 backend·frontend 모두 같은 40자리 commit SHA tag를
+  사용한다.
+
+공유 `cloudflared` connector는 `edge` network의 `172.18.0.2`에
+고정해야 한다. `infra/nginx/cloudflare-edge-real-ip.conf`는 이 한
+주소만 `CF-Connecting-IP` 전달자로 신뢰한다. connector 주소를 고정하지
+않고 container를 재생성하면 HSTS와 client IP별 rate limit가 의도대로
+작동하지 않는다.
+
+운영 환경 예시는 `.env.production.example`이다. 실제
+`POSTGRES_PASSWORD`와 image SHA는
+`/Users/homeserver/Server/apps/guess-pokemon/.env`에만 저장하고
+파일 mode를 `600`으로 제한한다.
+
+container를 시작하지 않고 운영 구성을 확인한다.
+
+```bash
+docker compose \
+  --env-file .env.production.example \
+  --file compose.production.yaml \
+  config --quiet
+```
+
+첫 배포 전에 MacBook DB의 최신 custom-format backup을 만들고 격리
+restore rehearsal을 통과해야 한다. 운영 DB restore, connector 재생성,
+public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한다.
+
+## 13. 참고 문서
 
 - [Cloudflare Tunnel 설정](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
 - [Cloudflare HTTP 요청 header](https://developers.cloudflare.com/fundamentals/reference/http-headers/)

@@ -1,0 +1,116 @@
+name: guess-pokemon
+
+services:
+  db:
+    image: postgres:18.4-alpine3.24
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - application
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  api:
+    image: ${API_IMAGE:?API_IMAGE must be set}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB must be set}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      SESSION_COOKIE_SECURE: "true"
+      POKEMON_ARTWORK_ENABLED: ${POKEMON_ARTWORK_ENABLED:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '"status":"UP"'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - application
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE must be set}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:size=32m,mode=0755
+      - /var/run:size=4m,mode=0755
+      - /tmp:size=16m,mode=1777
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1/actuator/health/readiness
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      application:
+      edge:
+        aliases:
+          - guess-pokemon-web
+    volumes:
+      - type: bind
+        source: ./infra/nginx/cloudflare-edge-real-ip.conf
+        target: /etc/nginx/conf.d/00-cloudflare-real-ip.conf
+        read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  postgres-data:
+
+networks:
+  application:
+    internal: true
+  edge:
+    external: true
+    name: edge

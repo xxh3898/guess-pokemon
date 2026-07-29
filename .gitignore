@@ -215,6 +215,7 @@ $RECYCLE.BIN/
 .env
 .env.*
 !.env.example
+!.env.production.example
 secrets/
 
 # Local database backups

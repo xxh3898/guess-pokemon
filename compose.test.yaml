@@ -46,8 +46,10 @@ services:
       scripts/operations-config.test.mjs
     volumes:
       - ./.env.example:/workspace/.env.example:ro
+      - ./.env.production.example:/workspace/.env.production.example:ro
       - ./README.md:/workspace/README.md:ro
       - ./compose.dev.yaml:/workspace/compose.dev.yaml:ro
+      - ./compose.production.yaml:/workspace/compose.production.yaml:ro
       - ./compose.test.yaml:/workspace/compose.test.yaml:ro
       - ./compose.tunnel.yaml:/workspace/compose.tunnel.yaml:ro
       - ./compose.yaml:/workspace/compose.yaml:ro
@@ -62,7 +64,7 @@ services:
     extra_hosts:
       - api:127.0.0.1
     volumes:
-      - ./infra/nginx/cloudflare-real-ip.conf:/etc/nginx/conf.d/00-cloudflare-real-ip.conf:ro
+      - ./infra/nginx/cloudflare-edge-real-ip.conf:/etc/nginx/conf.d/00-cloudflare-real-ip.conf:ro
       - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
