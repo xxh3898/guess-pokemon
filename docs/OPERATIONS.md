@@ -354,6 +354,10 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 
 - `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
   frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
+- frontend, backend, infra, API image, Web image 검증은 독립 job으로
+  실행해 서로 기다리지 않는다.
+- 두 ARM64 image 검증과 `main` publish는 `ubuntu-24.04-arm`에서
+  실행하며 QEMU emulation을 사용하지 않는다.
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
 - 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
   `home-mini`에 연결한다.
