@@ -446,7 +446,12 @@ class RealtimeCommandIntegrationTest {
         try {
             String roomCode = createRoom(host);
             joinRoom(guest, roomCode);
-            hostSocket.events().clear();
+            awaitEvent(
+                    hostSocket.events(),
+                    "PLAYER_JOINED");
+            awaitEvent(
+                    hostSocket.events(),
+                    "ROOM_SNAPSHOT");
             guestSocket.events().clear();
 
             HttpResponse<String> response =
@@ -493,7 +498,12 @@ class RealtimeCommandIntegrationTest {
         try {
             String roomCode = createRoom(host);
             joinRoom(guest, roomCode);
-            hostSocket.events().clear();
+            awaitEvent(
+                    hostSocket.events(),
+                    "PLAYER_JOINED");
+            awaitEvent(
+                    hostSocket.events(),
+                    "ROOM_SNAPSHOT");
             guestSocket.events().clear();
 
             HttpResponse<String> response =

@@ -102,6 +102,30 @@ test("should_backupAndRejectActiveGamesBeforeImageReplacement", () => {
   );
 });
 
+test(
+  "should_keepTemporaryRegistryConfigOutOfComposeCommands_when_deployingPulledImages",
+  () => {
+    const composeFunction = deployScript.match(
+      /compose\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    const composeConfig = deployScript.match(
+      /API_IMAGE="\$\{new_api_image\}"[\s\S]*?config \\\n    --quiet/,
+    )?.[0];
+    const composeUpCommands = deployScript.match(
+      /compose up \\\n[\s\S]*?--wait-timeout "\$\{HEALTH_TIMEOUT_SECONDS\}"/g,
+    );
+
+    assert.ok(composeFunction);
+    assert.ok(composeConfig);
+    assert.equal(composeUpCommands?.length, 2);
+    assert.doesNotMatch(composeFunction, /--config/);
+    assert.doesNotMatch(composeConfig, /--config/);
+    for (const command of composeUpCommands) {
+      assert.match(command, /--pull never/);
+    }
+  },
+);
+
 test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
   assert.match(
     deployScript,
