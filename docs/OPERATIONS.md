@@ -437,9 +437,11 @@ artifact의 자동 동기화 대상이 아니다.
    API는 volume 없이, Web은 candidate release의 Nginx bind 하나만 사용한다.
    exact API·Web image와 network 경계를 확인하고 DB image·command·entrypoint·
    `POSTGRES_*`·`PGDATA`, API의 datasource·JPA·Flyway·Liquibase·SQL 초기화
-   설정, Spring 외부 설정·JVM property override와 readiness probe 의미는
-   활성 Compose와 같게 유지한다. API·Web image process override를 허용하지
-   않고 Web의 `edge` alias는 `guess-pokemon-web` 하나만 허용한다. host
+   설정, Spring 외부 설정·JVM property override와 healthcheck `test` 명령은
+   활성 Compose와 정확히 같게 유지한다. 각 service의 process user와 정규화한
+   `tmpfs` mount target 집합도 활성 Compose 기준을 유지한다. API·Web image
+   process override를 허용하지 않고 Web의 `edge` alias는
+   `guess-pokemon-web` 하나만 허용한다. host
    port·privileged·추가 capability·device·Docker socket·host namespace·그 밖의 host bind와
    `volumes_from`·`configs`·`secrets`·`env_file`, `extra_hosts`·link 기반
    service discovery 우회를 금지한다. healthcheck timing, logging, restart,

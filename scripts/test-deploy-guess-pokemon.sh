@@ -72,6 +72,8 @@ run_deploy() {
         FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON="${FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON="${FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_API_TMPFS_JSON="${FAKE_RENDER_CANDIDATE_API_TMPFS_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_API_USER_JSON="${FAKE_RENDER_CANDIDATE_API_USER_JSON:-}" \
         FAKE_RENDER_DB_VOLUME_EXTRA="${FAKE_RENDER_DB_VOLUME_EXTRA:-}" \
         FAKE_RENDER_POSTGRES_VOLUME_EXTRA="${FAKE_RENDER_POSTGRES_VOLUME_EXTRA:-}" \
         FAKE_RENDER_API_HEALTHCHECK_JSON="${FAKE_RENDER_API_HEALTHCHECK_JSON:-}" \
@@ -468,9 +470,27 @@ FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_APPLICATION_JSON":"{}"' \
     test-user
 
 FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
-FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON='{"test":["CMD","true"],"interval":"10s"}' \
+FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON='{"test":["CMD-SHELL","true # http://127.0.0.1:8080/actuator/health/readiness status UP"],"interval":"10s"}' \
   assert_deploy_rejected \
-    'Runtime config changing the API readiness probe must fail' \
+    'Runtime config replacing readiness with an always-success probe must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_USER_JSON='"00:1000"' \
+  assert_deploy_rejected \
+    'Runtime config changing the API process user must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_TMPFS_JSON='["/tmp:size=128m,mode=1777","/app:size=32m"]' \
+  assert_deploy_rejected \
+    'Runtime config changing the API tmpfs target set must fail' \
     "${REVISION_THREE}" \
     update \
     "${CONFIG_DIGEST_TWO}" \

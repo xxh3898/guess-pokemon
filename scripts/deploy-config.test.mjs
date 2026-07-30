@@ -595,6 +595,18 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
     deployScript,
     /healthcheck probe is invalid/,
   );
+  assert.match(
+    deployScript,
+    /healthcheck test differs from the active verified configuration/,
+  );
+  assert.match(
+    deployScript,
+    /user differs from the active verified configuration/,
+  );
+  assert.match(
+    deployScript,
+    /tmpfs target set differs from the active verified configuration/,
+  );
   assert.match(deployScript, /web edge alias set is invalid/);
   assert.match(
     deployScript,

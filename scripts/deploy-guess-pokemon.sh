@@ -498,6 +498,7 @@ validate_compose_contract() {
   printf '%s\0%s' "${rendered}" "${baseline_rendered}" \
     | "${PYTHON_BIN}" -c '
 import json
+import posixpath
 import sys
 
 documents = sys.stdin.buffer.read().split(b"\0")
@@ -607,30 +608,54 @@ if protected_environment(
 ):
     raise SystemExit("API data configuration differs from the active verified configuration")
 
-expected_healthcheck_fragments = {
-    "db": ("pg_isready",),
-    "api": (
-        "http://127.0.0.1:8080/actuator/health/readiness",
-        "status",
-        "UP",
-    ),
-    "web": ("http://127.0.0.1/actuator/health/readiness",),
-}
-for name, expected_fragments in expected_healthcheck_fragments.items():
-    candidate_healthcheck = services[name].get("healthcheck", {})
-    if not isinstance(candidate_healthcheck, dict):
-        raise SystemExit(f"{name} healthcheck contract is invalid")
-    healthcheck_test = candidate_healthcheck.get("test")
+def healthcheck_test_for(service, label):
+    healthcheck = service.get("healthcheck", {})
+    if not isinstance(healthcheck, dict):
+        raise SystemExit(f"{label} healthcheck contract is invalid")
+    healthcheck_test = healthcheck.get("test")
     if (
         not isinstance(healthcheck_test, list)
         or not healthcheck_test
         or healthcheck_test[0] not in ("CMD", "CMD-SHELL")
-        or candidate_healthcheck.get("disable") is True
+        or healthcheck.get("disable") is True
     ):
-        raise SystemExit(f"{name} healthcheck probe is invalid")
-    serialized_healthcheck = json.dumps(healthcheck_test, separators=(",", ":"))
-    if any(fragment not in serialized_healthcheck for fragment in expected_fragments):
-        raise SystemExit(f"{name} healthcheck probe is invalid")
+        raise SystemExit(f"{label} healthcheck probe is invalid")
+    return healthcheck_test
+
+def tmpfs_targets_for(service, label):
+    entries = service.get("tmpfs", [])
+    if entries is None:
+        return set()
+    if not isinstance(entries, list):
+        raise SystemExit(f"{label} tmpfs contract is invalid")
+    targets = []
+    for entry in entries:
+        if isinstance(entry, str):
+            target = entry.split(":", 1)[0]
+        elif isinstance(entry, dict):
+            target = entry.get("target")
+        else:
+            raise SystemExit(f"{label} tmpfs contract is invalid")
+        if not isinstance(target, str) or not target.startswith("/"):
+            raise SystemExit(f"{label} tmpfs target is invalid")
+        targets.append(posixpath.normpath(target))
+    if len(targets) != len(set(targets)):
+        raise SystemExit(f"{label} tmpfs target set is invalid")
+    return set(targets)
+
+for name in ("db", "api", "web"):
+    if services[name].get("user") != baseline_services[name].get("user"):
+        raise SystemExit(f"{name} user differs from the active verified configuration")
+    if tmpfs_targets_for(services[name], name) != tmpfs_targets_for(
+        baseline_services[name],
+        f"active {name}",
+    ):
+        raise SystemExit(f"{name} tmpfs target set differs from the active verified configuration")
+    if healthcheck_test_for(services[name], name) != healthcheck_test_for(
+        baseline_services[name],
+        f"active {name}",
+    ):
+        raise SystemExit(f"{name} healthcheck test differs from the active verified configuration")
 
 expected_service_networks = {
     "db": {"application"},
