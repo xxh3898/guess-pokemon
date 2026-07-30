@@ -847,6 +847,7 @@ else
   current_config_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
   current_config_revision="$(read_state_value RUNTIME_CONFIG_REVISION)"
   current_config_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+  current_state_sha="$(read_state_value APPLICATION_REVISION)"
 
   if [[ -e "${RUNTIME_CONFIG_STATE}" ]] \
     && {
@@ -855,7 +856,8 @@ else
         || [[ ! "${current_config_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
         || [[ "${current_config_digest}" == "${ZERO_DIGEST}" ]] \
         || [[ ! "${current_config_revision}" =~ ^[0-9a-f]{40}$ ]] \
-        || [[ ! "${current_config_content_sha}" =~ ^[0-9a-f]{64}$ ]];
+        || [[ ! "${current_config_content_sha}" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ "${current_state_sha}" != "${previous_sha}" ]];
     }
   then
     fail "current runtime config state is invalid"
