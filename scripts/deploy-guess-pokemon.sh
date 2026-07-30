@@ -420,6 +420,9 @@ import sys
 config = json.load(sys.stdin)
 services = config.get("services", {})
 networks = config.get("networks", {})
+volumes = config.get("volumes", {})
+if config.get("name") != "guess-pokemon":
+    raise SystemExit("Compose project name must remain guess-pokemon")
 if set(services) != {"db", "api", "web"}:
     raise SystemExit("unexpected Guess Pokemon service set")
 expected = {
@@ -440,6 +443,24 @@ if edge.get("external") is not True or edge.get("name") != "edge":
     raise SystemExit("edge network contract is invalid")
 if networks.get("egress", {}).get("internal") is True:
     raise SystemExit("egress network must permit outbound access")
+db_volumes = services["db"].get("volumes", [])
+db_data = next(
+    (
+        volume
+        for volume in db_volumes
+        if isinstance(volume, dict)
+        and volume.get("target") == "/var/lib/postgresql"
+    ),
+    None,
+)
+if (
+    not db_data
+    or db_data.get("type") != "volume"
+    or db_data.get("source") != "postgres-data"
+    or volumes.get("postgres-data", {}).get("name")
+    != "guess-pokemon_postgres-data"
+):
+    raise SystemExit("PostgreSQL persistent volume contract is invalid")
 web_volumes = services["web"].get("volumes", [])
 if not any(
     volume.get("target") == "/etc/nginx/conf.d/00-cloudflare-real-ip.conf"

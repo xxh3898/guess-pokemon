@@ -63,7 +63,7 @@ case "${command_name}" in
     arguments=" $* "
     if [[ "${arguments}" == *" --format json "* ]]; then
       printf '%s\n' \
-        '{"services":{"db":{"networks":{"application":null}},"api":{"networks":{"application":null,"egress":null}},"web":{"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"/tmp/runtime/infra/nginx/cloudflare-edge-real-ip.conf","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}}}'
+        '{"name":"guess-pokemon","services":{"db":{"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"networks":{"application":null,"egress":null}},"web":{"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"/tmp/runtime/infra/nginx/cloudflare-edge-real-ip.conf","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}'
     elif [[ "${arguments}" == *" ps --status running --services "* ]]; then
       printf 'db\napi\nweb\n'
     elif [[ "${arguments}" == *" exec -T db "* ]]; then

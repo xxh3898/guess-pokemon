@@ -460,6 +460,8 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
     deployScript,
     /write_pending_state[\s\S]*"\$\{previous_sha:-\$\{ZERO_SHA\}\}"/,
   );
+  assert.match(deployScript, /Compose project name must remain guess-pokemon/);
+  assert.match(deployScript, /PostgreSQL persistent volume contract is invalid/);
   assert.match(
     runtimeConfigDetector,
     /compose\.production\.yaml[\s\S]*infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*runtime-config\.Dockerfile/,
