@@ -457,6 +457,13 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not use Compose profiles")
     if service.get("restart") != "unless-stopped":
         raise SystemExit(f"{name} restart policy must remain unless-stopped")
+    if (
+        service.get("user") not in (None, "")
+        or service.get("privileged") is True
+        or service.get("cap_add")
+        or service.get("devices")
+    ):
+        raise SystemExit(f"{name} must not override image user or add privileges")
     if service.get("scale", 1) != 1:
         raise SystemExit(f"{name} must run exactly one replica")
     if service.get("deploy", {}).get("replicas", 1) != 1:
@@ -465,6 +472,11 @@ if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
+web_edge = services["web"].get("networks", {}).get("edge", {})
+if not isinstance(web_edge, dict) or "guess-pokemon-web" not in web_edge.get(
+    "aliases", []
+):
+    raise SystemExit("Web edge alias must retain guess-pokemon-web")
 if services["db"].get("image") != "postgres:18.4-alpine3.24":
     raise SystemExit("PostgreSQL image changes require a separate data migration")
 if services["db"].get("environment", {}).get("POSTGRES_DB") != expected_database_name:

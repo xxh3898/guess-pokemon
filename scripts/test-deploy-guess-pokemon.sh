@@ -68,6 +68,7 @@ run_deploy() {
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
+        FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
         FAKE_RENDER_RESTART_POLICY="${FAKE_RENDER_RESTART_POLICY:-}" \
@@ -316,6 +317,16 @@ wrong_ddl_auto_exit_code="$?"
 set -e
 if [[ "${wrong_ddl_auto_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with unsafe Hibernate schema handling must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_EDGE_ALIAS=unexpected \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+wrong_edge_alias_exit_code="$?"
+set -e
+if [[ "${wrong_edge_alias_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config without the Cloudflare Web alias must fail\n' >&2
   exit 1
 fi
 
