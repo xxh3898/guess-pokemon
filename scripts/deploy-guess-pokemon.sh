@@ -649,6 +649,21 @@ validate_pending_state() {
   fi
 }
 
+validate_state_file() {
+  local keys
+
+  if [[ ! -f "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]]; then
+    fail "runtime config state must be a regular non-symlink file"
+  fi
+  keys="$(
+    /usr/bin/awk -F= 'NF >= 2 { print $1 }' "${RUNTIME_CONFIG_STATE}" \
+      | LC_ALL=C /usr/bin/sort
+  )"
+  if [[ "${keys}" != $'APPLICATION_REVISION\nPREVIOUS_APPLICATION_REVISION\nPREVIOUS_RUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_CONTENT_SHA256\nRUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_REVISION' ]]; then
+    fail "runtime config state keys are invalid"
+  fi
+}
+
 validate_verified_release() {
   local digest="$1"
   local expected_content_sha="$2"
@@ -694,6 +709,9 @@ recover_pending_transaction() {
   local expected_current
 
   validate_pending_state
+  if [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]]; then
+    validate_state_file
+  fi
   previous_sha="$(read_pending_value PREVIOUS_APPLICATION_REVISION)"
   previous_digest="$(read_pending_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
   target_sha="$(read_pending_value TARGET_APPLICATION_REVISION)"
@@ -874,6 +892,9 @@ else
     }
   then
     fail "current runtime config state is invalid"
+  fi
+  if [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]]; then
+    validate_state_file
   fi
 
   if [[ "${current_config_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
