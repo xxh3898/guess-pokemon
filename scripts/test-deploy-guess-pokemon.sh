@@ -208,6 +208,25 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
 fi
 /bin/rm -f -- "${pending_file}"
 
+/bin/cp "${state_file}" "${state_file}.valid"
+/usr/bin/sed \
+  -e 's#^RUNTIME_CONFIG_DIGEST=.*#RUNTIME_CONFIG_DIGEST=malformed#' \
+  "${state_file}.valid" >"${state_file}"
+set +e
+run_deploy \
+  "${REVISION_THREE}" \
+  update \
+  "${CONFIG_DIGEST_TWO}" \
+  test-user \
+  >/dev/null 2>&1
+invalid_state_exit_code="$?"
+set -e
+if [[ "${invalid_state_exit_code}" -ne 1 ]]; then
+  printf 'Update with an invalid existing runtime config state must fail\n' >&2
+  exit 1
+fi
+/bin/mv "${state_file}.valid" "${state_file}"
+
 set +e
 FAKE_RENDER_API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:unexpected \
   run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
