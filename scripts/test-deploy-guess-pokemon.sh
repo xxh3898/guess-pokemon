@@ -390,6 +390,16 @@ if [[ "${spring_json_override_exit_code}" -ne 1 ]]; then
 fi
 
 set +e
+FAKE_RENDER_API_EXTRA_ENVIRONMENT=',"SERVER_SERVLET_SESSION_COOKIE_SECURE":"false"' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+direct_cookie_override_exit_code="$?"
+set -e
+if [[ "${direct_cookie_override_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a direct cookie override must fail\n' >&2
+  exit 1
+fi
+
+set +e
 FAKE_RENDER_EDGE_ALIAS=unexpected \
   run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
 wrong_edge_alias_exit_code="$?"

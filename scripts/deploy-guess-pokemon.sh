@@ -471,6 +471,13 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not define lifecycle hooks")
     if service.get("volumes_from") or service.get("configs") or service.get("secrets"):
         raise SystemExit(f"{name} contains an unapproved mount source")
+    if (
+        service.get("extra_hosts")
+        or service.get("dns")
+        or service.get("dns_search")
+        or service.get("network_mode")
+    ):
+        raise SystemExit(f"{name} must not override service name resolution")
     if service.get("scale", 1) != 1:
         raise SystemExit(f"{name} must run exactly one replica")
     if service.get("deploy", {}).get("replicas", 1) != 1:
@@ -496,14 +503,20 @@ if (
 ):
     raise SystemExit("Hibernate schema handling must remain validate")
 api_environment = services["api"].get("environment", {})
-for name in {
-    "SPRING_APPLICATION_JSON",
-    "JAVA_TOOL_OPTIONS",
-    "JDK_JAVA_OPTIONS",
-    "_JAVA_OPTIONS",
-}:
-    if name in api_environment:
-        raise SystemExit(f"API environment override source is forbidden: {name}")
+required_api_environment = {
+    "SPRING_DATASOURCE_URL",
+    "SPRING_DATASOURCE_USERNAME",
+    "SPRING_DATASOURCE_PASSWORD",
+    "SERVER_FORWARD_HEADERS_STRATEGY",
+    "SESSION_COOKIE_SECURE",
+    "POKEMON_ARTWORK_ENABLED",
+}
+api_environment_keys = set(api_environment)
+if api_environment_keys not in (
+    required_api_environment,
+    required_api_environment | {"SPRING_JPA_HIBERNATE_DDL_AUTO"},
+):
+    raise SystemExit("API environment key allowlist is invalid")
 expected_datasource_url = f"jdbc:postgresql://db:5432/{expected_database_name}"
 if api_environment.get("SPRING_DATASOURCE_URL") != expected_datasource_url:
     raise SystemExit("API datasource must use the production DB service")
