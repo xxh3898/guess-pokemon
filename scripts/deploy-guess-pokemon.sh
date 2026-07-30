@@ -400,6 +400,7 @@ validate_compose_contract() {
   local api_image="$2"
   local web_image="$3"
   local rendered
+  local resolved_environment
 
   API_IMAGE="${api_image}" \
   WEB_IMAGE="${web_image}" \
@@ -423,21 +424,55 @@ validate_compose_contract() {
         --format json
   )"
 
-  printf '%s' "${rendered}" \
+  resolved_environment="$(
+    printf '%s\n' \
+      'name: guess-pokemon-environment-probe' \
+      'services:' \
+      '  probe:' \
+      '    image: scratch' \
+      '    environment:' \
+      '      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}' \
+      '      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}' \
+      '      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}' \
+      | "${DOCKER_BIN}" \
+          compose \
+          --project-directory "$(/usr/bin/dirname "${compose_file}")" \
+          --env-file "${ENV_FILE}" \
+          --file - \
+          config \
+          --format json
+  )"
+
+  printf '[%s,%s]' "${rendered}" "${resolved_environment}" \
     | "${PYTHON_BIN}" -c '
 import json
 import hashlib
 import sys
 
-config = json.load(sys.stdin)
+config, environment_probe = json.load(sys.stdin)
 (
     expected_api_image,
     expected_web_image,
     expected_real_ip_source,
-    expected_database_name,
-    expected_database_user,
-    expected_database_password_sha256,
-) = sys.argv[1:7]
+) = sys.argv[1:4]
+host_environment = (
+    environment_probe.get("services", {})
+    .get("probe", {})
+    .get("environment", {})
+)
+if not isinstance(host_environment, dict):
+    raise SystemExit("resolved Compose environment probe is invalid")
+try:
+    expected_database_name = host_environment["POSTGRES_DB"]
+    expected_database_user = host_environment["POSTGRES_USER"]
+    expected_database_password = host_environment["POSTGRES_PASSWORD"]
+except KeyError as error:
+    raise SystemExit(
+        f"resolved Compose environment is missing: {error.args[0]}"
+    ) from error
+expected_database_password_sha256 = hashlib.sha256(
+    expected_database_password.encode()
+).hexdigest()
 services = config.get("services", {})
 networks = config.get("networks", {})
 volumes = config.get("volumes", {})
@@ -446,9 +481,12 @@ if config.get("name") != "guess-pokemon":
 if set(services) != {"db", "api", "web"}:
     raise SystemExit("unexpected Guess Pokemon service set")
 expected = {
-    "db": {"application"},
-    "api": {"application", "egress"},
-    "web": {"application", "edge"},
+    "db": {"application": None},
+    "api": {"application": None, "egress": None},
+    "web": {
+        "application": None,
+        "edge": {"aliases": ["guess-pokemon-web"]},
+    },
 }
 allowed_service_keys = {
     "db": {
@@ -505,7 +543,7 @@ for name, expected_networks in expected.items():
     }
     if unsupported_service_keys:
         raise SystemExit(f"{name} contains an unsupported Compose service field")
-    if set(service.get("networks", {})) != expected_networks:
+    if service.get("networks", {}) != expected_networks:
         raise SystemExit(f"{name} network contract is invalid")
     if service.get("ports"):
         raise SystemExit(f"{name} must not publish host ports")
@@ -578,11 +616,6 @@ if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
-web_edge = services["web"].get("networks", {}).get("edge", {})
-if not isinstance(web_edge, dict) or "guess-pokemon-web" not in web_edge.get(
-    "aliases", []
-):
-    raise SystemExit("Web edge alias must retain guess-pokemon-web")
 if services["db"].get("image") != "postgres:18.4-alpine3.24":
     raise SystemExit("PostgreSQL image changes require a separate data migration")
 db_environment = services["db"].get("environment", {})
@@ -690,8 +723,11 @@ if networks.get("application", {}) != {
     "internal": True,
 }:
     raise SystemExit("application network must remain the project-private bridge")
-edge = networks.get("edge", {})
-if edge.get("external") is not True or edge.get("name") != "edge":
+if networks.get("edge", {}) != {
+    "name": "edge",
+    "external": True,
+    "ipam": {},
+}:
     raise SystemExit("edge network contract is invalid")
 if networks.get("egress", {}) != {
     "name": "guess-pokemon_egress",
@@ -711,31 +747,31 @@ db_data = next(
     ),
     None,
 )
+if volumes != {
+    "postgres-data": {"name": "guess-pokemon_postgres-data"},
+}:
+    raise SystemExit("top-level PostgreSQL volume contract is invalid")
 if db_data != {
     "type": "volume",
     "source": "postgres-data",
     "target": "/var/lib/postgresql",
     "volume": {},
-} or volumes.get("postgres-data", {}).get("name") != "guess-pokemon_postgres-data":
+}:
     raise SystemExit("PostgreSQL persistent volume contract is invalid")
 web_volumes = services["web"].get("volumes", [])
-if len(web_volumes) != 1:
-    raise SystemExit("unexpected Web volume mount")
-if not any(
-    volume.get("target") == "/etc/nginx/conf.d/00-cloudflare-real-ip.conf"
-    and volume.get("read_only") is True
-    and volume.get("source") == expected_real_ip_source
-    for volume in web_volumes
-    if isinstance(volume, dict)
-):
+if web_volumes != [
+    {
+        "type": "bind",
+        "source": expected_real_ip_source,
+        "target": "/etc/nginx/conf.d/00-cloudflare-real-ip.conf",
+        "read_only": True,
+    }
+]:
     raise SystemExit("pinned Cloudflare real-IP bind is missing")
 ' \
       "${api_image}" \
       "${web_image}" \
-      "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf" \
-      "$(read_env_value POSTGRES_DB)" \
-      "$(read_env_value POSTGRES_USER)" \
-      "$(printf '%s' "$(read_env_value POSTGRES_PASSWORD)" | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}')"
+      "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf"
 }
 
 prepare_runtime_release() {

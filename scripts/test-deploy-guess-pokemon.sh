@@ -68,7 +68,9 @@ run_deploy() {
         FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_DB_USER="${FAKE_RENDER_DB_USER:-}" \
         FAKE_RENDER_DB_PASSWORD="${FAKE_RENDER_DB_PASSWORD:-}" \
+        FAKE_RESOLVED_DB_PASSWORD="${FAKE_RESOLVED_DB_PASSWORD:-}" \
         FAKE_RENDER_DB_VOLUME_EXTRA="${FAKE_RENDER_DB_VOLUME_EXTRA:-}" \
+        FAKE_RENDER_POSTGRES_VOLUME_EXTRA="${FAKE_RENDER_POSTGRES_VOLUME_EXTRA:-}" \
         FAKE_RENDER_DB_HEALTHCHECK_JSON="${FAKE_RENDER_DB_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_API_HEALTHCHECK_JSON="${FAKE_RENDER_API_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_API_DB_USER="${FAKE_RENDER_API_DB_USER:-}" \
@@ -83,6 +85,7 @@ run_deploy() {
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
         FAKE_RENDER_APPLICATION_JSON="${FAKE_RENDER_APPLICATION_JSON:-}" \
         FAKE_RENDER_EGRESS_JSON="${FAKE_RENDER_EGRESS_JSON:-}" \
+        FAKE_RENDER_EDGE_JSON="${FAKE_RENDER_EDGE_JSON:-}" \
         FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
@@ -310,6 +313,18 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
 fi
 /bin/rm -f -- "${pending_file}"
 
+/usr/bin/sed \
+  -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD='a#b'|" \
+  "${app_dir}/.env" >"${app_dir}/.env.compose-syntax"
+/bin/mv "${app_dir}/.env.compose-syntax" "${app_dir}/.env"
+FAKE_RESOLVED_DB_PASSWORD='a#b' \
+FAKE_RENDER_DB_PASSWORD='a#b' \
+  run_deploy "${REVISION_TWO}" keep test-user
+/usr/bin/sed \
+  -e 's#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=replace-with-a-random-production-password#' \
+  "${app_dir}/.env" >"${app_dir}/.env.compose-syntax"
+/bin/mv "${app_dir}/.env.compose-syntax" "${app_dir}/.env"
+
 set +e
 FAKE_RENDER_RESTART_POLICY=no \
   run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
@@ -370,6 +385,16 @@ database_volume_subpath_exit_code="$?"
 set -e
 if [[ "${database_volume_subpath_exit_code}" -ne 1 ]]; then
   printf 'PostgreSQL volume subpath override must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_POSTGRES_VOLUME_EXTRA=',"driver_opts":{"type":"tmpfs"}' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+postgres_volume_driver_exit_code="$?"
+set -e
+if [[ "${postgres_volume_driver_exit_code}" -ne 1 ]]; then
+  printf 'PostgreSQL top-level volume driver options must fail\n' >&2
   exit 1
 fi
 
