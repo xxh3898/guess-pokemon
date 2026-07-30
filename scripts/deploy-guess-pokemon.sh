@@ -429,7 +429,12 @@ import json
 import sys
 
 config = json.load(sys.stdin)
-expected_api_image, expected_web_image, expected_real_ip_source = sys.argv[1:4]
+(
+    expected_api_image,
+    expected_web_image,
+    expected_real_ip_source,
+    expected_database_name,
+) = sys.argv[1:5]
 services = config.get("services", {})
 networks = config.get("networks", {})
 volumes = config.get("volumes", {})
@@ -460,6 +465,8 @@ if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
+if services["db"].get("environment", {}).get("POSTGRES_DB") != expected_database_name:
+    raise SystemExit("PostgreSQL database name must match the production environment")
 expected_healthchecks = {
     "db": [
         "CMD-SHELL",
@@ -523,7 +530,8 @@ if not any(
 ' \
       "${api_image}" \
       "${web_image}" \
-      "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf"
+      "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf" \
+      "$(read_env_value POSTGRES_DB)"
 }
 
 prepare_runtime_release() {

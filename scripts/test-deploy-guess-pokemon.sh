@@ -64,6 +64,7 @@ run_deploy() {
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
         FAKE_DISABLE_WEB_HEALTHCHECK="${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
+        FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
@@ -283,6 +284,16 @@ zero_scale_exit_code="$?"
 set -e
 if [[ "${zero_scale_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with zero Web replicas must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_DATABASE_NAME=alternate \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+wrong_database_name_exit_code="$?"
+set -e
+if [[ "${wrong_database_name_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a changed PostgreSQL database name must fail\n' >&2
   exit 1
 fi
 

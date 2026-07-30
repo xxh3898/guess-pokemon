@@ -73,6 +73,7 @@ case "${command_name}" in
       done
       api_image="${FAKE_RENDER_API_IMAGE:-${API_IMAGE}}"
       web_image="${FAKE_RENDER_WEB_IMAGE:-${WEB_IMAGE}}"
+      database_name="${FAKE_RENDER_DATABASE_NAME:-guess_pokemon}"
       real_ip_source="$(
         /usr/bin/dirname "${compose_file}"
       )/infra/nginx/cloudflare-edge-real-ip.conf"
@@ -88,7 +89,8 @@ case "${command_name}" in
       web_restart="${FAKE_RENDER_RESTART_POLICY:-unless-stopped}"
       web_scale="${FAKE_RENDER_WEB_SCALE:-1}"
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"restart":"unless-stopped","healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"restart":"unless-stopped","environment":{"POSTGRES_DB":"%s"},"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        "${database_name}" \
         "${api_image}" \
         "${web_image}" \
         "${web_restart}" \
