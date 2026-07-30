@@ -539,6 +539,38 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must run exactly one replica")
     if service.get("deploy", {}).get("replicas", 1) != 1:
         raise SystemExit(f"{name} deploy replicas must remain one")
+expected_hardening = {
+    "api": {
+        "init": True,
+        "read_only": True,
+        "pids_limit": 256,
+        "security_opt": ["no-new-privileges:true"],
+        "tmpfs": ["/tmp:size=128m,mode=1777"],
+    },
+    "web": {
+        "init": True,
+        "read_only": True,
+        "pids_limit": 100,
+        "security_opt": ["no-new-privileges:true"],
+        "tmpfs": [
+            "/var/cache/nginx:size=32m,mode=0755",
+            "/var/run:size=4m,mode=0755",
+            "/tmp:size=16m,mode=1777",
+        ],
+    },
+}
+for name, expected_values in expected_hardening.items():
+    service = services[name]
+    for field, expected_value in expected_values.items():
+        if service.get(field) != expected_value:
+            raise SystemExit(f"{name} hardening contract is invalid: {field}")
+expected_logging = {
+    "driver": "json-file",
+    "options": {"max-file": "3", "max-size": "10m"},
+}
+for name, service in services.items():
+    if service.get("logging") != expected_logging:
+        raise SystemExit(f"{name} logging rotation contract is invalid")
 if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
@@ -550,7 +582,10 @@ if not isinstance(web_edge, dict) or "guess-pokemon-web" not in web_edge.get(
     raise SystemExit("Web edge alias must retain guess-pokemon-web")
 if services["db"].get("image") != "postgres:18.4-alpine3.24":
     raise SystemExit("PostgreSQL image changes require a separate data migration")
-if services["db"].get("environment", {}).get("POSTGRES_DB") != expected_database_name:
+db_environment = services["db"].get("environment", {})
+if set(db_environment) != {"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"}:
+    raise SystemExit("PostgreSQL environment key allowlist is invalid")
+if db_environment.get("POSTGRES_DB") != expected_database_name:
     raise SystemExit("PostgreSQL database name must match the production environment")
 if (
     services["api"]

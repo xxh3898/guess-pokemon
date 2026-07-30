@@ -80,6 +80,9 @@ case "${command_name}" in
       datasource_url="${FAKE_RENDER_DATASOURCE_URL:-jdbc:postgresql://db:5432/${database_name}}"
       api_command_json="${FAKE_RENDER_API_COMMAND_JSON:-null}"
       api_extra_environment="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}"
+      db_extra_environment="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}"
+      api_read_only="${FAKE_RENDER_API_READ_ONLY:-true}"
+      api_security_opt_json="${FAKE_RENDER_API_SECURITY_OPT_JSON:-[\"no-new-privileges:true\"]}"
       real_ip_source="$(
         /usr/bin/dirname "${compose_file}"
       )/infra/nginx/cloudflare-edge-real-ip.conf"
@@ -97,10 +100,13 @@ case "${command_name}" in
       session_cookie_secure="${FAKE_RENDER_SESSION_COOKIE_SECURE:-true}"
       egress_external="${FAKE_RENDER_EGRESS_EXTERNAL:-false}"
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s"},"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_DATASOURCE_USERNAME":"test","SPRING_DATASOURCE_PASSWORD":"test","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{"name":"guess-pokemon_egress","driver":"bridge","external":%s},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s","POSTGRES_USER":"test","POSTGRES_PASSWORD":"test"%s},"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"api":{"image":"%s","restart":"unless-stopped","init":true,"read_only":%s,"pids_limit":256,"security_opt":%s,"tmpfs":["/tmp:size=128m,mode=1777"],"command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_DATASOURCE_USERNAME":"test","SPRING_DATASOURCE_PASSWORD":"test","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null},"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"web":{"image":"%s","restart":"%s","init":true,"read_only":true,"pids_limit":100,"security_opt":["no-new-privileges:true"],"tmpfs":["/var/cache/nginx:size=32m,mode=0755","/var/run:size=4m,mode=0755","/tmp:size=16m,mode=1777"],"scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}}},"networks":{"application":{"internal":true},"egress":{"name":"guess-pokemon_egress","driver":"bridge","external":%s},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
         "${db_image}" \
         "${database_name}" \
+        "${db_extra_environment}" \
         "${api_image}" \
+        "${api_read_only}" \
+        "${api_security_opt_json}" \
         "${api_command_json}" \
         "${datasource_url}" \
         "${ddl_auto}" \

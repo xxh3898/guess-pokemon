@@ -65,9 +65,12 @@ run_deploy() {
         FAKE_DISABLE_WEB_HEALTHCHECK="${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
         FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
+        FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_API_COMMAND_JSON="${FAKE_RENDER_API_COMMAND_JSON:-}" \
         FAKE_RENDER_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
+        FAKE_RENDER_API_READ_ONLY="${FAKE_RENDER_API_READ_ONLY:-}" \
+        FAKE_RENDER_API_SECURITY_OPT_JSON="${FAKE_RENDER_API_SECURITY_OPT_JSON:-}" \
         FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
         FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
@@ -326,6 +329,36 @@ wrong_database_name_exit_code="$?"
 set -e
 if [[ "${wrong_database_name_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with a changed PostgreSQL database name must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_DB_EXTRA_ENVIRONMENT=',"PGDATA":"/var/lib/postgresql/empty"' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+db_data_directory_override_exit_code="$?"
+set -e
+if [[ "${db_data_directory_override_exit_code}" -ne 1 ]]; then
+  printf 'PostgreSQL data-directory override must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_API_READ_ONLY=false \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+writable_api_exit_code="$?"
+set -e
+if [[ "${writable_api_exit_code}" -ne 1 ]]; then
+  printf 'Writable API root filesystem must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_API_SECURITY_OPT_JSON='["seccomp=unconfined"]' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+unconfined_api_exit_code="$?"
+set -e
+if [[ "${unconfined_api_exit_code}" -ne 1 ]]; then
+  printf 'Unconfined API seccomp policy must fail\n' >&2
   exit 1
 fi
 
