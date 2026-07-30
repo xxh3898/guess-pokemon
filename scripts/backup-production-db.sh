@@ -6,13 +6,21 @@ umask 077
 
 readonly DOCKER_BIN=/usr/local/bin/docker
 readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon
-readonly COMPOSE_FILE="${APP_DIR}/compose.yaml"
+readonly PROJECT_NAME=guess-pokemon
+readonly LEGACY_COMPOSE_FILE="${APP_DIR}/compose.yaml"
 readonly ENV_FILE="${APP_DIR}/.env"
 readonly BACKUP_DIR=/Users/homeserver/Server/backups/guess-pokemon
+readonly RUNTIME_CONFIG_ROOT="${APP_DIR}/runtime-config"
+readonly RUNTIME_CONFIG_RELEASES="${RUNTIME_CONFIG_ROOT}/releases"
+readonly RUNTIME_CONFIG_STATE="${RUNTIME_CONFIG_ROOT}/state"
+readonly RUNTIME_CONFIG_CURRENT="${RUNTIME_CONFIG_ROOT}/current"
+readonly ZERO_SHA=0000000000000000000000000000000000000000
+readonly ZERO_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 readonly RETENTION_SECONDS=$((3 * 24 * 60 * 60))
 
 temporary_file=
 final_file=
+active_compose_file=
 
 fail() {
   printf 'Guess Pokémon DB backup failed: %s\n' "$1" >&2
@@ -29,22 +37,152 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+is_digest() {
+  [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]] && [[ "$1" != "${ZERO_DIGEST}" ]]
+}
+
+read_state_value() {
+  local key="$1"
+
+  /usr/bin/sed -n "s/^${key}=//p" "${RUNTIME_CONFIG_STATE}" \
+    | /usr/bin/tail -n 1
+}
+
+validate_state_file() {
+  local application_revision
+  local keys
+  local previous_revision
+  local previous_digest
+  local runtime_content_sha
+  local runtime_digest
+  local runtime_revision
+
+  if [[ ! -f "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]]; then
+    fail "runtime config state must be a regular non-symlink file"
+  fi
+
+  keys="$(
+    /usr/bin/awk -F= 'NF >= 2 { print $1 }' "${RUNTIME_CONFIG_STATE}" \
+      | LC_ALL=C /usr/bin/sort
+  )"
+  if [[ "${keys}" != $'APPLICATION_REVISION\nPREVIOUS_APPLICATION_REVISION\nPREVIOUS_RUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_CONTENT_SHA256\nRUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_REVISION' ]]; then
+    fail "runtime config state keys are invalid"
+  fi
+
+  application_revision="$(read_state_value APPLICATION_REVISION)"
+  previous_revision="$(read_state_value PREVIOUS_APPLICATION_REVISION)"
+  previous_digest="$(read_state_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
+  runtime_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+  runtime_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
+  runtime_revision="$(read_state_value RUNTIME_CONFIG_REVISION)"
+
+  if [[ ! "${application_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ "${application_revision}" == "${ZERO_SHA}" ]] \
+    || [[ ! "${previous_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || { [[ "${previous_digest}" != "${ZERO_DIGEST}" ]] && ! is_digest "${previous_digest}"; } \
+    || [[ ! "${runtime_content_sha}" =~ ^[0-9a-f]{64}$ ]] \
+    || ! is_digest "${runtime_digest}" \
+    || [[ ! "${runtime_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ "${runtime_revision}" == "${ZERO_SHA}" ]]
+  then
+    fail "runtime config state values are invalid"
+  fi
+}
+
+validate_release_files() {
+  local release_dir="$1"
+  local files
+  local unexpected
+
+  if [[ ! -d "${release_dir}" || -L "${release_dir}" ]]; then
+    fail "verified runtime config release is missing or unsafe"
+  fi
+
+  unexpected="$(
+    /usr/bin/find "${release_dir}" ! -type d ! -type f -print
+  )"
+  if [[ -n "${unexpected}" ]]; then
+    fail "runtime config contains unsupported file types"
+  fi
+
+  files="$(
+    /usr/bin/find "${release_dir}" -type f -print \
+      | /usr/bin/sed "s#^${release_dir}/##" \
+      | LC_ALL=C /usr/bin/sort
+  )"
+  if [[ "${files}" != $'compose.yaml\ninfra/nginx/cloudflare-edge-real-ip.conf' ]]; then
+    fail "runtime config file allowlist does not match"
+  fi
+}
+
+runtime_config_content_sha256() {
+  local release_dir="$1"
+
+  {
+    /usr/bin/shasum -a 256 "${release_dir}/compose.yaml"
+    /usr/bin/shasum -a 256 \
+      "${release_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+  } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
+}
+
+select_compose_file() {
+  local current_target
+  local expected_current_target
+  local release_dir
+  local runtime_content_sha
+  local runtime_digest
+
+  if [[ ! -e "${RUNTIME_CONFIG_STATE}" && ! -L "${RUNTIME_CONFIG_STATE}" ]]; then
+    if [[ -e "${RUNTIME_CONFIG_CURRENT}" || -L "${RUNTIME_CONFIG_CURRENT}" ]]; then
+      fail "runtime config current pointer exists without verified state"
+    fi
+    if [[ ! -f "${LEGACY_COMPOSE_FILE}" || -L "${LEGACY_COMPOSE_FILE}" ]]; then
+      fail "legacy production Compose configuration is missing or unsafe"
+    fi
+    printf '%s' "${LEGACY_COMPOSE_FILE}"
+    return
+  fi
+
+  validate_state_file
+  runtime_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
+  runtime_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+  release_dir="${RUNTIME_CONFIG_RELEASES}/${runtime_digest#sha256:}"
+  expected_current_target="releases/${runtime_digest#sha256:}"
+
+  if [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]]; then
+    fail "verified runtime config current pointer is missing"
+  fi
+  current_target="$(/usr/bin/readlink "${RUNTIME_CONFIG_CURRENT}")"
+  if [[ "${current_target}" != "${expected_current_target}" ]]; then
+    fail "runtime config current pointer does not match verified state"
+  fi
+
+  validate_release_files "${release_dir}"
+  if [[ "$(runtime_config_content_sha256 "${release_dir}")" != "${runtime_content_sha}" ]]; then
+    fail "runtime config release integrity check failed"
+  fi
+
+  printf '%s/compose.yaml' "${release_dir}"
+}
+
 if [[ ! -x "${DOCKER_BIN}" ]]; then
   fail "Docker CLI is not executable: ${DOCKER_BIN}"
 fi
 
-if [[ ! -f "${COMPOSE_FILE}" || ! -f "${ENV_FILE}" ]]; then
-  fail "production Compose configuration is incomplete"
+if [[ ! -f "${ENV_FILE}" || -L "${ENV_FILE}" ]]; then
+  fail "production environment configuration is missing or unsafe"
 fi
 
+active_compose_file="$(select_compose_file)"
 /bin/mkdir -p "${BACKUP_DIR}"
 
 compose() {
   "${DOCKER_BIN}" \
     compose \
-    --project-directory "${APP_DIR}" \
+    --project-name "${PROJECT_NAME}" \
+    --project-directory "$(/usr/bin/dirname "${active_compose_file}")" \
     --env-file "${ENV_FILE}" \
-    --file "${COMPOSE_FILE}" \
+    --file "${active_compose_file}" \
     "$@"
 }
 

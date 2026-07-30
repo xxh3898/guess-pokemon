@@ -103,6 +103,7 @@ jobs:
             scripts/deploy-guess-pokemon-ci.sh \
             scripts/deploy-guess-pokemon.sh \
             scripts/detect-runtime-config-change.sh \
+            scripts/test-backup-production-db.sh \
             scripts/test-deploy-guess-pokemon.sh \
             scripts/verify-compose.sh
 
@@ -126,6 +127,10 @@ jobs:
       - name: Test deploy v2 state transitions
         if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
         run: ./scripts/test-deploy-guess-pokemon.sh
+
+      - name: Test production backup Compose selection
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: ./scripts/test-backup-production-db.sh
 
       - name: Render Compose variants
         if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'

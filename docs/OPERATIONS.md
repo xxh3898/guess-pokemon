@@ -398,15 +398,17 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
   종료 시 정리한다.
 
 v2 workflow를 `main`에 병합하기 전에 repository의
-`scripts/deploy-guess-pokemon.sh`와 `scripts/deploy-guess-pokemon-ci.sh`를
-각각 Mac mini의
+`scripts/deploy-guess-pokemon.sh`, `scripts/deploy-guess-pokemon-ci.sh`,
+`scripts/backup-production-db.sh`를 각각 Mac mini의
 `/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh`와
-`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`에
-사전 설치해야 한다. 기존 파일을 timestamp backup으로 보존하고, 설치본
+`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`,
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`에 사전
+설치해야 한다. 기존 파일을 timestamp backup으로 보존하고, 설치본
 SHA-256과 repository 원본의 일치, mode `700`, `/bin/bash -n`, 잘못된
 forced command 거부를 확인한 뒤에만 merge한다. 완료하지 않으면 기존
-wrapper가 v2 명령을 거부하므로 workflow를 병합하지 않는다. deploy
-script는 runtime config artifact의 자동 동기화 대상이 아니다.
+wrapper가 v2 명령을 거부하거나 backup이 legacy Compose만 찾으므로
+workflow를 병합하지 않는다. deploy·backup script는 runtime config
+artifact의 자동 동기화 대상이 아니다.
 
 배포 순서는 다음과 같다.
 
@@ -467,6 +469,9 @@ Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌
 설치한다.
 
 - 실행 중인 production DB만 대상으로 한다.
+- runtime config v2 state가 있으면 state의 content hash와 `current` pointer가
+  함께 가리키는 immutable release Compose만 사용한다. v2 state가 아직 없는
+  기존 설치에서만 app directory의 legacy Compose를 사용한다.
 - mode `600`의 temporary file에 custom-format dump를 기록한다.
 - `pg_restore --list`가 성공한 archive만 최종 이름으로 공개한다.
 - 새 backup이 성공한 뒤 3일을 초과한 Guess Pokémon archive만 정리한다.
