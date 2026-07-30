@@ -199,6 +199,16 @@ test ! -e "${pending_file}"
   "${app_dir}/.env"
 /usr/bin/grep -Fxq "APPLICATION_REVISION=${REVISION_TWO}" "${state_file}"
 
+{
+  printf 'PREVIOUS_APPLICATION_REVISION=%s\n' "${REVISION_TWO}"
+  printf 'PREVIOUS_RUNTIME_CONFIG_DIGEST=%s\n' "${CONFIG_DIGEST}"
+  printf 'TARGET_APPLICATION_REVISION=%s\n' "${REVISION_TWO}"
+  printf 'TARGET_RUNTIME_CONFIG_DIGEST=%s\n' "${CONFIG_DIGEST}"
+} >"${pending_file}"
+/bin/chmod 600 "${pending_file}"
+run_recovery
+test ! -e "${pending_file}"
+
 release_one="${app_dir}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 release_two="${app_dir}/runtime-config/releases/${CONFIG_DIGEST_TWO#sha256:}"
 /bin/cp -R "${release_one}" "${release_two}"

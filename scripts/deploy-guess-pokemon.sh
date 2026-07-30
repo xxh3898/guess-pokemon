@@ -843,10 +843,14 @@ recover_pending_transaction() {
   state_previous_digest="$(read_state_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
 
   if [[ "${state_sha}" == "${target_sha}" && "${state_digest}" == "${target_digest}" ]]; then
-    if [[ "${state_previous_sha}" != "${previous_sha}" ]] \
-      || [[ "${state_previous_digest}" != "${previous_digest}" ]]
+    if [[ "${previous_sha}" != "${target_sha}" ]] \
+      || [[ "${previous_digest}" != "${target_digest}" ]]
     then
-      fail "completed target predecessor does not match pending state"
+      if [[ "${state_previous_sha}" != "${previous_sha}" ]] \
+        || [[ "${state_previous_digest}" != "${previous_digest}" ]]
+      then
+        fail "completed target predecessor does not match pending state"
+      fi
     fi
     recovery_release="$(
       validate_verified_release "${target_digest}" "${state_content_sha}"
