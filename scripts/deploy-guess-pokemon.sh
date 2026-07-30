@@ -28,6 +28,7 @@ usage() {
     '  deploy-guess-pokemon.sh <commit-sha> <registry-user>' \
     '  deploy-guess-pokemon.sh <commit-sha> keep <registry-user>' \
     '  deploy-guess-pokemon.sh <commit-sha> update <config-digest> <registry-user>' \
+    '  deploy-guess-pokemon.sh recover' \
     >&2
 }
 
@@ -37,10 +38,21 @@ fail() {
 }
 
 legacy_mode=false
+recovery_mode=false
 config_mode=legacy
 config_digest=
+commit_sha=
+registry_user=
 
 case "$#" in
+  1)
+    if [[ "$1" != recover ]]; then
+      usage
+      exit 64
+    fi
+    recovery_mode=true
+    config_mode=recover
+    ;;
   2)
     legacy_mode=true
     commit_sha="$1"
@@ -71,12 +83,12 @@ case "$#" in
     ;;
 esac
 
-if [[ ! "${commit_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+if [[ "${recovery_mode}" == false && ! "${commit_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
   printf 'Commit SHA must contain exactly 40 hexadecimal characters\n' >&2
   exit 64
 fi
 
-if [[ ! "${registry_user}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+if [[ "${recovery_mode}" == false && ! "${registry_user}" =~ ^[A-Za-z0-9_-]+$ ]]; then
   printf 'Registry user contains unsupported characters\n' >&2
   exit 64
 fi
@@ -100,18 +112,21 @@ if [[ ! -f "${LEGACY_COMPOSE_FILE}" || ! -f "${ENV_FILE}" ]]; then
   fail "production Compose configuration is incomplete"
 fi
 
-if [[ "${legacy_mode}" == false && -e "${RUNTIME_CONFIG_PENDING}" ]]; then
+if [[ "${legacy_mode}" == false && "${recovery_mode}" == false && -e "${RUNTIME_CONFIG_PENDING}" ]]; then
   fail "an incomplete runtime config transaction requires recovery"
 fi
 
-if [[ ! -x "${BACKUP_SCRIPT}" ]]; then
+if [[ "${recovery_mode}" == false && ! -x "${BACKUP_SCRIPT}" ]]; then
   fail "production backup script is not executable"
 fi
 
-registry_token="$(/bin/cat)"
-if [[ -z "${registry_token}" ]]; then
-  printf 'GHCR token must not be empty\n' >&2
-  exit 64
+registry_token=
+if [[ "${recovery_mode}" == false ]]; then
+  registry_token="$(/bin/cat)"
+  if [[ -z "${registry_token}" ]]; then
+    printf 'GHCR token must not be empty\n' >&2
+    exit 64
+  fi
 fi
 
 umask 077
@@ -125,6 +140,7 @@ pending_temp=
 release_temp=
 current_link_temp=
 config_container_id=
+prepared_release=
 logged_in=false
 
 # ShellCheck cannot infer that trap invokes this cleanup function.
@@ -488,13 +504,13 @@ prepare_runtime_release() {
     fi
     /bin/rm -rf -- "${release_temp}"
     release_temp=
-    printf '%s\n' "${release_dir}"
+    prepared_release="${release_dir}"
     return 0
   fi
 
   /bin/mv -- "${release_temp}" "${release_dir}"
   release_temp=
-  printf '%s\n' "${release_dir}"
+  prepared_release="${release_dir}"
 }
 
 write_pending_state() {
@@ -544,10 +560,201 @@ write_success_state() {
 
   current_link_temp="${RUNTIME_CONFIG_ROOT}/.current.$$"
   /bin/ln -s "releases/$("/usr/bin/basename" "${release_dir}")" "${current_link_temp}"
-  /bin/mv -f -- "${current_link_temp}" "${RUNTIME_CONFIG_CURRENT}"
+  "${PYTHON_BIN}" -c \
+    'import os, sys; os.replace(sys.argv[1], sys.argv[2])' \
+    "${current_link_temp}" \
+    "${RUNTIME_CONFIG_CURRENT}"
   current_link_temp=
   /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
 }
+
+read_pending_value() {
+  local key="$1"
+  local value
+
+  value="$(
+    /usr/bin/awk -F= -v key="${key}" '
+      $1 == key {
+        value = substr($0, index($0, "=") + 1)
+        count += 1
+      }
+      END {
+        if (count != 1) {
+          exit 1
+        }
+        print value
+      }
+    ' "${RUNTIME_CONFIG_PENDING}"
+  )" || fail "${key} must appear exactly once in ${RUNTIME_CONFIG_PENDING}"
+
+  printf '%s' "${value}"
+}
+
+validate_pending_state() {
+  local keys
+
+  if [[ ! -f "${RUNTIME_CONFIG_PENDING}" || -L "${RUNTIME_CONFIG_PENDING}" ]]; then
+    fail "runtime config recovery requires a regular pending state file"
+  fi
+
+  keys="$(
+    /usr/bin/awk -F= 'NF >= 2 { print $1 }' "${RUNTIME_CONFIG_PENDING}" \
+      | LC_ALL=C /usr/bin/sort
+  )"
+  if [[ "${keys}" != $'PREVIOUS_APPLICATION_REVISION\nPREVIOUS_RUNTIME_CONFIG_DIGEST\nTARGET_APPLICATION_REVISION\nTARGET_RUNTIME_CONFIG_DIGEST' ]]; then
+    fail "runtime config pending state keys are invalid"
+  fi
+}
+
+validate_verified_release() {
+  local digest="$1"
+  local expected_content_sha="$2"
+  local release_dir
+
+  if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || [[ "${digest}" == "${ZERO_DIGEST}" ]] \
+    || [[ ! "${expected_content_sha}" =~ ^[0-9a-f]{64}$ ]]
+  then
+    fail "runtime config state is invalid"
+  fi
+
+  release_dir="$(release_dir_for_digest "${digest}")"
+  if [[ ! -d "${release_dir}" ]]; then
+    fail "runtime config release is missing during recovery"
+  fi
+  validate_release_files "${release_dir}"
+  if [[ "$(runtime_config_content_sha256 "${release_dir}")" != "${expected_content_sha}" ]]; then
+    fail "runtime config release integrity check failed during recovery"
+  fi
+
+  printf '%s' "${release_dir}"
+}
+
+running_service_set_is_complete() {
+  local services
+
+  services="$(compose ps --status running --services | LC_ALL=C /usr/bin/sort)"
+  [[ "${services}" == $'api\ndb\nweb' ]]
+}
+
+recover_pending_transaction() {
+  local previous_sha
+  local previous_digest
+  local target_sha
+  local target_digest
+  local state_sha
+  local state_digest
+  local state_content_sha
+  local recovery_release
+  local recovery_api_image
+  local recovery_web_image
+  local expected_current
+
+  validate_pending_state
+  previous_sha="$(read_pending_value PREVIOUS_APPLICATION_REVISION)"
+  previous_digest="$(read_pending_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
+  target_sha="$(read_pending_value TARGET_APPLICATION_REVISION)"
+  target_digest="$(read_pending_value TARGET_RUNTIME_CONFIG_DIGEST)"
+
+  if [[ ! "${previous_sha}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ ! "${previous_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || [[ ! "${target_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || [[ "${target_digest}" == "${ZERO_DIGEST}" ]]
+  then
+    fail "runtime config pending state values are invalid"
+  fi
+
+  state_sha="$(read_state_value APPLICATION_REVISION)"
+  state_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
+  state_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+
+  if [[ "${state_sha}" == "${target_sha}" && "${state_digest}" == "${target_digest}" ]]; then
+    recovery_release="$(
+      validate_verified_release "${target_digest}" "${state_content_sha}"
+    )"
+    expected_current="releases/$("/usr/bin/basename" "${recovery_release}")"
+    if [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]] \
+      || [[ "$(/usr/bin/readlink "${RUNTIME_CONFIG_CURRENT}")" != "${expected_current}" ]]
+    then
+      fail "runtime config current pointer does not match completed target state"
+    fi
+
+    recovery_api_image="${API_IMAGE_REPOSITORY}:${target_sha}"
+    recovery_web_image="${WEB_IMAGE_REPOSITORY}:${target_sha}"
+    if [[ "$(read_env_value API_IMAGE)" != "${recovery_api_image}" ]] \
+      || [[ "$(read_env_value WEB_IMAGE)" != "${recovery_web_image}" ]]
+    then
+      fail "application image environment does not match completed target state"
+    fi
+
+    active_compose_file="${recovery_release}/compose.yaml"
+    validate_compose_contract \
+      "${active_compose_file}" \
+      "${recovery_api_image}" \
+      "${recovery_web_image}"
+    if ! running_service_set_is_complete; then
+      fail "completed target services are not all running"
+    fi
+
+    /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
+    printf 'Completed Guess Pokémon runtime config transaction finalized: %s\n' "${target_sha}"
+    return 0
+  fi
+
+  if [[ "${previous_sha}" == "${ZERO_SHA}" ]]; then
+    if [[ -n "${state_sha}" || "${previous_digest}" != "${ZERO_DIGEST}" ]]; then
+      fail "bootstrap recovery state is inconsistent"
+    fi
+    write_image_env \
+      "${API_IMAGE_REPOSITORY}:${ZERO_SHA}" \
+      "${WEB_IMAGE_REPOSITORY}:${ZERO_SHA}"
+    active_compose_file="${LEGACY_COMPOSE_FILE}"
+    compose stop api web || true
+    /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
+    printf 'Interrupted Guess Pokémon bootstrap cleared with app services stopped\n'
+    return 0
+  fi
+
+  recovery_api_image="${API_IMAGE_REPOSITORY}:${previous_sha}"
+  recovery_web_image="${WEB_IMAGE_REPOSITORY}:${previous_sha}"
+  if [[ -z "${state_sha}" && -z "${state_digest}" && "${previous_digest}" == "${ZERO_DIGEST}" ]]; then
+    active_compose_file="${LEGACY_COMPOSE_FILE}"
+  else
+    if [[ "${state_sha}" != "${previous_sha}" || "${state_digest}" != "${previous_digest}" ]]; then
+      fail "pending transaction does not match the last verified runtime config state"
+    fi
+    recovery_release="$(
+      validate_verified_release "${previous_digest}" "${state_content_sha}"
+    )"
+    active_compose_file="${recovery_release}/compose.yaml"
+  fi
+
+  validate_compose_contract \
+    "${active_compose_file}" \
+    "${recovery_api_image}" \
+    "${recovery_web_image}"
+
+  write_image_env "${recovery_api_image}" "${recovery_web_image}"
+  if ! compose up \
+    --detach \
+    --no-build \
+    --pull never \
+    --remove-orphans \
+    --wait \
+    --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
+  then
+    fail "runtime config recovery could not restore the previous verified pair"
+  fi
+
+  /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
+  printf 'Guess Pokémon runtime config transaction recovered to: %s\n' "${previous_sha}"
+}
+
+if [[ "${recovery_mode}" == true ]]; then
+  recover_pending_transaction
+  exit 0
+fi
 
 normalized_sha="$(
   printf '%s' "${commit_sha}" \
@@ -617,9 +824,8 @@ else
   if [[ "${config_mode}" == update ]]; then
     candidate_config_digest="${config_digest}"
     candidate_config_revision="${normalized_sha}"
-    candidate_release="$(
-      prepare_runtime_release "${config_digest}" "${normalized_sha}"
-    )"
+    prepare_runtime_release "${config_digest}" "${normalized_sha}"
+    candidate_release="${prepared_release}"
     candidate_config_content_sha="$(
       runtime_config_content_sha256 "${candidate_release}"
     )"
@@ -662,7 +868,7 @@ wait_for_no_active_games
 "${BACKUP_SCRIPT}"
 
 if [[ "${legacy_mode}" == false ]]; then
-  previous_config_digest="${current_config_digest:-}"
+  previous_config_digest="${current_config_digest:-${ZERO_DIGEST}}"
   write_pending_state \
     "${previous_sha}" \
     "${previous_config_digest}" \

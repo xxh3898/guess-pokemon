@@ -12,6 +12,7 @@ REVISION_ONE=1111111111111111111111111111111111111111
 REVISION_TWO=2222222222222222222222222222222222222222
 REVISION_THREE=3333333333333333333333333333333333333333
 CONFIG_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+CONFIG_DIGEST_TWO=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 test_root="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/guess-pokemon-deploy-test.XXXXXX")"
 cleanup() {
@@ -63,6 +64,17 @@ run_deploy() {
         /bin/bash "${test_script}" "$@"
 }
 
+run_recovery() {
+  /usr/bin/env \
+    FAKE_RUNTIME_COMPOSE="${runtime_compose}" \
+    FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
+    FAKE_CONFIG_REVISION="${REVISION_ONE}" \
+    FAKE_REVISION_ONE="${REVISION_ONE}" \
+    FAKE_REVISION_TWO="${REVISION_TWO}" \
+    FAKE_REVISION_THREE="${REVISION_THREE}" \
+    /bin/bash "${test_script}" recover
+}
+
 run_deploy \
   "${REVISION_ONE}" \
   update \
@@ -84,6 +96,67 @@ run_deploy "${REVISION_TWO}" keep test-user
 /usr/bin/grep -Fxq "APPLICATION_REVISION=${REVISION_TWO}" "${state_file}"
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_DIGEST=${CONFIG_DIGEST}" "${state_file}"
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_REVISION=${REVISION_ONE}" "${state_file}"
+test "$(/usr/bin/readlink "${app_dir}/runtime-config/current")" \
+  = "releases/${CONFIG_DIGEST#sha256:}"
+if /usr/bin/find "${app_dir}/runtime-config/releases" -name '.current.*' | /usr/bin/grep -q .; then
+  printf 'Atomic current pointer update left an internal temporary symlink\n' >&2
+  exit 1
+fi
+
+pending_file="${app_dir}/runtime-config/pending"
+{
+  printf 'PREVIOUS_APPLICATION_REVISION=%s\n' "${REVISION_TWO}"
+  printf 'PREVIOUS_RUNTIME_CONFIG_DIGEST=%s\n' "${CONFIG_DIGEST}"
+  printf 'TARGET_APPLICATION_REVISION=%s\n' "${REVISION_THREE}"
+  printf 'TARGET_RUNTIME_CONFIG_DIGEST=%s\n' "${CONFIG_DIGEST}"
+} >"${pending_file}"
+/bin/chmod 600 "${pending_file}"
+/usr/bin/sed \
+  -e "s#^API_IMAGE=.*#API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_THREE}#" \
+  -e "s#^WEB_IMAGE=.*#WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:${REVISION_THREE}#" \
+  "${app_dir}/.env" >"${app_dir}/.env.interrupted"
+/bin/mv "${app_dir}/.env.interrupted" "${app_dir}/.env"
+
+run_recovery
+
+test ! -e "${pending_file}"
+/usr/bin/grep -Fxq \
+  "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
+  "${app_dir}/.env"
+/usr/bin/grep -Fxq "APPLICATION_REVISION=${REVISION_TWO}" "${state_file}"
+
+printf 'UNKNOWN=value\n' >"${pending_file}"
+set +e
+run_recovery >/dev/null 2>&1
+recovery_exit_code="$?"
+set -e
+if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
+  printf 'Invalid pending recovery must fail closed\n' >&2
+  exit 1
+fi
+/bin/rm -f -- "${pending_file}"
+
+docker_log="${test_root}/docker.log"
+set +e
+FAKE_FAIL_CP=true \
+FAKE_DOCKER_LOG="${docker_log}" \
+  run_deploy \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user \
+    >/dev/null 2>&1
+cleanup_exit_code="$?"
+set -e
+if [[ "${cleanup_exit_code}" -ne 1 ]]; then
+  printf 'Broken runtime config extraction must fail\n' >&2
+  exit 1
+fi
+/usr/bin/grep -Fq 'rm mock-runtime-config-container' "${docker_log}"
+if /usr/bin/find "${app_dir}/runtime-config/releases" -maxdepth 1 -type d -name '.tmp.*' | /usr/bin/grep -q .; then
+  printf 'Broken runtime config extraction left a temporary release\n' >&2
+  exit 1
+fi
 
 release_dir="${app_dir}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 printf '\n# tampered\n' >>"${release_dir}/compose.yaml"

@@ -396,6 +396,17 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
   종료 시 정리한다.
 
+v2 workflow를 `main`에 병합하기 전에 repository의
+`scripts/deploy-guess-pokemon.sh`와 `scripts/deploy-guess-pokemon-ci.sh`를
+각각 Mac mini의
+`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh`와
+`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`에
+사전 설치해야 한다. 기존 파일을 timestamp backup으로 보존하고, 설치본
+SHA-256과 repository 원본의 일치, mode `700`, `/bin/bash -n`, 잘못된
+forced command 거부를 확인한 뒤에만 merge한다. 완료하지 않으면 기존
+wrapper가 v2 명령을 거부하므로 workflow를 병합하지 않는다. deploy
+script는 runtime config artifact의 자동 동기화 대상이 아니다.
+
 배포 순서는 다음과 같다.
 
 1. 두 SHA image를 pull하고 `update`일 때만 runtime-config image를 exact
@@ -422,6 +433,30 @@ image rollback은 PostgreSQL volume을 삭제하지 않는다. Flyway가 새
 schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다.
 migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
 사용한다.
+
+### 중단된 runtime config transaction 복구
+
+v2 배포가 강제 종료되거나 host가 재시작되어
+`/Users/homeserver/Server/apps/guess-pokemon/runtime-config/pending`이
+남으면 후속 v2 배포는 fail closed한다. pending 파일을 직접 삭제하거나
+수정하지 말고 Mac mini에서 다음 명령을 실행한다.
+
+```bash
+/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh recover
+```
+
+recovery는 pending key와 SHA/digest 형식, 마지막 검증 state, release
+allowlist와 content hash를 대조한다. 성공 state가 이미 target pair면
+`.env`, `current` pointer와 실행 service를 확인한 뒤 marker만 정리하고,
+state가 previous pair면 이전 API/Web SHA와 config release를
+`--pull never`로 다시 적용한다. runtime config 도입 전 기존 설치는 legacy
+Compose와 이전 SHA로 복구한다. 정상 image가 한 번도 없던 bootstrap 중단은
+API/Web을 중지하고 zero-SHA placeholder로 되돌린다. pending/state가
+불일치하거나 release가 변조됐으면 marker를 유지한 채 실패한다.
+
+복구 후 production Compose `ps`, DB/API/Web health, artwork egress와 public
+Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌리지
+않는다.
 
 ## 14. 운영 backup과 3일 보존
 

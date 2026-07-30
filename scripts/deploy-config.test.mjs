@@ -353,7 +353,7 @@ test(
 
     assert.ok(composeFunction);
     assert.ok(composeConfig);
-    assert.equal(composeUpCommands?.length, 2);
+    assert.equal(composeUpCommands?.length, 3);
     assert.doesNotMatch(composeFunction, /--config/);
     assert.doesNotMatch(composeConfig, /--config/);
     for (const command of composeUpCommands) {
