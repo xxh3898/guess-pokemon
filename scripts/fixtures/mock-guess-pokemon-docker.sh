@@ -85,10 +85,12 @@ case "${command_name}" in
       if [[ "${FAKE_RENDER_WEB_PROFILE:-false}" == true ]]; then
         web_profiles='["optional"]'
       fi
+      web_restart="${FAKE_RENDER_RESTART_POLICY:-unless-stopped}"
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"restart":"unless-stopped","healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
         "${api_image}" \
         "${web_image}" \
+        "${web_restart}" \
         "${web_profiles}" \
         "${web_healthcheck}" \
         "${real_ip_source}"

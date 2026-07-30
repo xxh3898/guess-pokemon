@@ -450,6 +450,8 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not publish host ports")
     if service.get("profiles"):
         raise SystemExit(f"{name} must not use Compose profiles")
+    if service.get("restart") != "unless-stopped":
+        raise SystemExit(f"{name} restart policy must remain unless-stopped")
 if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
