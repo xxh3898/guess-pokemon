@@ -466,6 +466,8 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not override image user or add privileges")
     if service.get("command") is not None or service.get("entrypoint") is not None:
         raise SystemExit(f"{name} must not override the image process")
+    if service.get("post_start") is not None or service.get("pre_stop") is not None:
+        raise SystemExit(f"{name} must not define lifecycle hooks")
     if service.get("scale", 1) != 1:
         raise SystemExit(f"{name} must run exactly one replica")
     if service.get("deploy", {}).get("replicas", 1) != 1:
