@@ -62,8 +62,26 @@ case "${command_name}" in
   compose)
     arguments=" $* "
     if [[ "${arguments}" == *" --format json "* ]]; then
-      printf '%s\n' \
-        '{"name":"guess-pokemon","services":{"db":{"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"networks":{"application":null,"egress":null}},"web":{"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"/tmp/runtime/infra/nginx/cloudflare-edge-real-ip.conf","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}'
+      compose_file=
+      previous_argument=
+      for argument in "$@"; do
+        if [[ "${previous_argument}" == --file ]]; then
+          compose_file="${argument}"
+          break
+        fi
+        previous_argument="${argument}"
+      done
+      api_image="${FAKE_RENDER_API_IMAGE:-${API_IMAGE}}"
+      web_image="${FAKE_RENDER_WEB_IMAGE:-${WEB_IMAGE}}"
+      real_ip_source="$(
+        /usr/bin/dirname "${compose_file}"
+      )/infra/nginx/cloudflare-edge-real-ip.conf"
+      real_ip_source="${FAKE_RENDER_REAL_IP_SOURCE:-${real_ip_source}}"
+      printf \
+        '{"name":"guess-pokemon","services":{"db":{"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","networks":{"application":null,"egress":null}},"web":{"image":"%s","networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        "${api_image}" \
+        "${web_image}" \
+        "${real_ip_source}"
     elif [[ "${arguments}" == *" ps --status running --services "* ]]; then
       printf 'db\napi\nweb\n'
     elif [[ "${arguments}" == *" exec -T db "* ]]; then

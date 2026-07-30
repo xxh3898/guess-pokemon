@@ -418,6 +418,7 @@ import json
 import sys
 
 config = json.load(sys.stdin)
+expected_api_image, expected_web_image, expected_real_ip_source = sys.argv[1:4]
 services = config.get("services", {})
 networks = config.get("networks", {})
 volumes = config.get("volumes", {})
@@ -436,6 +437,10 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} network contract is invalid")
     if service.get("ports"):
         raise SystemExit(f"{name} must not publish host ports")
+if services["api"].get("image") != expected_api_image:
+    raise SystemExit("API image does not match the requested deployment")
+if services["web"].get("image") != expected_web_image:
+    raise SystemExit("Web image does not match the requested deployment")
 if networks.get("application", {}).get("internal") is not True:
     raise SystemExit("application network must be internal")
 edge = networks.get("edge", {})
@@ -465,14 +470,15 @@ web_volumes = services["web"].get("volumes", [])
 if not any(
     volume.get("target") == "/etc/nginx/conf.d/00-cloudflare-real-ip.conf"
     and volume.get("read_only") is True
-    and volume.get("source", "").endswith(
-        "/infra/nginx/cloudflare-edge-real-ip.conf"
-    )
+    and volume.get("source") == expected_real_ip_source
     for volume in web_volumes
     if isinstance(volume, dict)
 ):
     raise SystemExit("pinned Cloudflare real-IP bind is missing")
-'
+' \
+      "${api_image}" \
+      "${web_image}" \
+      "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf"
 }
 
 prepare_runtime_release() {
@@ -852,6 +858,21 @@ else
     current_compose_file="${LEGACY_COMPOSE_FILE}"
   fi
 
+  if [[ -n "${current_release}" ]]; then
+    if [[ ! "${current_config_revision}" =~ ^[0-9a-f]{40}$ ]] \
+      || [[ ! "${current_config_content_sha}" =~ ^[0-9a-f]{64}$ ]]
+    then
+      fail "current runtime config state is invalid"
+    fi
+    if [[ ! -d "${current_release}" ]]; then
+      fail "current runtime config release is missing"
+    fi
+    validate_release_files "${current_release}"
+    if [[ "$(runtime_config_content_sha256 "${current_release}")" != "${current_config_content_sha}" ]]; then
+      fail "current runtime config release integrity check failed"
+    fi
+  fi
+
   if [[ "${config_mode}" == update ]]; then
     candidate_config_digest="${config_digest}"
     candidate_config_revision="${normalized_sha}"
@@ -861,18 +882,8 @@ else
       runtime_config_content_sha256 "${candidate_release}"
     )"
   else
-    if [[ -z "${current_release}" ]] \
-      || [[ ! "${current_config_revision}" =~ ^[0-9a-f]{40}$ ]] \
-      || [[ ! "${current_config_content_sha}" =~ ^[0-9a-f]{64}$ ]]
-    then
+    if [[ -z "${current_release}" ]]; then
       fail "keep mode requires an existing verified runtime config state"
-    fi
-    if [[ ! -d "${current_release}" ]]; then
-      fail "current runtime config release is missing"
-    fi
-    validate_release_files "${current_release}"
-    if [[ "$(runtime_config_content_sha256 "${current_release}")" != "${current_config_content_sha}" ]]; then
-      fail "current runtime config release integrity check failed"
     fi
     candidate_config_digest="${current_config_digest}"
     candidate_config_revision="${current_config_revision}"

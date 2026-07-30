@@ -61,6 +61,11 @@ run_deploy() {
         FAKE_REVISION_ONE="${REVISION_ONE}" \
         FAKE_REVISION_TWO="${REVISION_TWO}" \
         FAKE_REVISION_THREE="${REVISION_THREE}" \
+        FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
+        FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
+        FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
+        FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
+        FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
         /bin/bash "${test_script}" "$@"
 }
 
@@ -203,6 +208,26 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
 fi
 /bin/rm -f -- "${pending_file}"
 
+set +e
+FAKE_RENDER_API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:unexpected \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+wrong_image_exit_code="$?"
+set -e
+if [[ "${wrong_image_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a different API image must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_REAL_IP_SOURCE=/tmp/stale/infra/nginx/cloudflare-edge-real-ip.conf \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+wrong_real_ip_exit_code="$?"
+set -e
+if [[ "${wrong_real_ip_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a non-release real-IP bind must fail\n' >&2
+  exit 1
+fi
+
 docker_log="${test_root}/docker.log"
 set +e
 FAKE_FAIL_CP=true \
@@ -227,6 +252,21 @@ fi
 
 release_dir="${release_one}"
 printf '\n# tampered\n' >>"${release_dir}/compose.yaml"
+
+set +e
+run_deploy \
+  "${REVISION_THREE}" \
+  update \
+  "${CONFIG_DIGEST_TWO}" \
+  test-user \
+  >/dev/null 2>&1
+update_exit_code="$?"
+set -e
+
+if [[ "${update_exit_code}" -ne 1 ]]; then
+  printf 'Update with a tampered active runtime config must fail: actual=%s\n' "${update_exit_code}" >&2
+  exit 1
+fi
 
 set +e
 run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
