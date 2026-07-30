@@ -13,6 +13,7 @@ readonly RUNTIME_CONFIG_RELEASES="${RUNTIME_CONFIG_ROOT}/releases"
 readonly RUNTIME_CONFIG_STATE="${RUNTIME_CONFIG_ROOT}/state"
 readonly RUNTIME_CONFIG_PENDING="${RUNTIME_CONFIG_ROOT}/pending"
 readonly RUNTIME_CONFIG_CURRENT="${RUNTIME_CONFIG_ROOT}/current"
+readonly RUNTIME_CONFIG_INITIALIZED="${APP_DIR}/.runtime-config-v2-initialized"
 readonly API_IMAGE_REPOSITORY=ghcr.io/xxh3898/guess-pokemon-api
 readonly WEB_IMAGE_REPOSITORY=ghcr.io/xxh3898/guess-pokemon-web
 readonly RUNTIME_CONFIG_REPOSITORY=ghcr.io/xxh3898/guess-pokemon-runtime-config
@@ -40,6 +41,15 @@ fail() {
 require_legacy_compose() {
   if [[ ! -f "${LEGACY_COMPOSE_FILE}" ]]; then
     fail "legacy production Compose configuration is missing"
+  fi
+}
+
+validate_initialization_marker() {
+  if [[ ! -f "${RUNTIME_CONFIG_INITIALIZED}" ]] \
+    || [[ -L "${RUNTIME_CONFIG_INITIALIZED}" ]] \
+    || [[ "$(/bin/cat "${RUNTIME_CONFIG_INITIALIZED}")" != RUNTIME_CONFIG_V2=initialized ]]
+  then
+    fail "runtime config initialization marker is invalid"
   fi
 }
 
@@ -127,6 +137,21 @@ if [[ "${recovery_mode}" == false ]] \
 then
   fail "an incomplete runtime config transaction requires recovery"
 fi
+if [[ -e "${RUNTIME_CONFIG_INITIALIZED}" || -L "${RUNTIME_CONFIG_INITIALIZED}" ]]; then
+  validate_initialization_marker
+  if [[ ! -f "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]] \
+    || [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]]
+  then
+    fail "initialized runtime config requires verified state and current pointer"
+  fi
+elif [[ "${recovery_mode}" == false ]] \
+  && {
+    [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]] \
+      || [[ -e "${RUNTIME_CONFIG_CURRENT}" || -L "${RUNTIME_CONFIG_CURRENT}" ]];
+  }
+then
+  fail "runtime config state exists without initialization marker"
+fi
 if [[ "${legacy_mode}" == true ]] \
   && {
     [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]] \
@@ -162,6 +187,7 @@ state_temp=
 pending_temp=
 release_temp=
 current_link_temp=
+initialization_temp=
 config_container_id=
 prepared_release=
 logged_in=false
@@ -182,7 +208,8 @@ cleanup() {
   for cleanup_path in \
     "${state_temp}" \
     "${pending_temp}" \
-    "${current_link_temp}"
+    "${current_link_temp}" \
+    "${initialization_temp}"
   do
     if [[ -n "${cleanup_path}" && -e "${cleanup_path}" ]]; then
       /bin/rm -f -- "${cleanup_path}"
@@ -878,6 +905,21 @@ replace_current_link() {
   current_link_temp=
 }
 
+write_initialization_marker() {
+  if [[ -e "${RUNTIME_CONFIG_INITIALIZED}" || -L "${RUNTIME_CONFIG_INITIALIZED}" ]]; then
+    validate_initialization_marker
+    return
+  fi
+
+  initialization_temp="$(
+    /usr/bin/mktemp "${APP_DIR}/.runtime-config-v2-initialized.tmp.XXXXXX"
+  )"
+  printf 'RUNTIME_CONFIG_V2=initialized\n' >"${initialization_temp}"
+  /bin/chmod 400 "${initialization_temp}"
+  /bin/mv -f -- "${initialization_temp}" "${RUNTIME_CONFIG_INITIALIZED}"
+  initialization_temp=
+}
+
 write_success_state() {
   local application_revision="$1"
   local runtime_config_digest="$2"
@@ -903,6 +945,7 @@ write_success_state() {
   state_temp=
 
   replace_current_link "${release_dir}"
+  write_initialization_marker
   /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
 }
 
@@ -1089,6 +1132,7 @@ recover_pending_transaction() {
     then
       replace_current_link "${recovery_release}"
     fi
+    write_initialization_marker
     /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
     printf 'Completed Guess Pokémon runtime config transaction finalized: %s\n' "${target_sha}"
     return 0
@@ -1143,6 +1187,15 @@ recover_pending_transaction() {
     fail "runtime config recovery could not restore the previous verified pair"
   fi
 
+  if [[ -n "${state_sha}" ]]; then
+    expected_current="releases/$("/usr/bin/basename" "${recovery_release}")"
+    if [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]] \
+      || [[ "$(/usr/bin/readlink "${RUNTIME_CONFIG_CURRENT}")" != "${expected_current}" ]]
+    then
+      replace_current_link "${recovery_release}"
+    fi
+    write_initialization_marker
+  fi
   /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
   printf 'Guess Pokémon runtime config transaction recovered to: %s\n' "${previous_sha}"
 }
@@ -1213,7 +1266,6 @@ else
   then
     fail "runtime config state is missing while the current release pointer exists"
   fi
-
   if [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]] \
     && {
       [[ ! -f "${RUNTIME_CONFIG_STATE}" ]] \

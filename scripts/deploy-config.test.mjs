@@ -428,6 +428,10 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
   );
   assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
+  assert.match(deployScript, /readonly PYTHON_BIN=\/usr\/bin\/python3/);
+  assert.match(productionBackupScript, /readonly PROJECT_NAME=guess-pokemon/);
+  assert.match(operations, /test -x \/usr\/bin\/python3/);
+  assert.match(operations, /\/usr\/bin\/python3 --version/);
   assert.match(
     operations,
     /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,

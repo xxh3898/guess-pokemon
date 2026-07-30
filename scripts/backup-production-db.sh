@@ -14,6 +14,7 @@ readonly RUNTIME_CONFIG_ROOT="${APP_DIR}/runtime-config"
 readonly RUNTIME_CONFIG_RELEASES="${RUNTIME_CONFIG_ROOT}/releases"
 readonly RUNTIME_CONFIG_STATE="${RUNTIME_CONFIG_ROOT}/state"
 readonly RUNTIME_CONFIG_CURRENT="${RUNTIME_CONFIG_ROOT}/current"
+readonly RUNTIME_CONFIG_INITIALIZED="${APP_DIR}/.runtime-config-v2-initialized"
 readonly ZERO_SHA=0000000000000000000000000000000000000000
 readonly ZERO_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 readonly RETENTION_SECONDS=$((3 * 24 * 60 * 60))
@@ -125,6 +126,15 @@ runtime_config_content_sha256() {
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 }
 
+validate_initialization_marker() {
+  if [[ ! -f "${RUNTIME_CONFIG_INITIALIZED}" ]] \
+    || [[ -L "${RUNTIME_CONFIG_INITIALIZED}" ]] \
+    || [[ "$(/bin/cat "${RUNTIME_CONFIG_INITIALIZED}")" != RUNTIME_CONFIG_V2=initialized ]]
+  then
+    fail "runtime config initialization marker is invalid"
+  fi
+}
+
 select_compose_file() {
   local current_target
   local expected_current_target
@@ -136,6 +146,10 @@ select_compose_file() {
     if [[ -e "${RUNTIME_CONFIG_CURRENT}" || -L "${RUNTIME_CONFIG_CURRENT}" ]]; then
       fail "runtime config current pointer exists without verified state"
     fi
+    if [[ -e "${RUNTIME_CONFIG_INITIALIZED}" || -L "${RUNTIME_CONFIG_INITIALIZED}" ]]; then
+      validate_initialization_marker
+      fail "initialized runtime config state is missing"
+    fi
     if [[ ! -f "${LEGACY_COMPOSE_FILE}" || -L "${LEGACY_COMPOSE_FILE}" ]]; then
       fail "legacy production Compose configuration is missing or unsafe"
     fi
@@ -143,6 +157,10 @@ select_compose_file() {
     return
   fi
 
+  if [[ ! -e "${RUNTIME_CONFIG_INITIALIZED}" && ! -L "${RUNTIME_CONFIG_INITIALIZED}" ]]; then
+    fail "runtime config state exists without initialization marker"
+  fi
+  validate_initialization_marker
   validate_state_file
   runtime_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
   runtime_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"

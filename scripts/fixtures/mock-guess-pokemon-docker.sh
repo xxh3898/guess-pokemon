@@ -65,7 +65,13 @@ case "${command_name}" in
     ;;
   compose)
     arguments=" $* "
-    if [[ "${arguments}" == *" --format json "* ]]; then
+    if [[ "${arguments}" == *" up "* ]] \
+      && [[ -n "${FAKE_FAIL_APP_UP_ONCE_FILE:-}" ]] \
+      && [[ ! -e "${FAKE_FAIL_APP_UP_ONCE_FILE}" ]]
+    then
+      : >"${FAKE_FAIL_APP_UP_ONCE_FILE}"
+      exit 1
+    elif [[ "${arguments}" == *" --format json "* ]]; then
       compose_file=
       previous_argument=
       for argument in "$@"; do

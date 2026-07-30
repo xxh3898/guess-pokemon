@@ -397,6 +397,19 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
   종료 시 정리한다.
 
+배포 script는 Compose JSON 계약 검증과 atomic pointer 교체에 고정
+system Python을 사용한다. workflow 병합 전 Mac mini에서 아래
+preflight를 통과해야 한다. backup script는 Python에 의존하지 않는다.
+
+```bash
+test -x /usr/bin/python3
+/usr/bin/python3 --version
+```
+
+`/usr/bin/python3`가 없으면 Homebrew Python이나 임의 PATH로 대체하지
+말고 준비를 중단한다. Xcode Command Line Tools 설치 여부와 운영 영향은
+별도 승인 후 확인한다.
+
 v2 workflow를 `main`에 병합하기 전에 repository의
 `scripts/deploy-guess-pokemon.sh`, `scripts/deploy-guess-pokemon-ci.sh`,
 `scripts/backup-production-db.sh`를 각각 Mac mini의
@@ -457,6 +470,11 @@ state가 previous pair면 이전 API/Web SHA와 config release를
 Compose와 이전 SHA로 복구한다. 정상 image가 한 번도 없던 bootstrap 중단은
 API/Web을 중지하고 zero-SHA placeholder로 되돌린다. pending/state가
 불일치하거나 release가 변조됐으면 marker를 유지한 채 실패한다.
+첫 성공 시 app directory에 별도 initialization marker를 원자 생성한다.
+이 marker가 있는데 `state` 또는 `current`가 사라지면 pre-v2 설치로
+fallback하지 않고 실패한다. marker가 생기기 전 실패한 bootstrap의
+동일 digest candidate release는 다음 `update`에서 image와 다시 대조한
+뒤 재사용할 수 있다.
 
 복구 후 production Compose `ps`, DB/API/Web health, artwork egress와 public
 Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌리지

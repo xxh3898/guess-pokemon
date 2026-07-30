@@ -36,8 +36,8 @@ runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
 /bin/cp "${PROJECT_ROOT}/.env.production.example" "${app_dir}/.env"
 
 /usr/bin/sed \
-  -e "s#^API_IMAGE=.*#API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_ONE}#" \
-  -e "s#^WEB_IMAGE=.*#WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:${REVISION_ONE}#" \
+  -e "s#^API_IMAGE=.*#API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}#" \
+  -e "s#^WEB_IMAGE=.*#WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:${REVISION_TWO}#" \
   "${app_dir}/.env" >"${app_dir}/.env.updated"
 /bin/mv "${app_dir}/.env.updated" "${app_dir}/.env"
 
@@ -64,6 +64,7 @@ run_deploy() {
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
         FAKE_DISABLE_WEB_HEALTHCHECK="${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
+        FAKE_FAIL_APP_UP_ONCE_FILE="${FAKE_FAIL_APP_UP_ONCE_FILE:-}" \
         FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
         FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_DB_USER="${FAKE_RENDER_DB_USER:-}" \
@@ -107,18 +108,84 @@ run_recovery() {
     /bin/bash "${test_script}" recover
 }
 
+bootstrap_candidate="${app_dir}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
+state_file="${app_dir}/runtime-config/state"
+current_link="${app_dir}/runtime-config/current"
+initialization_marker="${app_dir}/.runtime-config-v2-initialized"
+bootstrap_failure_marker="${test_root}/fail-bootstrap-app-up-once"
+bootstrap_docker_log="${test_root}/bootstrap-docker.log"
+: >"${bootstrap_docker_log}"
+
+set +e
+FAKE_DOCKER_LOG="${bootstrap_docker_log}" \
+FAKE_FAIL_APP_UP_ONCE_FILE="${bootstrap_failure_marker}" \
+  run_deploy \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user \
+    >/dev/null 2>&1
+bootstrap_failure_exit_code="$?"
+set -e
+if [[ "${bootstrap_failure_exit_code}" -ne 1 ]]; then
+  printf 'Interrupted first v2 deployment must fail after rollback\n' >&2
+  exit 1
+fi
+test -f "${bootstrap_failure_marker}"
+test -d "${bootstrap_candidate}"
+test ! -e "${state_file}"
+test ! -e "${current_link}"
+test ! -e "${initialization_marker}"
+test ! -e "${app_dir}/runtime-config/pending"
+/usr/bin/grep -Fxq \
+  "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
+  "${app_dir}/.env"
+bootstrap_up_log="${test_root}/bootstrap-up.log"
+/usr/bin/grep '^compose .* up ' "${bootstrap_docker_log}" >"${bootstrap_up_log}"
+bootstrap_up_count="$(/usr/bin/wc -l <"${bootstrap_up_log}" | /usr/bin/tr -d ' ')"
+test "${bootstrap_up_count}" -eq 2
+/usr/bin/sed -n '1p' "${bootstrap_up_log}" \
+  | /usr/bin/grep -Fq -- \
+      "--file ${bootstrap_candidate}/compose.yaml up "
+/usr/bin/sed -n '2p' "${bootstrap_up_log}" \
+  | /usr/bin/grep -Fq -- \
+      "--file ${app_dir}/compose.yaml up "
+
+FAKE_FAIL_APP_UP_ONCE_FILE="${bootstrap_failure_marker}" \
 run_deploy \
   "${REVISION_ONE}" \
   update \
   "${CONFIG_DIGEST}" \
   test-user
 
-state_file="${app_dir}/runtime-config/state"
 test -f "${state_file}"
+test "$(/bin/cat "${initialization_marker}")" = RUNTIME_CONFIG_V2=initialized
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_DIGEST=${CONFIG_DIGEST}" "${state_file}"
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_REVISION=${REVISION_ONE}" "${state_file}"
-test -L "${app_dir}/runtime-config/current"
+test -L "${current_link}"
 test ! -e "${app_dir}/runtime-config/pending"
+
+/bin/mv "${state_file}" "${state_file}.both-missing"
+/bin/mv "${current_link}" "${current_link}.both-missing"
+set +e
+run_deploy \
+  "${REVISION_TWO}" \
+  update \
+  "${CONFIG_DIGEST_TWO}" \
+  test-user \
+  >/dev/null 2>&1
+missing_initialized_state_exit_code="$?"
+run_deploy "${REVISION_TWO}" test-user >/dev/null 2>&1
+legacy_missing_initialized_state_exit_code="$?"
+set -e
+if [[ "${missing_initialized_state_exit_code}" -ne 1 ]] \
+  || [[ "${legacy_missing_initialized_state_exit_code}" -ne 1 ]]
+then
+  printf 'Initialized runtime config must not fallback after state deletion\n' >&2
+  exit 1
+fi
+/bin/mv "${state_file}.both-missing" "${state_file}"
+/bin/mv "${current_link}.both-missing" "${current_link}"
 
 /bin/mv "${state_file}" "${state_file}.missing"
 set +e
@@ -210,9 +277,13 @@ fi
 /bin/mv "${state_file}.real" "${state_file}"
 
 /bin/mv "${app_dir}/compose.yaml" "${app_dir}/compose.yaml.legacy"
+/bin/rm -f -- "${initialization_marker}" "${current_link}"
 run_recovery
 /bin/mv "${app_dir}/compose.yaml.legacy" "${app_dir}/compose.yaml"
 
+test "$(/bin/cat "${initialization_marker}")" = RUNTIME_CONFIG_V2=initialized
+test "$(/usr/bin/readlink "${current_link}")" \
+  = "releases/${CONFIG_DIGEST#sha256:}"
 test ! -e "${pending_file}"
 /usr/bin/grep -Fxq \
   "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
@@ -286,8 +357,11 @@ fi
   "${state_file}" >"${state_file}.matched"
 /bin/mv "${state_file}.matched" "${state_file}"
 
+/bin/rm -f -- "${initialization_marker}"
+test ! -e "${initialization_marker}"
 run_recovery
 
+test "$(/bin/cat "${initialization_marker}")" = RUNTIME_CONFIG_V2=initialized
 test "$(/usr/bin/readlink "${app_dir}/runtime-config/current")" \
   = "releases/${CONFIG_DIGEST_TWO#sha256:}"
 test ! -e "${pending_file}"

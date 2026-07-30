@@ -89,6 +89,9 @@ prepare_runtime_state() {
     printf 'RUNTIME_CONFIG_DIGEST=%s\n' "${CONFIG_DIGEST}"
     printf 'RUNTIME_CONFIG_REVISION=%s\n' "${CONFIG_SHA}"
   } >"${app_dir}/runtime-config/state"
+  printf 'RUNTIME_CONFIG_V2=initialized\n' \
+    >"${app_dir}/.runtime-config-v2-initialized"
+  /bin/chmod 400 "${app_dir}/.runtime-config-v2-initialized"
   /bin/ln -s \
     "releases/${CONFIG_DIGEST#sha256:}" \
     "${app_dir}/runtime-config/current"
@@ -168,13 +171,36 @@ if DOCKER_LOG="${docker_log}" "${symlink_state_script}" >/dev/null 2>&1; then
 fi
 test "$(find "${symlink_state_backups}" -name 'guess-pokemon-production-*.dump' -type f | wc -l | tr -d ' ')" = 0
 
+orphan_app="${test_root}/orphan-app"
+orphan_backups="${test_root}/orphan-backups"
+orphan_script="${test_root}/orphan-backup.sh"
+/bin/mkdir -p \
+  "${orphan_app}/runtime-config/releases/orphan-release" \
+  "${orphan_backups}"
+printf 'POSTGRES_DB=guess\nPOSTGRES_USER=guess\nPOSTGRES_PASSWORD=test\n' \
+  >"${orphan_app}/.env"
+printf 'name: guess-pokemon\nservices: {}\n' >"${orphan_app}/compose.yaml"
+printf 'RUNTIME_CONFIG_V2=initialized\n' \
+  >"${orphan_app}/.runtime-config-v2-initialized"
+prepare_script "${orphan_app}" "${orphan_backups}" "${orphan_script}"
+
+if DOCKER_LOG="${docker_log}" "${orphan_script}" >/dev/null 2>&1; then
+  printf 'backup unexpectedly accepted orphan runtime releases without state\n' >&2
+  exit 1
+fi
+test "$(find "${orphan_backups}" -name 'guess-pokemon-production-*.dump' -type f | wc -l | tr -d ' ')" = 0
+
 legacy_app="${test_root}/legacy-app"
 legacy_backups="${test_root}/legacy-backups"
 legacy_script="${test_root}/legacy-backup.sh"
-/bin/mkdir -p "${legacy_app}" "${legacy_backups}"
+/bin/mkdir -p \
+  "${legacy_app}/runtime-config/releases/bootstrap-candidate" \
+  "${legacy_backups}"
 printf 'POSTGRES_DB=guess\nPOSTGRES_USER=guess\nPOSTGRES_PASSWORD=test\n' \
   >"${legacy_app}/.env"
 printf 'name: guess-pokemon\nservices: {}\n' >"${legacy_app}/compose.yaml"
+printf 'candidate release retained before first successful v2 state\n' \
+  >"${legacy_app}/runtime-config/releases/bootstrap-candidate/candidate"
 prepare_script "${legacy_app}" "${legacy_backups}" "${legacy_script}"
 
 : >"${docker_log}"
