@@ -82,7 +82,7 @@ run_deploy() {
         FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
         FAKE_RENDER_APPLICATION_JSON="${FAKE_RENDER_APPLICATION_JSON:-}" \
-        FAKE_RENDER_EGRESS_EXTERNAL="${FAKE_RENDER_EGRESS_EXTERNAL:-false}" \
+        FAKE_RENDER_EGRESS_JSON="${FAKE_RENDER_EGRESS_JSON:-}" \
         FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
@@ -434,12 +434,22 @@ if [[ "${shared_application_network_exit_code}" -ne 1 ]]; then
 fi
 
 set +e
-FAKE_RENDER_EGRESS_EXTERNAL=true \
+FAKE_RENDER_EGRESS_JSON='{"name":"guess-pokemon_egress","driver":"bridge","external":true,"ipam":{}}' \
   run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
 external_egress_exit_code="$?"
 set -e
 if [[ "${external_egress_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with an external egress network must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_EGRESS_JSON='{"name":"guess-pokemon_egress","driver":"bridge","ipam":{},"driver_opts":{"com.docker.network.bridge.enable_ip_masquerade":"false"}}' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+disabled_masquerade_exit_code="$?"
+set -e
+if [[ "${disabled_masquerade_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with disabled egress IP masquerading must fail\n' >&2
   exit 1
 fi
 

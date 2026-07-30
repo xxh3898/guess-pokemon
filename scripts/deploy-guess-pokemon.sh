@@ -693,13 +693,11 @@ if networks.get("application", {}) != {
 edge = networks.get("edge", {})
 if edge.get("external") is not True or edge.get("name") != "edge":
     raise SystemExit("edge network contract is invalid")
-egress = networks.get("egress", {})
-if (
-    egress.get("internal") is True
-    or egress.get("external") is True
-    or egress.get("name") != "guess-pokemon_egress"
-    or egress.get("driver") != "bridge"
-):
+if networks.get("egress", {}) != {
+    "name": "guess-pokemon_egress",
+    "driver": "bridge",
+    "ipam": {},
+}:
     raise SystemExit("egress must remain the project-private outbound bridge")
 db_volumes = services["db"].get("volumes", [])
 if len(db_volumes) != 1 or services["api"].get("volumes"):

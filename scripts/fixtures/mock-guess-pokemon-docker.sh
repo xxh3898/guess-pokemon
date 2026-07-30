@@ -112,11 +112,12 @@ case "${command_name}" in
       web_restart="${FAKE_RENDER_RESTART_POLICY:-unless-stopped}"
       web_scale="${FAKE_RENDER_WEB_SCALE:-1}"
       session_cookie_secure="${FAKE_RENDER_SESSION_COOKIE_SECURE:-true}"
-      egress_external="${FAKE_RENDER_EGRESS_EXTERNAL:-false}"
       application_json='{"name":"guess-pokemon_application","ipam":{},"internal":true}'
       application_json="${FAKE_RENDER_APPLICATION_JSON:-${application_json}}"
+      egress_json='{"name":"guess-pokemon_egress","driver":"bridge","ipam":{}}'
+      egress_json="${FAKE_RENDER_EGRESS_JSON:-${egress_json}}"
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s","POSTGRES_USER":"%s","POSTGRES_PASSWORD":"%s"%s},"healthcheck":%s,"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql","volume":{}%s}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"api":{"image":"%s","restart":"unless-stopped","init":true,"read_only":%s,"pids_limit":256,"security_opt":%s,"tmpfs":["/tmp:size=128m,mode=1777"],"command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_DATASOURCE_USERNAME":"%s","SPRING_DATASOURCE_PASSWORD":"%s","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":%s,"networks":{"application":null,"egress":null},"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"web":{"image":"%s","restart":"%s","init":true,"read_only":true,"pids_limit":100,"security_opt":["no-new-privileges:true"],"tmpfs":["/var/cache/nginx:size=32m,mode=0755","/var/run:size=4m,mode=0755","/tmp:size=16m,mode=1777"],"scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}}},"networks":{"application":%s,"egress":{"name":"guess-pokemon_egress","driver":"bridge","external":%s},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s","POSTGRES_USER":"%s","POSTGRES_PASSWORD":"%s"%s},"healthcheck":%s,"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql","volume":{}%s}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"api":{"image":"%s","restart":"unless-stopped","init":true,"read_only":%s,"pids_limit":256,"security_opt":%s,"tmpfs":["/tmp:size=128m,mode=1777"],"command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_DATASOURCE_USERNAME":"%s","SPRING_DATASOURCE_PASSWORD":"%s","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":%s,"networks":{"application":null,"egress":null},"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}},"web":{"image":"%s","restart":"%s","init":true,"read_only":true,"pids_limit":100,"security_opt":["no-new-privileges:true"],"tmpfs":["/var/cache/nginx:size=32m,mode=0755","/var/run:size=4m,mode=0755","/tmp:size=16m,mode=1777"],"scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}],"logging":{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}}},"networks":{"application":%s,"egress":%s,"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
         "${db_image}" \
         "${database_name}" \
         "${db_user}" \
@@ -143,7 +144,7 @@ case "${command_name}" in
         "${edge_alias}" \
         "${real_ip_source}" \
         "${application_json}" \
-        "${egress_external}"
+        "${egress_json}"
     elif [[ "${arguments}" == *" ps --status running --services "* ]]; then
       printf 'db\napi\nweb\n'
     elif [[ "${arguments}" == *" exec -T db "* ]]; then
