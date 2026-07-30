@@ -498,12 +498,13 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - 외부 PokéAPI에 의존하지 않고 타입과 직접 진화 관계를 포함한 versioned catalog fixture를 사용한다.
 - Testcontainers DB는 실행마다 임의 port와 credential을 사용하고 test 종료 뒤 폐기한다.
 - `infra-test`는 Nginx·Tunnel·backup·Compose 정적 계약을 검사하고 `nginx-config-test`는 실제 Nginx image에서 `nginx -t`를 실행한다.
-- GitHub Actions는 `dev` push와 `main` 대상 PR에서 변경 path를 backend, frontend, infrastructure, API image, Web image 범위로 분류한다. branch protection의 필수 check 5개는 항상 생성하고 관련 없는 job은 no-op으로 성공 처리하며, workflow와 분류 script 변경은 전체 검증으로 fallback한다. `infra/nginx/default.conf`는 Web image 입력이므로 infrastructure와 Web image 검증을 함께 실행한다. backend test container는 runner의 Gradle wrapper·dependency cache를 재사용하지만 test task 결과 cache는 사용하지 않는다. ARM64 image 검증과 publish는 native `ubuntu-24.04-arm` runner에서 실행해 QEMU emulation을 거치지 않는다. 보호된 `main`은 PR 필수 검증을 통과한 commit만 받으므로 push 뒤에는 API·Web 동일 SHA image 발행과 함께 교체하는 배포만 실행한다.
+- GitHub Actions는 `dev` push와 `main` 대상 PR에서 변경 path를 backend, frontend, infrastructure, API image, Web image 범위로 분류한다. branch protection의 필수 check 5개는 항상 생성하고 관련 없는 job은 no-op으로 성공 처리하며, workflow와 분류 script 변경은 전체 검증으로 fallback한다. `infra/nginx/default.conf`는 Web image 입력이므로 infrastructure와 Web image 검증을 함께 실행한다. backend test container는 runner의 Gradle wrapper·dependency cache를 재사용하지만 test task 결과 cache는 사용하지 않는다. ARM64 image 검증과 publish는 native `ubuntu-24.04-arm` runner에서 실행해 QEMU emulation을 거치지 않는다. 보호된 `main`은 PR 필수 검증을 통과한 commit만 받으므로 push 뒤에는 API·Web 동일 SHA image를 함께 교체한다. 마지막 성공 Production deployment 이후 runtime config allowlist가 바뀐 경우에만 세 번째 immutable runtime-config image를 발행하고 application image와 함께 배포한다.
 - `QuickTunnelConnectivityTest`는 `QUICK_TUNNEL_URL`을 명시한 경우에만 HTTPS, Secure cookie, 두 REST session과 WSS/STOMP를 외부 통합 검증한다.
 
 ### 운영
 
 - base production-like 구성은 `web`, `api`, `db` 세 service를 유지한다.
+- Mac mini는 runtime-config image에서 allowlist 파일만 host-owned digest release로 추출한다. `runtime-config/state`가 마지막 성공 application revision과 config digest를, `pending`이 진행 중 transaction을, `current` symlink가 활성 release를 소유한다. 배포 완료와 recovery는 이 상태와 `.env`, 실행 service, release content hash를 함께 검증한다.
 - `compose.tunnel.yaml`은 base 구성에 Quick Tunnel과 remotely-managed named tunnel profile을 추가한다.
 - Quick과 named connector는 동시에 실행하지 않고 profile을 지정하지 않으면 둘 다 생성하지 않는다.
 - `db`는 external port를 publish하지 않고 외부 통신이 차단된 `application` network에만 참여한다.
