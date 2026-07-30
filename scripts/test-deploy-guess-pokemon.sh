@@ -81,6 +81,7 @@ run_deploy() {
         FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
         FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
+        FAKE_RENDER_APPLICATION_JSON="${FAKE_RENDER_APPLICATION_JSON:-}" \
         FAKE_RENDER_EGRESS_EXTERNAL="${FAKE_RENDER_EGRESS_EXTERNAL:-false}" \
         FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
@@ -419,6 +420,16 @@ wrong_ddl_auto_exit_code="$?"
 set -e
 if [[ "${wrong_ddl_auto_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with unsafe Hibernate schema handling must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_APPLICATION_JSON='{"name":"shared-internal","driver":"bridge","internal":true}' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+shared_application_network_exit_code="$?"
+set -e
+if [[ "${shared_application_network_exit_code}" -ne 1 ]]; then
+  printf 'Shared application network must fail\n' >&2
   exit 1
 fi
 

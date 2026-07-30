@@ -684,8 +684,12 @@ for name, expected_healthcheck in expected_healthchecks.items():
     healthcheck = services[name].get("healthcheck", {})
     if healthcheck != expected_healthcheck:
         raise SystemExit(f"{name} healthcheck contract is invalid")
-if networks.get("application", {}).get("internal") is not True:
-    raise SystemExit("application network must be internal")
+if networks.get("application", {}) != {
+    "name": "guess-pokemon_application",
+    "ipam": {},
+    "internal": True,
+}:
+    raise SystemExit("application network must remain the project-private bridge")
 edge = networks.get("edge", {})
 if edge.get("external") is not True or edge.get("name") != "edge":
     raise SystemExit("edge network contract is invalid")
