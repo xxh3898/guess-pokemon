@@ -849,7 +849,7 @@ else
   current_config_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
   current_state_sha="$(read_state_value APPLICATION_REVISION)"
 
-  if [[ -e "${RUNTIME_CONFIG_STATE}" ]] \
+  if [[ -e "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]] \
     && {
       [[ ! -f "${RUNTIME_CONFIG_STATE}" ]] \
         || [[ -L "${RUNTIME_CONFIG_STATE}" ]] \
