@@ -495,6 +495,14 @@ if (
 ):
     raise SystemExit("Hibernate schema handling must remain validate")
 api_environment = services["api"].get("environment", {})
+for name in {
+    "SPRING_APPLICATION_JSON",
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "_JAVA_OPTIONS",
+}:
+    if name in api_environment:
+        raise SystemExit(f"API environment override source is forbidden: {name}")
 expected_datasource_url = f"jdbc:postgresql://db:5432/{expected_database_name}"
 if api_environment.get("SPRING_DATASOURCE_URL") != expected_datasource_url:
     raise SystemExit("API datasource must use the production DB service")

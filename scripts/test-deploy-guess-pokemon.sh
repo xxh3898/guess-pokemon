@@ -66,6 +66,7 @@ run_deploy() {
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
         FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
         FAKE_RENDER_API_COMMAND_JSON="${FAKE_RENDER_API_COMMAND_JSON:-}" \
+        FAKE_RENDER_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
         FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
@@ -375,6 +376,16 @@ api_command_override_exit_code="$?"
 set -e
 if [[ "${api_command_override_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with an API command override must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_API_EXTRA_ENVIRONMENT=',"SPRING_APPLICATION_JSON":"{}"' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+spring_json_override_exit_code="$?"
+set -e
+if [[ "${spring_json_override_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a higher-precedence Spring override must fail\n' >&2
   exit 1
 fi
 

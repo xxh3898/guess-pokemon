@@ -79,6 +79,7 @@ case "${command_name}" in
       ddl_auto="${FAKE_RENDER_DDL_AUTO:-validate}"
       datasource_url="${FAKE_RENDER_DATASOURCE_URL:-jdbc:postgresql://db:5432/${database_name}}"
       api_command_json="${FAKE_RENDER_API_COMMAND_JSON:-null}"
+      api_extra_environment="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}"
       real_ip_source="$(
         /usr/bin/dirname "${compose_file}"
       )/infra/nginx/cloudflare-edge-real-ip.conf"
@@ -96,7 +97,7 @@ case "${command_name}" in
       session_cookie_secure="${FAKE_RENDER_SESSION_COOKIE_SECURE:-true}"
       egress_external="${FAKE_RENDER_EGRESS_EXTERNAL:-false}"
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s"},"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s"},"healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{"name":"guess-pokemon_egress","driver":"bridge","external":%s},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"image":"%s","restart":"unless-stopped","environment":{"POSTGRES_DB":"%s"},"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","restart":"unless-stopped","command":%s,"environment":{"SPRING_DATASOURCE_URL":"%s","SPRING_JPA_HIBERNATE_DDL_AUTO":"%s","SERVER_FORWARD_HEADERS_STRATEGY":"native","SESSION_COOKIE_SECURE":"%s"%s},"healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","restart":"%s","scale":%s,"profiles":%s,"healthcheck":%s,"networks":{"application":null,"edge":{"aliases":["%s"]}},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{"name":"guess-pokemon_egress","driver":"bridge","external":%s},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
         "${db_image}" \
         "${database_name}" \
         "${api_image}" \
@@ -104,6 +105,7 @@ case "${command_name}" in
         "${datasource_url}" \
         "${ddl_auto}" \
         "${session_cookie_secure}" \
+        "${api_extra_environment}" \
         "${web_image}" \
         "${web_restart}" \
         "${web_scale}" \
