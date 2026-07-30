@@ -60,7 +60,7 @@ jobs:
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/deployments?environment=Production&per_page=30"
           )"
           deployed_sha=0000000000000000000000000000000000000000
-          while IFS=$'\t' read -r deployment_id deployment_sha; do
+          while IFS=$'\t' read -r deployment_id deployment_candidate_sha; do
             state="$(
               curl \
                 --fail \
@@ -73,7 +73,7 @@ jobs:
                 | jq -r '.[0].state // empty'
             )"
             if [[ "${state}" == success ]]; then
-              deployed_sha="${deployment_sha}"
+              deployed_sha="${deployment_candidate_sha}"
               break
             fi
           done < <(jq -r '.[] | [.id, .sha] | @tsv' <<<"${deployments}")
@@ -146,7 +146,7 @@ jobs:
       - name: Build and publish runtime config image
         id: publish-runtime-config
         if: steps.runtime-config-mode.outputs.mode == 'update'
-        uses: docker/build-push-action@53b7df96c91f9d12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: runtime-config.Dockerfile

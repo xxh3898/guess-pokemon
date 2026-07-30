@@ -13,6 +13,7 @@ REVISION_TWO=2222222222222222222222222222222222222222
 REVISION_THREE=3333333333333333333333333333333333333333
 CONFIG_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 CONFIG_DIGEST_TWO=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+LEGACY_CONFIG_DIGEST=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 test_root="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/guess-pokemon-deploy-test.XXXXXX")"
 cleanup() {
@@ -25,6 +26,9 @@ trap cleanup EXIT INT TERM
 app_dir="${test_root}/app"
 test_script="${test_root}/deploy-guess-pokemon.sh"
 backup_script="${test_root}/backup.sh"
+runtime_backup_script="${test_root}/runtime-backup.sh"
+runtime_deploy_script="${test_root}/runtime-deploy.sh"
+runtime_backup_marker="${test_root}/runtime-backup-ran"
 runtime_compose="${test_root}/runtime-compose.yaml"
 runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
 /bin/mkdir -p "${app_dir}"
@@ -41,8 +45,11 @@ runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
   "${app_dir}/.env" >"${app_dir}/.env.updated"
 /bin/mv "${app_dir}/.env.updated" "${app_dir}/.env"
 
-printf '#!/bin/bash\nexit 0\n' >"${backup_script}"
-/bin/chmod 700 "${backup_script}"
+printf '#!/bin/bash\nexit 97\n' >"${backup_script}"
+printf '#!/bin/bash\n: >"%s"\n' "${runtime_backup_marker}" >"${runtime_backup_script}"
+printf '#!/bin/bash\nexit 0\n' >"${runtime_deploy_script}"
+/bin/chmod 600 "${backup_script}"
+/bin/chmod 700 "${runtime_backup_script}" "${runtime_deploy_script}"
 
 /usr/bin/sed \
   -e "s#readonly DOCKER_BIN=/usr/local/bin/docker#readonly DOCKER_BIN=${MOCK_DOCKER}#" \
@@ -57,43 +64,67 @@ run_deploy() {
     | /usr/bin/env \
         FAKE_RUNTIME_COMPOSE="${runtime_compose}" \
         FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
-        FAKE_CONFIG_REVISION="${REVISION_ONE}" \
+        FAKE_RUNTIME_BACKUP_SCRIPT="${runtime_backup_script}" \
+        FAKE_RUNTIME_DEPLOY_SCRIPT="${runtime_deploy_script}" \
+        FAKE_CONFIG_REVISION="${FAKE_CONFIG_REVISION_OVERRIDE:-${REVISION_ONE}}" \
+        FAKE_CONFIG_PROJECT="${FAKE_CONFIG_PROJECT:-guess-pokemon}" \
         FAKE_REVISION_ONE="${REVISION_ONE}" \
         FAKE_REVISION_TWO="${REVISION_TWO}" \
         FAKE_REVISION_THREE="${REVISION_THREE}" \
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
-        FAKE_DISABLE_WEB_HEALTHCHECK="${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
+        FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX="${FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX:-false}" \
+        FAKE_RUNTIME_INSECURE_SCRIPT_MODE="${FAKE_RUNTIME_INSECURE_SCRIPT_MODE:-false}" \
+        FAKE_RUNTIME_EXTRA_FILE="${FAKE_RUNTIME_EXTRA_FILE:-false}" \
+        FAKE_RUNTIME_EXTRA_DIR="${FAKE_RUNTIME_EXTRA_DIR:-false}" \
+        FAKE_RUNTIME_SYMLINK="${FAKE_RUNTIME_SYMLINK:-false}" \
         FAKE_FAIL_APP_UP_ONCE_FILE="${FAKE_FAIL_APP_UP_ONCE_FILE:-}" \
-        FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
-        FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
-        FAKE_RENDER_DB_USER="${FAKE_RENDER_DB_USER:-}" \
-        FAKE_RENDER_DB_PASSWORD="${FAKE_RENDER_DB_PASSWORD:-}" \
-        FAKE_RESOLVED_DB_PASSWORD="${FAKE_RESOLVED_DB_PASSWORD:-}" \
+        FAKE_RUNNING_SERVICES="${FAKE_RUNNING_SERVICES:-}" \
+        FAKE_RENDER_BASELINE_COMPOSE_FILE="${FAKE_RENDER_BASELINE_COMPOSE_FILE:-}" \
+        FAKE_RENDER_CANDIDATE_DB_IMAGE="${FAKE_RENDER_CANDIDATE_DB_IMAGE:-}" \
+        FAKE_RENDER_CANDIDATE_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_CANDIDATE_DB_EXTRA_ENVIRONMENT:-}" \
+        FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON="${FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON="${FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT:-}" \
+        FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON="${FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_API_TMPFS_JSON="${FAKE_RENDER_CANDIDATE_API_TMPFS_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_API_USER_JSON="${FAKE_RENDER_CANDIDATE_API_USER_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA:-}" \
+        FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA:-}" \
+        FAKE_RENDER_CANDIDATE_WEB_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_WEB_SERVICE_EXTRA:-}" \
         FAKE_RENDER_DB_VOLUME_EXTRA="${FAKE_RENDER_DB_VOLUME_EXTRA:-}" \
         FAKE_RENDER_POSTGRES_VOLUME_EXTRA="${FAKE_RENDER_POSTGRES_VOLUME_EXTRA:-}" \
-        FAKE_RENDER_DB_HEALTHCHECK_JSON="${FAKE_RENDER_DB_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_API_HEALTHCHECK_JSON="${FAKE_RENDER_API_HEALTHCHECK_JSON:-}" \
-        FAKE_RENDER_API_DB_USER="${FAKE_RENDER_API_DB_USER:-}" \
-        FAKE_RENDER_API_DB_PASSWORD="${FAKE_RENDER_API_DB_PASSWORD:-}" \
         FAKE_RENDER_API_COMMAND_JSON="${FAKE_RENDER_API_COMMAND_JSON:-}" \
+        FAKE_RENDER_API_ENTRYPOINT_JSON="${FAKE_RENDER_API_ENTRYPOINT_JSON:-}" \
         FAKE_RENDER_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}" \
+        FAKE_RENDER_API_CAP_ADD_JSON="${FAKE_RENDER_API_CAP_ADD_JSON:-}" \
+        FAKE_RENDER_API_DEVICES_JSON="${FAKE_RENDER_API_DEVICES_JSON:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
-        FAKE_RENDER_API_READ_ONLY="${FAKE_RENDER_API_READ_ONLY:-}" \
-        FAKE_RENDER_API_SECURITY_OPT_JSON="${FAKE_RENDER_API_SECURITY_OPT_JSON:-}" \
-        FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
-        FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
-        FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
+        FAKE_RENDER_API_NETWORKS_JSON="${FAKE_RENDER_API_NETWORKS_JSON:-}" \
+        FAKE_RENDER_API_PID_JSON="${FAKE_RENDER_API_PID_JSON:-}" \
+        FAKE_RENDER_API_PORTS_JSON="${FAKE_RENDER_API_PORTS_JSON:-}" \
+        FAKE_RENDER_API_PRIVILEGED="${FAKE_RENDER_API_PRIVILEGED:-}" \
+        FAKE_RENDER_API_USE_API_SOCKET="${FAKE_RENDER_API_USE_API_SOCKET:-}" \
+        FAKE_RENDER_API_VOLUMES_JSON="${FAKE_RENDER_API_VOLUMES_JSON:-}" \
+        FAKE_RENDER_API_VOLUMES_FROM_JSON="${FAKE_RENDER_API_VOLUMES_FROM_JSON:-}" \
+        FAKE_RENDER_API_CONFIGS_JSON="${FAKE_RENDER_API_CONFIGS_JSON:-}" \
+        FAKE_RENDER_API_SECRETS_JSON="${FAKE_RENDER_API_SECRETS_JSON:-}" \
+        FAKE_RENDER_API_ENV_FILE_JSON="${FAKE_RENDER_API_ENV_FILE_JSON:-}" \
+        FAKE_RENDER_API_EXTRA_HOSTS_JSON="${FAKE_RENDER_API_EXTRA_HOSTS_JSON:-}" \
+        FAKE_RENDER_API_EXTERNAL_LINKS_JSON="${FAKE_RENDER_API_EXTERNAL_LINKS_JSON:-}" \
+        FAKE_RENDER_API_LINKS_JSON="${FAKE_RENDER_API_LINKS_JSON:-}" \
         FAKE_RENDER_APPLICATION_JSON="${FAKE_RENDER_APPLICATION_JSON:-}" \
+        FAKE_RENDER_DB_NETWORKS_JSON="${FAKE_RENDER_DB_NETWORKS_JSON:-}" \
         FAKE_RENDER_EGRESS_JSON="${FAKE_RENDER_EGRESS_JSON:-}" \
         FAKE_RENDER_EDGE_JSON="${FAKE_RENDER_EDGE_JSON:-}" \
         FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
+        FAKE_RENDER_EXTRA_SERVICE_JSON="${FAKE_RENDER_EXTRA_SERVICE_JSON:-}" \
+        FAKE_RENDER_LOGGING_JSON="${FAKE_RENDER_LOGGING_JSON:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
+        FAKE_RENDER_WEB_NETWORKS_JSON="${FAKE_RENDER_WEB_NETWORKS_JSON:-}" \
+        FAKE_RENDER_WEB_SERVICE_NAME="${FAKE_RENDER_WEB_SERVICE_NAME:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
-        FAKE_RENDER_RESTART_POLICY="${FAKE_RENDER_RESTART_POLICY:-}" \
-        FAKE_RENDER_SESSION_COOKIE_SECURE="${FAKE_RENDER_SESSION_COOKIE_SECURE:-}" \
-        FAKE_RENDER_WEB_SCALE="${FAKE_RENDER_WEB_SCALE:-}" \
-        FAKE_RENDER_WEB_PROFILE="${FAKE_RENDER_WEB_PROFILE:-false}" \
         /bin/bash "${test_script}" "$@"
 }
 
@@ -101,11 +132,28 @@ run_recovery() {
   /usr/bin/env \
     FAKE_RUNTIME_COMPOSE="${runtime_compose}" \
     FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
+    FAKE_RUNTIME_BACKUP_SCRIPT="${runtime_backup_script}" \
+    FAKE_RUNTIME_DEPLOY_SCRIPT="${runtime_deploy_script}" \
     FAKE_CONFIG_REVISION="${REVISION_ONE}" \
     FAKE_REVISION_ONE="${REVISION_ONE}" \
     FAKE_REVISION_TWO="${REVISION_TWO}" \
     FAKE_REVISION_THREE="${REVISION_THREE}" \
     /bin/bash "${test_script}" recover
+}
+
+assert_deploy_rejected() {
+  local message="$1"
+  local exit_code
+  shift
+
+  set +e
+  run_deploy "$@" >/dev/null 2>&1
+  exit_code="$?"
+  set -e
+  if [[ "${exit_code}" -ne 1 ]]; then
+    printf '%s\n' "${message}" >&2
+    exit 1
+  fi
 }
 
 bootstrap_candidate="${app_dir}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
@@ -115,6 +163,38 @@ initialization_marker="${app_dir}/.runtime-config-v2-initialized"
 bootstrap_failure_marker="${test_root}/fail-bootstrap-app-up-once"
 bootstrap_docker_log="${test_root}/bootstrap-docker.log"
 : >"${bootstrap_docker_log}"
+
+FAKE_CONFIG_PROJECT=wrong-project \
+  assert_deploy_rejected \
+    'Runtime config artifact with a different project label must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with invalid worker syntax must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_INSECURE_SCRIPT_MODE=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with an insecure worker mode must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_EXTRA_DIR=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with an extra entry must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
 
 set +e
 FAKE_DOCKER_LOG="${bootstrap_docker_log}" \
@@ -133,6 +213,7 @@ if [[ "${bootstrap_failure_exit_code}" -ne 1 ]]; then
 fi
 test -f "${bootstrap_failure_marker}"
 test -d "${bootstrap_candidate}"
+test -f "${runtime_backup_marker}"
 test ! -e "${state_file}"
 test ! -e "${current_link}"
 test ! -e "${initialization_marker}"
@@ -164,6 +245,41 @@ test "$(/bin/cat "${initialization_marker}")" = RUNTIME_CONFIG_V2=initialized
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_REVISION=${REVISION_ONE}" "${state_file}"
 test -L "${current_link}"
 test ! -e "${app_dir}/runtime-config/pending"
+
+legacy_release="${app_dir}/runtime-config/releases/${LEGACY_CONFIG_DIGEST#sha256:}"
+/bin/cp -R "${bootstrap_candidate}" "${legacy_release}"
+/bin/rm -rf -- "${legacy_release}/scripts"
+legacy_content_sha="$(
+  {
+    /usr/bin/shasum -a 256 "${legacy_release}/compose.yaml"
+    /usr/bin/shasum -a 256 \
+      "${legacy_release}/infra/nginx/cloudflare-edge-real-ip.conf"
+  } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
+)"
+/bin/cp "${state_file}" "${state_file}.before-legacy-transition"
+/bin/cp "${app_dir}/.env" "${app_dir}/.env.before-legacy-transition"
+/usr/bin/sed \
+  -e "s#^RUNTIME_CONFIG_DIGEST=.*#RUNTIME_CONFIG_DIGEST=${LEGACY_CONFIG_DIGEST}#" \
+  -e "s#^RUNTIME_CONFIG_CONTENT_SHA256=.*#RUNTIME_CONFIG_CONTENT_SHA256=${legacy_content_sha}#" \
+  "${state_file}" >"${state_file}.legacy-transition"
+/bin/mv "${state_file}.legacy-transition" "${state_file}"
+/bin/rm -f -- "${current_link}"
+/bin/ln -s "releases/${LEGACY_CONFIG_DIGEST#sha256:}" "${current_link}"
+
+FAKE_CONFIG_REVISION_OVERRIDE="${REVISION_TWO}" \
+  run_deploy \
+    "${REVISION_TWO}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+/bin/mv "${state_file}.before-legacy-transition" "${state_file}"
+/bin/mv "${app_dir}/.env.before-legacy-transition" "${app_dir}/.env"
+/bin/rm -f -- "${current_link}"
+/bin/ln -s "releases/${CONFIG_DIGEST#sha256:}" "${current_link}"
+/bin/rm -rf -- \
+  "${app_dir}/runtime-config/releases/${CONFIG_DIGEST_TWO#sha256:}" \
+  "${legacy_release}"
 
 /bin/mv "${state_file}" "${state_file}.both-missing"
 /bin/mv "${current_link}" "${current_link}.both-missing"
@@ -309,6 +425,10 @@ target_content_sha="$(
     /usr/bin/shasum -a 256 "${release_two}/compose.yaml"
     /usr/bin/shasum -a 256 \
       "${release_two}/infra/nginx/cloudflare-edge-real-ip.conf"
+    /usr/bin/shasum -a 256 \
+      "${release_two}/scripts/backup-guess-pokemon.sh"
+    /usr/bin/shasum -a 256 \
+      "${release_two}/scripts/deploy-guess-pokemon.sh"
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 )"
 {
@@ -391,240 +511,305 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
 fi
 /bin/rm -f -- "${pending_file}"
 
-/usr/bin/sed \
-  -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD='a#b'|" \
-  "${app_dir}/.env" >"${app_dir}/.env.compose-syntax"
-/bin/mv "${app_dir}/.env.compose-syntax" "${app_dir}/.env"
-FAKE_RESOLVED_DB_PASSWORD='a#b' \
-FAKE_RENDER_DB_PASSWORD='a#b' \
+FAKE_RENDER_API_EXTRA_ENVIRONMENT=',"NEW_RUNTIME_SETTING":"enabled"' \
+FAKE_RENDER_API_HEALTHCHECK_JSON='{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\"status\":\"UP\"'\''"],"interval":"30s","retries":2}' \
+FAKE_RENDER_LOGGING_JSON='{"driver":"local","options":{"max-size":"20m"}}' \
   run_deploy "${REVISION_TWO}" keep test-user
-/usr/bin/sed \
-  -e 's#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=replace-with-a-random-production-password#' \
-  "${app_dir}/.env" >"${app_dir}/.env.compose-syntax"
-/bin/mv "${app_dir}/.env.compose-syntax" "${app_dir}/.env"
 
-set +e
-FAKE_RENDER_RESTART_POLICY=no \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_restart_exit_code="$?"
-set -e
-if [[ "${wrong_restart_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a changed restart policy must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_DB_IMAGE=postgres:unexpected \
+  assert_deploy_rejected \
+    'Runtime config changing the active PostgreSQL image must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_WEB_SCALE=0 \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-zero_scale_exit_code="$?"
-set -e
-if [[ "${zero_scale_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with zero Web replicas must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_DB_EXTRA_ENVIRONMENT=',"PGDATA":"/tmp/unprotected-data"' \
+  assert_deploy_rejected \
+    'Runtime config changing PostgreSQL storage environment must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DATABASE_NAME=alternate \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_database_name_exit_code="$?"
-set -e
-if [[ "${wrong_database_name_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a changed PostgreSQL database name must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON='["postgres","--single"]' \
+  assert_deploy_rejected \
+    'Runtime config changing the PostgreSQL command must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DB_EXTRA_ENVIRONMENT=',"PGDATA":"/var/lib/postgresql/empty"' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-db_data_directory_override_exit_code="$?"
-set -e
-if [[ "${db_data_directory_override_exit_code}" -ne 1 ]]; then
-  printf 'PostgreSQL data-directory override must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_JPA_HIBERNATE_DDL_AUTO":"create-drop"' \
+  assert_deploy_rejected \
+    'Runtime config enabling destructive schema management must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DB_USER=known-packaged-user \
-FAKE_RENDER_API_DB_USER=known-packaged-user \
-FAKE_RENDER_DB_PASSWORD=known-packaged-password \
-FAKE_RENDER_API_DB_PASSWORD=known-packaged-password \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-replaced_database_credentials_exit_code="$?"
-set -e
-if [[ "${replaced_database_credentials_exit_code}" -ne 1 ]]; then
-  printf 'Packaged PostgreSQL credentials must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"spring.jpa.hibernate.ddl-auto":"create-drop"' \
+  assert_deploy_rejected \
+    'Runtime config using a relaxed-binding Spring schema key must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DB_VOLUME_EXTRA=',"subpath":"18/docker/base"' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-database_volume_subpath_exit_code="$?"
-set -e
-if [[ "${database_volume_subpath_exit_code}" -ne 1 ]]; then
-  printf 'PostgreSQL volume subpath override must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"spring.datasource.url":"jdbc:postgresql://elsewhere/guess_pokemon"' \
+  assert_deploy_rejected \
+    'Runtime config with colliding relaxed-binding Spring keys must fail closed' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_POSTGRES_VOLUME_EXTRA=',"driver_opts":{"type":"tmpfs"}' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-postgres_volume_driver_exit_code="$?"
-set -e
-if [[ "${postgres_volume_driver_exit_code}" -ne 1 ]]; then
-  printf 'PostgreSQL top-level volume driver options must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_APPLICATION_JSON":"{}"' \
+  assert_deploy_rejected \
+    'Runtime config using Spring JSON property overrides must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DB_HEALTHCHECK_JSON='{"test":["CMD-SHELL","pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""],"timeout":"5s","interval":"1ms","retries":10,"start_period":"10s"}' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-healthcheck_timing_exit_code="$?"
-set -e
-if [[ "${healthcheck_timing_exit_code}" -ne 1 ]]; then
-  printf 'PostgreSQL healthcheck timing override must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA=',"post_start":[{"command":["/bin/sh","-c","true"]}]' \
+  assert_deploy_rejected \
+    'Runtime config with an API post_start hook must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_API_READ_ONLY=false \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-writable_api_exit_code="$?"
-set -e
-if [[ "${writable_api_exit_code}" -ne 1 ]]; then
-  printf 'Writable API root filesystem must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA=',"pre_stop":[{"command":["/bin/sh","-c","true"]}]' \
+  assert_deploy_rejected \
+    'Runtime config with a database pre_stop hook must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_API_SECURITY_OPT_JSON='["seccomp=unconfined"]' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-unconfined_api_exit_code="$?"
-set -e
-if [[ "${unconfined_api_exit_code}" -ne 1 ]]; then
-  printf 'Unconfined API seccomp policy must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON='{"test":["CMD-SHELL","true # http://127.0.0.1:8080/actuator/health/readiness status UP"],"interval":"10s"}' \
+  assert_deploy_rejected \
+    'Runtime config replacing readiness with an always-success probe must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DB_IMAGE=postgres:18.5-alpine3.24 \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_db_image_exit_code="$?"
-set -e
-if [[ "${wrong_db_image_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a changed PostgreSQL image must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_USER_JSON='"00:1000"' \
+  assert_deploy_rejected \
+    'Runtime config changing the API process user must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
-FAKE_RENDER_DDL_AUTO=update \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_ddl_auto_exit_code="$?"
-set -e
-if [[ "${wrong_ddl_auto_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with unsafe Hibernate schema handling must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_TMPFS_JSON='["/tmp:size=128m,mode=1777","/app:size=32m"]' \
+  assert_deploy_rejected \
+    'Runtime config changing the API tmpfs target set must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
 
-set +e
+FAKE_RENDER_WEB_SERVICE_NAME=renamed-web \
+  assert_deploy_rejected \
+    'Runtime config without the required Web service must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_EXTRA_SERVICE_JSON=',"sidecar":{"image":"busybox","networks":{},"volumes":[]}' \
+  assert_deploy_rejected \
+    'Runtime config with an extra service must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_DB_VOLUME_EXTRA='"subpath":"18/docker/base"' \
+  assert_deploy_rejected \
+    'PostgreSQL volume subpath override must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_VOLUMES_JSON='[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql","volume":{}}]' \
+  assert_deploy_rejected \
+    'API service mounting the database volume must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_COMMAND_JSON='["sh","-c","exit 0"]' \
+  assert_deploy_rejected \
+    'Runtime config overriding the API image command must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_VOLUMES_FROM_JSON='["db"]' \
+  assert_deploy_rejected \
+    'Runtime config using volumes_from must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_CONFIGS_JSON='[{"source":"host-config","target":"/tmp/config"}]' \
+  assert_deploy_rejected \
+    'Runtime config using Compose configs must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_SECRETS_JSON='[{"source":"host-secret","target":"/tmp/secret"}]' \
+  assert_deploy_rejected \
+    'Runtime config using Compose secrets must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_ENV_FILE_JSON='[{"path":"/Users/homeserver/Server/apps/guess-pokemon/.env"}]' \
+  assert_deploy_rejected \
+    'Runtime config using a service env_file must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_EXTRA_HOSTS_JSON='{"db":"192.0.2.10"}' \
+  assert_deploy_rejected \
+    'Runtime config overriding the database hostname must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_POSTGRES_VOLUME_EXTRA=',"driver_opts":{"type":"none","o":"bind","device":"/"}' \
+  assert_deploy_rejected \
+    'PostgreSQL top-level volume host bind must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_DB_NETWORKS_JSON='{"application":null,"egress":null}' \
+  assert_deploy_rejected \
+    'Database attachment to the egress network must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_NETWORKS_JSON='{"application":null,"edge":null}' \
+  assert_deploy_rejected \
+    'API attachment outside application and egress must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_WEB_NETWORKS_JSON='{"application":null}' \
+  assert_deploy_rejected \
+    'Web without the edge network must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
 FAKE_RENDER_APPLICATION_JSON='{"name":"shared-internal","driver":"bridge","internal":true}' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-shared_application_network_exit_code="$?"
-set -e
-if [[ "${shared_application_network_exit_code}" -ne 1 ]]; then
-  printf 'Shared application network must fail\n' >&2
-  exit 1
-fi
+  assert_deploy_rejected \
+    'Shared application network must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
 
-set +e
-FAKE_RENDER_EGRESS_JSON='{"name":"guess-pokemon_egress","driver":"bridge","external":true,"ipam":{}}' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-external_egress_exit_code="$?"
-set -e
-if [[ "${external_egress_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with an external egress network must fail\n' >&2
-  exit 1
-fi
+FAKE_RENDER_EGRESS_JSON='{"name":"guess-pokemon_egress","driver":"bridge","external":true}' \
+  assert_deploy_rejected \
+    'External egress network must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
 
-set +e
-FAKE_RENDER_EGRESS_JSON='{"name":"guess-pokemon_egress","driver":"bridge","ipam":{},"driver_opts":{"com.docker.network.bridge.enable_ip_masquerade":"false"}}' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-disabled_masquerade_exit_code="$?"
-set -e
-if [[ "${disabled_masquerade_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with disabled egress IP masquerading must fail\n' >&2
-  exit 1
-fi
-
-set +e
-FAKE_RENDER_SESSION_COOKIE_SECURE=false \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-insecure_cookie_exit_code="$?"
-set -e
-if [[ "${insecure_cookie_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with insecure session cookies must fail\n' >&2
-  exit 1
-fi
-
-set +e
-FAKE_RENDER_API_COMMAND_JSON='["--server.servlet.session.cookie.secure=false"]' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-api_command_override_exit_code="$?"
-set -e
-if [[ "${api_command_override_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with an API command override must fail\n' >&2
-  exit 1
-fi
-
-set +e
-FAKE_RENDER_API_EXTRA_ENVIRONMENT=',"SPRING_APPLICATION_JSON":"{}"' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-spring_json_override_exit_code="$?"
-set -e
-if [[ "${spring_json_override_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a higher-precedence Spring override must fail\n' >&2
-  exit 1
-fi
-
-set +e
-FAKE_RENDER_API_EXTRA_ENVIRONMENT=',"SERVER_SERVLET_SESSION_COOKIE_SECURE":"false"' \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-direct_cookie_override_exit_code="$?"
-set -e
-if [[ "${direct_cookie_override_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a direct cookie override must fail\n' >&2
-  exit 1
-fi
-
-set +e
 FAKE_RENDER_EDGE_ALIAS=unexpected \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_edge_alias_exit_code="$?"
-set -e
-if [[ "${wrong_edge_alias_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config without the Cloudflare Web alias must fail\n' >&2
-  exit 1
-fi
+  assert_deploy_rejected \
+    'Runtime config without the Cloudflare Web alias must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_WEB_NETWORKS_JSON='{"application":null,"edge":{"aliases":["guess-pokemon-web","portfolio"]}}' \
+  assert_deploy_rejected \
+    'Runtime config with an additional shared edge alias must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_PORTS_JSON='[{"target":8080,"published":"8080"}]' \
+  assert_deploy_rejected \
+    'Runtime config with a published host port must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_PRIVILEGED=true \
+  assert_deploy_rejected \
+    'Runtime config with a privileged service must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_CAP_ADD_JSON='["SYS_ADMIN"]' \
+  assert_deploy_rejected \
+    'Runtime config adding Linux capabilities must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_USE_API_SOCKET=true \
+  assert_deploy_rejected \
+    'Runtime config with Docker API socket access must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_PID_JSON='"host"' \
+  assert_deploy_rejected \
+    'Runtime config with a host namespace must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
+FAKE_RENDER_API_VOLUMES_JSON='[{"type":"bind","source":"/","target":"/host"}]' \
+  assert_deploy_rejected \
+    'Runtime config with a broad host bind must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
 
 set +e
-FAKE_RENDER_WEB_PROFILE=true \
+FAKE_RUNNING_SERVICES=$'db\nweb' \
   run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-profiled_service_exit_code="$?"
+incomplete_service_exit_code="$?"
 set -e
-if [[ "${profiled_service_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a profiled Web service must fail\n' >&2
+if [[ "${incomplete_service_exit_code}" -ne 1 ]]; then
+  printf 'Deployment missing a required running service must fail\n' >&2
   exit 1
 fi
-
-set +e
-FAKE_DISABLE_WEB_HEALTHCHECK=true \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-disabled_healthcheck_exit_code="$?"
-set -e
-if [[ "${disabled_healthcheck_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a disabled Web healthcheck must fail\n' >&2
+/usr/bin/grep -Fxq "APPLICATION_REVISION=${REVISION_TWO}" "${state_file}"
+/usr/bin/grep -Fxq \
+  "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
+  "${app_dir}/.env"
+if [[ ! -f "${pending_file}" ]]; then
+  printf 'Failed deployment and rollback readiness must retain pending state\n' >&2
   exit 1
 fi
+/bin/rm -f -- "${pending_file}"
 
 /usr/bin/sed \
   -e "s#^API_IMAGE=.*#API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_ONE}#" \
@@ -687,25 +872,26 @@ fi
 /bin/rm -f -- "${state_file}"
 /bin/mv "${state_file}.valid" "${state_file}"
 
-set +e
 FAKE_RENDER_API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:unexpected \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_image_exit_code="$?"
-set -e
-if [[ "${wrong_image_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a different API image must fail\n' >&2
-  exit 1
-fi
+  assert_deploy_rejected \
+    'Runtime config with a different API image must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
 
-set +e
+FAKE_RENDER_WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:unexpected \
+  assert_deploy_rejected \
+    'Runtime config with a different Web image must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
+
 FAKE_RENDER_REAL_IP_SOURCE=/tmp/stale/infra/nginx/cloudflare-edge-real-ip.conf \
-  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
-wrong_real_ip_exit_code="$?"
-set -e
-if [[ "${wrong_real_ip_exit_code}" -ne 1 ]]; then
-  printf 'Runtime config with a non-release real-IP bind must fail\n' >&2
-  exit 1
-fi
+  assert_deploy_rejected \
+    'Runtime config with a non-release real-IP bind must fail' \
+    "${REVISION_THREE}" \
+    keep \
+    test-user
 
 docker_log="${test_root}/docker.log"
 set +e

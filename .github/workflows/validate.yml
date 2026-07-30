@@ -99,30 +99,24 @@ jobs:
         run: |
           bash -n \
             scripts/backup-db.sh \
+            scripts/backup-production-db-bootstrap.sh \
             scripts/backup-production-db.sh \
             scripts/deploy-guess-pokemon-ci.sh \
             scripts/deploy-guess-pokemon.sh \
             scripts/detect-runtime-config-change.sh \
             scripts/test-backup-production-db.sh \
+            scripts/test-detect-runtime-config-change.sh \
             scripts/test-deploy-guess-pokemon.sh \
+            scripts/test-runtime-script-bootstrap.sh \
             scripts/verify-compose.sh
 
       - name: Verify runtime config change detection
         if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
-        run: |
-          current_sha="$(git rev-parse HEAD)"
-          test "$(
-            ./scripts/detect-runtime-config-change.sh \
-              "${current_sha}" \
-              "${current_sha}" \
-              false
-          )" = keep
-          test "$(
-            ./scripts/detect-runtime-config-change.sh \
-              "${current_sha}" \
-              "${current_sha}" \
-              true
-          )" = update
+        run: ./scripts/test-detect-runtime-config-change.sh
+
+      - name: Test stable runtime script bootstraps
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: ./scripts/test-runtime-script-bootstrap.sh
 
       - name: Test deploy v2 state transitions
         if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
@@ -174,8 +168,30 @@ jobs:
           trap cleanup_runtime_config EXIT INT TERM
 
           docker cp "${container_id}:/runtime/." "${runtime_dir}"
-          test -f "${runtime_dir}/compose.yaml"
-          test -f "${runtime_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+          expected_entries="$(
+            printf '%s\n' \
+              compose.yaml \
+              infra \
+              infra/nginx \
+              infra/nginx/cloudflare-edge-real-ip.conf \
+              scripts \
+              scripts/backup-guess-pokemon.sh \
+              scripts/deploy-guess-pokemon.sh
+          )"
+          actual_entries="$(
+            find "${runtime_dir}" -mindepth 1 -printf '%P\n' \
+              | LC_ALL=C sort
+          )"
+          test "${actual_entries}" = "${expected_entries}"
+          for runtime_script in \
+            "${runtime_dir}/scripts/backup-guess-pokemon.sh" \
+            "${runtime_dir}/scripts/deploy-guess-pokemon.sh"
+          do
+            test -f "${runtime_script}"
+            test ! -L "${runtime_script}"
+            test "$(stat -c '%a' "${runtime_script}")" = 700
+            bash -n "${runtime_script}"
+          done
 
           cp .env.production.example "${runtime_dir}/.env"
           API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:1111111111111111111111111111111111111111 \
