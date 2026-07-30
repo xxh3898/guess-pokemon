@@ -468,6 +468,8 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not override the image process")
     if service.get("post_start") is not None or service.get("pre_stop") is not None:
         raise SystemExit(f"{name} must not define lifecycle hooks")
+    if service.get("volumes_from") or service.get("configs") or service.get("secrets"):
+        raise SystemExit(f"{name} contains an unapproved mount source")
     if service.get("scale", 1) != 1:
         raise SystemExit(f"{name} must run exactly one replica")
     if service.get("deploy", {}).get("replicas", 1) != 1:
@@ -543,6 +545,8 @@ if (
 ):
     raise SystemExit("egress must remain the project-private outbound bridge")
 db_volumes = services["db"].get("volumes", [])
+if len(db_volumes) != 1 or services["api"].get("volumes"):
+    raise SystemExit("unexpected DB or API volume mount")
 db_data = next(
     (
         volume
@@ -561,6 +565,8 @@ if (
 ):
     raise SystemExit("PostgreSQL persistent volume contract is invalid")
 web_volumes = services["web"].get("volumes", [])
+if len(web_volumes) != 1:
+    raise SystemExit("unexpected Web volume mount")
 if not any(
     volume.get("target") == "/etc/nginx/conf.d/00-cloudflare-real-ip.conf"
     and volume.get("read_only") is True
