@@ -67,11 +67,18 @@ runtime_content_sha256() {
     /usr/bin/shasum -a 256 "${release_dir}/compose.yaml"
     /usr/bin/shasum -a 256 \
       "${release_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+    if [[ -f "${release_dir}/scripts/backup-guess-pokemon.sh" ]]; then
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/backup-guess-pokemon.sh"
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/deploy-guess-pokemon.sh"
+    fi
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 }
 
 prepare_runtime_state() {
   local app_dir="$1"
+  local release_shape="${2:-synced}"
   local release_dir="${app_dir}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
   local content_sha
 
@@ -79,6 +86,19 @@ prepare_runtime_state() {
   printf 'name: guess-pokemon\nservices: {}\n' >"${release_dir}/compose.yaml"
   printf 'set_real_ip_from 192.0.2.0/24;\n' \
     >"${release_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+  if [[ "${release_shape}" == synced ]]; then
+    /bin/mkdir -p "${release_dir}/scripts"
+    printf '#!/bin/bash\nexit 0\n' \
+      >"${release_dir}/scripts/backup-guess-pokemon.sh"
+    printf '#!/bin/bash\nexit 0\n' \
+      >"${release_dir}/scripts/deploy-guess-pokemon.sh"
+    /bin/chmod 700 \
+      "${release_dir}/scripts/backup-guess-pokemon.sh" \
+      "${release_dir}/scripts/deploy-guess-pokemon.sh"
+  elif [[ "${release_shape}" != legacy ]]; then
+    printf 'Unsupported test release shape: %s\n' "${release_shape}" >&2
+    exit 1
+  fi
   content_sha="$(runtime_content_sha256 "${release_dir}")"
 
   {
@@ -114,6 +134,22 @@ expected_release="${v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 /usr/bin/grep -Fq -- "--project-directory ${expected_release}" "${docker_log}"
 /usr/bin/grep -Fq -- "--file ${expected_release}/compose.yaml" "${docker_log}"
 test "$(find "${v2_backups}" -name 'guess-pokemon-production-*.dump' -type f | wc -l | tr -d ' ')" = 1
+
+legacy_v2_app="${test_root}/legacy-v2-app"
+legacy_v2_backups="${test_root}/legacy-v2-backups"
+legacy_v2_script="${test_root}/legacy-v2-backup.sh"
+/bin/mkdir -p "${legacy_v2_app}" "${legacy_v2_backups}"
+printf 'POSTGRES_DB=guess\nPOSTGRES_USER=guess\nPOSTGRES_PASSWORD=test\n' \
+  >"${legacy_v2_app}/.env"
+prepare_runtime_state "${legacy_v2_app}" legacy
+prepare_script "${legacy_v2_app}" "${legacy_v2_backups}" "${legacy_v2_script}"
+
+: >"${docker_log}"
+DOCKER_LOG="${docker_log}" "${legacy_v2_script}" >/dev/null
+legacy_v2_release="${legacy_v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
+/usr/bin/grep -Fq -- "--project-directory ${legacy_v2_release}" "${docker_log}"
+/usr/bin/grep -Fq -- "--file ${legacy_v2_release}/compose.yaml" "${docker_log}"
+test "$(find "${legacy_v2_backups}" -name 'guess-pokemon-production-*.dump' -type f | wc -l | tr -d ' ')" = 1
 
 unsafe_app="${test_root}/unsafe-app"
 unsafe_backups="${test_root}/unsafe-backups"

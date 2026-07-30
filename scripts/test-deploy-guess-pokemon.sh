@@ -13,6 +13,7 @@ REVISION_TWO=2222222222222222222222222222222222222222
 REVISION_THREE=3333333333333333333333333333333333333333
 CONFIG_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 CONFIG_DIGEST_TWO=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+LEGACY_CONFIG_DIGEST=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 test_root="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/guess-pokemon-deploy-test.XXXXXX")"
 cleanup() {
@@ -25,6 +26,9 @@ trap cleanup EXIT INT TERM
 app_dir="${test_root}/app"
 test_script="${test_root}/deploy-guess-pokemon.sh"
 backup_script="${test_root}/backup.sh"
+runtime_backup_script="${test_root}/runtime-backup.sh"
+runtime_deploy_script="${test_root}/runtime-deploy.sh"
+runtime_backup_marker="${test_root}/runtime-backup-ran"
 runtime_compose="${test_root}/runtime-compose.yaml"
 runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
 /bin/mkdir -p "${app_dir}"
@@ -41,8 +45,11 @@ runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
   "${app_dir}/.env" >"${app_dir}/.env.updated"
 /bin/mv "${app_dir}/.env.updated" "${app_dir}/.env"
 
-printf '#!/bin/bash\nexit 0\n' >"${backup_script}"
-/bin/chmod 700 "${backup_script}"
+printf '#!/bin/bash\nexit 97\n' >"${backup_script}"
+printf '#!/bin/bash\n: >"%s"\n' "${runtime_backup_marker}" >"${runtime_backup_script}"
+printf '#!/bin/bash\nexit 0\n' >"${runtime_deploy_script}"
+/bin/chmod 600 "${backup_script}"
+/bin/chmod 700 "${runtime_backup_script}" "${runtime_deploy_script}"
 
 /usr/bin/sed \
   -e "s#readonly DOCKER_BIN=/usr/local/bin/docker#readonly DOCKER_BIN=${MOCK_DOCKER}#" \
@@ -57,12 +64,20 @@ run_deploy() {
     | /usr/bin/env \
         FAKE_RUNTIME_COMPOSE="${runtime_compose}" \
         FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
-        FAKE_CONFIG_REVISION="${REVISION_ONE}" \
+        FAKE_RUNTIME_BACKUP_SCRIPT="${runtime_backup_script}" \
+        FAKE_RUNTIME_DEPLOY_SCRIPT="${runtime_deploy_script}" \
+        FAKE_CONFIG_REVISION="${FAKE_CONFIG_REVISION_OVERRIDE:-${REVISION_ONE}}" \
+        FAKE_CONFIG_PROJECT="${FAKE_CONFIG_PROJECT:-guess-pokemon}" \
         FAKE_REVISION_ONE="${REVISION_ONE}" \
         FAKE_REVISION_TWO="${REVISION_TWO}" \
         FAKE_REVISION_THREE="${REVISION_THREE}" \
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
+        FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX="${FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX:-false}" \
+        FAKE_RUNTIME_INSECURE_SCRIPT_MODE="${FAKE_RUNTIME_INSECURE_SCRIPT_MODE:-false}" \
+        FAKE_RUNTIME_EXTRA_FILE="${FAKE_RUNTIME_EXTRA_FILE:-false}" \
+        FAKE_RUNTIME_EXTRA_DIR="${FAKE_RUNTIME_EXTRA_DIR:-false}" \
+        FAKE_RUNTIME_SYMLINK="${FAKE_RUNTIME_SYMLINK:-false}" \
         FAKE_FAIL_APP_UP_ONCE_FILE="${FAKE_FAIL_APP_UP_ONCE_FILE:-}" \
         FAKE_RUNNING_SERVICES="${FAKE_RUNNING_SERVICES:-}" \
         FAKE_RENDER_BASELINE_COMPOSE_FILE="${FAKE_RENDER_BASELINE_COMPOSE_FILE:-}" \
@@ -74,6 +89,9 @@ run_deploy() {
         FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON="${FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_TMPFS_JSON="${FAKE_RENDER_CANDIDATE_API_TMPFS_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_USER_JSON="${FAKE_RENDER_CANDIDATE_API_USER_JSON:-}" \
+        FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA:-}" \
+        FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA:-}" \
+        FAKE_RENDER_CANDIDATE_WEB_SERVICE_EXTRA="${FAKE_RENDER_CANDIDATE_WEB_SERVICE_EXTRA:-}" \
         FAKE_RENDER_DB_VOLUME_EXTRA="${FAKE_RENDER_DB_VOLUME_EXTRA:-}" \
         FAKE_RENDER_POSTGRES_VOLUME_EXTRA="${FAKE_RENDER_POSTGRES_VOLUME_EXTRA:-}" \
         FAKE_RENDER_API_HEALTHCHECK_JSON="${FAKE_RENDER_API_HEALTHCHECK_JSON:-}" \
@@ -114,6 +132,8 @@ run_recovery() {
   /usr/bin/env \
     FAKE_RUNTIME_COMPOSE="${runtime_compose}" \
     FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
+    FAKE_RUNTIME_BACKUP_SCRIPT="${runtime_backup_script}" \
+    FAKE_RUNTIME_DEPLOY_SCRIPT="${runtime_deploy_script}" \
     FAKE_CONFIG_REVISION="${REVISION_ONE}" \
     FAKE_REVISION_ONE="${REVISION_ONE}" \
     FAKE_REVISION_TWO="${REVISION_TWO}" \
@@ -144,6 +164,38 @@ bootstrap_failure_marker="${test_root}/fail-bootstrap-app-up-once"
 bootstrap_docker_log="${test_root}/bootstrap-docker.log"
 : >"${bootstrap_docker_log}"
 
+FAKE_CONFIG_PROJECT=wrong-project \
+  assert_deploy_rejected \
+    'Runtime config artifact with a different project label must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with invalid worker syntax must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_INSECURE_SCRIPT_MODE=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with an insecure worker mode must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
+FAKE_RUNTIME_EXTRA_DIR=true \
+  assert_deploy_rejected \
+    'Runtime config artifact with an extra entry must fail' \
+    "${REVISION_ONE}" \
+    update \
+    "${CONFIG_DIGEST}" \
+    test-user
+
 set +e
 FAKE_DOCKER_LOG="${bootstrap_docker_log}" \
 FAKE_FAIL_APP_UP_ONCE_FILE="${bootstrap_failure_marker}" \
@@ -161,6 +213,7 @@ if [[ "${bootstrap_failure_exit_code}" -ne 1 ]]; then
 fi
 test -f "${bootstrap_failure_marker}"
 test -d "${bootstrap_candidate}"
+test -f "${runtime_backup_marker}"
 test ! -e "${state_file}"
 test ! -e "${current_link}"
 test ! -e "${initialization_marker}"
@@ -192,6 +245,41 @@ test "$(/bin/cat "${initialization_marker}")" = RUNTIME_CONFIG_V2=initialized
 /usr/bin/grep -Fxq "RUNTIME_CONFIG_REVISION=${REVISION_ONE}" "${state_file}"
 test -L "${current_link}"
 test ! -e "${app_dir}/runtime-config/pending"
+
+legacy_release="${app_dir}/runtime-config/releases/${LEGACY_CONFIG_DIGEST#sha256:}"
+/bin/cp -R "${bootstrap_candidate}" "${legacy_release}"
+/bin/rm -rf -- "${legacy_release}/scripts"
+legacy_content_sha="$(
+  {
+    /usr/bin/shasum -a 256 "${legacy_release}/compose.yaml"
+    /usr/bin/shasum -a 256 \
+      "${legacy_release}/infra/nginx/cloudflare-edge-real-ip.conf"
+  } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
+)"
+/bin/cp "${state_file}" "${state_file}.before-legacy-transition"
+/bin/cp "${app_dir}/.env" "${app_dir}/.env.before-legacy-transition"
+/usr/bin/sed \
+  -e "s#^RUNTIME_CONFIG_DIGEST=.*#RUNTIME_CONFIG_DIGEST=${LEGACY_CONFIG_DIGEST}#" \
+  -e "s#^RUNTIME_CONFIG_CONTENT_SHA256=.*#RUNTIME_CONFIG_CONTENT_SHA256=${legacy_content_sha}#" \
+  "${state_file}" >"${state_file}.legacy-transition"
+/bin/mv "${state_file}.legacy-transition" "${state_file}"
+/bin/rm -f -- "${current_link}"
+/bin/ln -s "releases/${LEGACY_CONFIG_DIGEST#sha256:}" "${current_link}"
+
+FAKE_CONFIG_REVISION_OVERRIDE="${REVISION_TWO}" \
+  run_deploy \
+    "${REVISION_TWO}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+/bin/mv "${state_file}.before-legacy-transition" "${state_file}"
+/bin/mv "${app_dir}/.env.before-legacy-transition" "${app_dir}/.env"
+/bin/rm -f -- "${current_link}"
+/bin/ln -s "releases/${CONFIG_DIGEST#sha256:}" "${current_link}"
+/bin/rm -rf -- \
+  "${app_dir}/runtime-config/releases/${CONFIG_DIGEST_TWO#sha256:}" \
+  "${legacy_release}"
 
 /bin/mv "${state_file}" "${state_file}.both-missing"
 /bin/mv "${current_link}" "${current_link}.both-missing"
@@ -337,6 +425,10 @@ target_content_sha="$(
     /usr/bin/shasum -a 256 "${release_two}/compose.yaml"
     /usr/bin/shasum -a 256 \
       "${release_two}/infra/nginx/cloudflare-edge-real-ip.conf"
+    /usr/bin/shasum -a 256 \
+      "${release_two}/scripts/backup-guess-pokemon.sh"
+    /usr/bin/shasum -a 256 \
+      "${release_two}/scripts/deploy-guess-pokemon.sh"
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 )"
 {
@@ -461,9 +553,45 @@ FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_JPA_HIBERNATE_DDL_AUTO":"c
     test-user
 
 FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"spring.jpa.hibernate.ddl-auto":"create-drop"' \
+  assert_deploy_rejected \
+    'Runtime config using a relaxed-binding Spring schema key must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"spring.datasource.url":"jdbc:postgresql://elsewhere/guess_pokemon"' \
+  assert_deploy_rejected \
+    'Runtime config with colliding relaxed-binding Spring keys must fail closed' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
 FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_APPLICATION_JSON":"{}"' \
   assert_deploy_rejected \
     'Runtime config using Spring JSON property overrides must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_API_SERVICE_EXTRA=',"post_start":[{"command":["/bin/sh","-c","true"]}]' \
+  assert_deploy_rejected \
+    'Runtime config with an API post_start hook must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_DB_SERVICE_EXTRA=',"pre_stop":[{"command":["/bin/sh","-c","true"]}]' \
+  assert_deploy_rejected \
+    'Runtime config with a database pre_stop hook must fail' \
     "${REVISION_THREE}" \
     update \
     "${CONFIG_DIGEST_TWO}" \

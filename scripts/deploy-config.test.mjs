@@ -8,6 +8,7 @@ const [
   deployWorkflow,
   deployScript,
   restrictedWrapper,
+  productionBackupBootstrap,
   productionBackupScript,
   operations,
   pathClassifier,
@@ -18,6 +19,7 @@ const [
   read("../.github/workflows/deploy.yml"),
   read("./deploy-guess-pokemon.sh"),
   read("./deploy-guess-pokemon-ci.sh"),
+  read("./backup-production-db-bootstrap.sh"),
   read("./backup-production-db.sh"),
   read("../docs/OPERATIONS.md"),
   read("./classify-ci-paths.sh"),
@@ -388,6 +390,22 @@ test("should_useTailscaleAndRestrictedSshForDeployment", () => {
     /deploy-guess-pokemon-v2[\s\S]*keep[\s\S]*deploy-guess-pokemon-v2[\s\S]*update/,
   );
   assert.doesNotMatch(restrictedWrapper, /eval|bash -c|sh -c/);
+  assert.match(restrictedWrapper, /readonly LOCKF_BIN=\/usr\/bin\/lockf/);
+  assert.match(
+    restrictedWrapper,
+    /readonly OPERATION_LOCK="\$\{APP_DIR\}\/\.guess-pokemon-operation\.lock"/,
+  );
+  assert.match(restrictedWrapper, /"\$\{LOCKF_BIN\}" -s -t 0 9/);
+  assert.match(restrictedWrapper, /<&3 3<&-/);
+  assert.match(
+    productionBackupBootstrap,
+    /readonly OPERATION_LOCK="\$\{APP_DIR\}\/\.guess-pokemon-operation\.lock"/,
+  );
+  assert.match(productionBackupBootstrap, /"\$\{LOCKF_BIN\}" -s -t 0 9/);
+  assert.match(
+    productionBackupBootstrap,
+    /scripts\/backup-guess-pokemon\.sh/,
+  );
   assert.match(
     workflowJob(deployWorkflow, "deploy"),
     /^    timeout-minutes: 30$/m,
@@ -402,7 +420,7 @@ test("should_waitForActiveGamesBeforeBackupAndImageReplacement", () => {
     "\nwait_for_no_active_games\n",
   );
   const backup = deployScript.indexOf(
-    '"${BACKUP_SCRIPT}"',
+    '"${active_backup_script}"',
     activeGameWait,
   );
   const imageWrite = deployScript.indexOf(
@@ -593,6 +611,15 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
   assert.match(deployScript, /JAVA_TOOL_OPTIONS/);
   assert.match(
     deployScript,
+    /key\.upper\(\)\.replace\("\.", "_"\)\.replace\("-", "_"\)/,
+  );
+  assert.match(
+    deployScript,
+    /environment variable names collide after relaxed binding normalization/,
+  );
+  assert.match(deployScript, /for lifecycle_hook in \("post_start", "pre_stop"\)/);
+  assert.match(
+    deployScript,
     /healthcheck probe is invalid/,
   );
   assert.match(
@@ -618,12 +645,15 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
   );
   assert.match(
     runtimeConfigDetector,
-    /compose\.production\.yaml[\s\S]*infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*runtime-config\.Dockerfile/,
+    /\.dockerignore[\s\S]*compose\.production\.yaml[\s\S]*infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*runtime-config\.Dockerfile[\s\S]*scripts\/backup-production-db\.sh[\s\S]*scripts\/deploy-guess-pokemon\.sh/,
   );
   assert.match(
     runtimeConfigDockerfile,
-    /FROM scratch[\s\S]*COPY compose\.production\.yaml \/runtime\/compose\.yaml[\s\S]*COPY infra\/nginx\/cloudflare-edge-real-ip\.conf/,
+    /FROM scratch[\s\S]*COPY compose\.production\.yaml \/runtime\/compose\.yaml[\s\S]*COPY infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*COPY --chmod=0700 scripts\/deploy-guess-pokemon\.sh \/runtime\/scripts\/deploy-guess-pokemon\.sh[\s\S]*COPY --chmod=0700 scripts\/backup-production-db\.sh \/runtime\/scripts\/backup-guess-pokemon\.sh/,
   );
+  assert.match(deployScript, /candidate runtime config must contain deploy and backup scripts/);
+  assert.match(deployScript, /active_backup_script="\$\{candidate_release\}\/scripts\/backup-guess-pokemon\.sh"/);
+  assert.match(productionBackupScript, /scripts\/backup-guess-pokemon\.sh/);
 
   assert.match(runtimeConfigDetector, /git diff --quiet/);
   assert.match(runtimeConfigDetector, /printf 'keep\\n'/);

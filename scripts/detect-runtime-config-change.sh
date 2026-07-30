@@ -37,9 +37,12 @@ if git diff --quiet \
   "${before_sha}" \
   "${after_sha}" \
   -- \
+  .dockerignore \
   compose.production.yaml \
   infra/nginx/cloudflare-edge-real-ip.conf \
-  runtime-config.Dockerfile
+  runtime-config.Dockerfile \
+  scripts/backup-production-db.sh \
+  scripts/deploy-guess-pokemon.sh
 then
   printf 'keep\n'
 else

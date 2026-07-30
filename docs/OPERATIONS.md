@@ -384,11 +384,14 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
 - `main` 배포는 변경 경로와 무관하게 API·Web 동일 SHA image 두 개를
   발행하고 함께 교체하는 rollback 계약을 유지한다.
-- 마지막 성공 Production deployment 이후 `compose.production.yaml`,
-  Cloudflare real-IP 설정 또는 `runtime-config.Dockerfile`이 변경된 배포만
-  immutable runtime-config image를 새로 발행하고 `update`한다. 따라서 설정
-  배포가 실패해도 다음 배포가 변경을 이어받는다. 애플리케이션만 바뀌면
-  `keep`으로 현재 검증된 config digest를 유지한다.
+- 마지막 성공 Production deployment 이후 `.dockerignore`,
+  `compose.production.yaml`, Cloudflare real-IP 설정,
+  `runtime-config.Dockerfile` 또는 허용된 deploy·backup worker가 변경된
+  배포만, 즉 runtime config가 변경된 배포만 immutable runtime-config
+  image를 새로 발행하고 `update`한다.
+  따라서 설정·worker 배포가 실패해도 다음 배포가 변경을 이어받는다.
+  애플리케이션만 바뀌면 `keep`으로 현재 검증된 config digest와 worker를
+  유지한다.
 - 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
   `home-mini`에 연결한다.
 - forced command wrapper는 기존 v1과 전환용 v2의 정확한 형식만 허용한다.
@@ -398,8 +401,9 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
   종료 시 정리한다.
 
 배포 script는 Compose JSON의 최소 운영 보호 invariant 검증과 atomic
-pointer 교체에 고정 system Python을 사용한다. workflow 병합 전 Mac mini에서
-아래 preflight를 통과해야 한다. backup script는 Python에 의존하지 않는다.
+pointer 교체에 고정 system Python을 사용한다. stable bootstrap과 backup
+worker도 script mode 검증에 같은 system Python을 사용한다. workflow 병합
+전 Mac mini에서 아래 preflight를 통과해야 한다.
 
 ```bash
 test -x /usr/bin/python3
@@ -414,24 +418,39 @@ test -x /usr/local/bin/docker
 우회하지 말고 준비를 중단한다. Xcode Command Line Tools 또는 Docker
 Compose 갱신 여부와 운영 영향은 별도 승인 후 확인한다.
 
-v2 workflow를 `main`에 병합하기 전에 repository의
-`scripts/deploy-guess-pokemon.sh`, `scripts/deploy-guess-pokemon-ci.sh`,
-`scripts/backup-production-db.sh`를 각각 Mac mini의
-`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh`와
-`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`,
-`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`에 사전
-설치해야 한다. 기존 파일을 timestamp backup으로 보존하고, 설치본
-SHA-256과 repository 원본의 일치, mode `700`, `/bin/bash -n`, 잘못된
-forced command 거부를 확인한 뒤에만 merge한다. 완료하지 않으면 기존
-wrapper가 v2 명령을 거부하거나 backup이 legacy Compose만 찾으므로
-workflow를 병합하지 않는다. deploy·backup script는 runtime config
-artifact의 자동 동기화 대상이 아니다.
+v2 workflow를 `main`에 처음 병합하기 전에는 host 신뢰 경계를 담당하는
+stable bootstrap 두 개만 사전 설치한다.
+
+- `scripts/deploy-guess-pokemon-ci.sh` →
+  `/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`
+- `scripts/backup-production-db-bootstrap.sh` →
+  `/Users/homeserver/Server/scripts/backup/backup-guess-pokemon-bootstrap.sh`
+
+기존 deploy bootstrap은 timestamp backup으로 보존하고, 두 설치본의
+SHA-256과 repository 원본 일치, mode `700`, `/bin/bash -n`, 잘못된
+forced command·argument 거부를 확인한 뒤에만 merge한다. 두 bootstrap은
+같은 host FD lock을 사용하므로 deploy와 예약 backup이 동시에 Compose와
+runtime state를 조작하지 않는다.
+
+`scripts/deploy-guess-pokemon.sh`와 `scripts/backup-production-db.sh`는
+stable bootstrap이 직접 덮어쓰는 host 파일이 아니다. 이 worker 두 개는
+Compose와 Nginx 설정과 함께 exact runtime-config digest artifact에 mode
+`700`으로 들어가며, `update`에서 project·revision label, entry allowlist,
+regular-file·symlink·mode·Bash syntax와 content hash 검증을 통과한 immutable
+release만 실행한다. 첫 성공 전에는 기존 host deploy·backup worker를
+복구 fallback으로 보존한다. 새 worker가 없는 기존 두-file release는
+읽기·복구 호환만 유지하고, 새 `update` candidate에는 두 worker를 반드시
+요구한다.
 
 배포 순서는 다음과 같다.
 
-1. 두 SHA image를 pull하고 `update`일 때만 runtime-config image를 exact
-   digest로 pull·추출한다.
-2. config revision, project label, 파일 allowlist와 production Compose의
+1. stable deploy bootstrap이 `update`일 때만 runtime-config image를 exact
+   digest로 pull·추출하고 검증된 candidate deploy worker를 실행한다.
+   `keep`은 현재 검증된 script-enabled release의 deploy worker만 실행한다.
+2. worker가 두 SHA image를 pull한다. 배포 전 backup은 candidate release의
+   검증된 backup worker를 사용하므로 첫 전환부터 host 고정 worker의
+   수동 교체 없이 같은 artifact revision이 적용된다.
+3. config revision, project label, 파일 allowlist와 production Compose의
    exact `db`·`api`·`web` service, `application`·`egress`·`edge` network,
    `postgres-data` volume 집합을 검증한다. DB는 승인된 named volume 하나만,
    API는 volume 없이, Web은 candidate release의 Nginx bind 하나만 사용한다.
@@ -448,16 +467,16 @@ artifact의 자동 동기화 대상이 아니다.
    replica, resource limit과 일반 application 환경 변수의 정확값은 deploy
    script에 복제하지 않으며 repository review와 CI 검증 대상으로 둔다.
    `keep`은 현재 release 무결성만 확인한다.
-3. DB가 실행 중인지 확인한다.
-4. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
+4. DB가 실행 중인지 확인한다.
+5. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
    기다린다.
-5. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
+6. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
    15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
-6. custom-format DB backup과 archive 검증을 완료한다.
-7. API·Web image와 runtime config를 한 transaction으로 적용한다.
-8. 전체 service health를 제한 시간 동안 기다리고 `db`·`api`·`web`이 모두
+7. custom-format DB backup과 archive 검증을 완료한다.
+8. API·Web image와 runtime config를 한 transaction으로 적용한다.
+9. 전체 service health를 제한 시간 동안 기다리고 `db`·`api`·`web`이 모두
    실행 중인 경우에만 성공 state를 기록한다.
-9. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
+10. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
 
 GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
 15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,
@@ -502,9 +521,16 @@ Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌
 
 ## 14. 운영 backup과 3일 보존
 
-`scripts/backup-production-db.sh`를 Mac mini의
-`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`로
-설치한다.
+예약 작업은 stable
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon-bootstrap.sh`
+만 호출한다. bootstrap은 deploy와 같은 FD lock을 획득한 뒤 verified
+script-enabled release의 `scripts/backup-guess-pokemon.sh`를 실행한다.
+전환 전에는 기존
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`를
+legacy fallback으로 사용한다.
+Stable bootstrap 설치만으로 macOS LaunchAgent가 등록되지는 않는다.
+예약 실행을 사용할 때는 별도 승인된 LaunchAgent가 위 stable 경로만
+호출하는지 확인한다.
 
 - 실행 중인 production DB만 대상으로 한다.
 - runtime config v2 state가 있으면 state의 content hash와 `current` pointer가

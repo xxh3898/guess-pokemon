@@ -92,7 +92,7 @@ validate_state_file() {
 
 validate_release_files() {
   local release_dir="$1"
-  local files
+  local entries
   local unexpected
 
   if [[ ! -d "${release_dir}" || -L "${release_dir}" ]]; then
@@ -106,14 +106,50 @@ validate_release_files() {
     fail "runtime config contains unsupported file types"
   fi
 
-  files="$(
-    /usr/bin/find "${release_dir}" -type f -print \
+  entries="$(
+    /usr/bin/find "${release_dir}" -mindepth 1 -print \
       | /usr/bin/sed "s#^${release_dir}/##" \
       | LC_ALL=C /usr/bin/sort
   )"
-  if [[ "${files}" != $'compose.yaml\ninfra/nginx/cloudflare-edge-real-ip.conf' ]]; then
+  if [[ "${entries}" == $'compose.yaml\ninfra\ninfra/nginx\ninfra/nginx/cloudflare-edge-real-ip.conf' ]]; then
+    return
+  fi
+  if [[ "${entries}" != $'compose.yaml\ninfra\ninfra/nginx\ninfra/nginx/cloudflare-edge-real-ip.conf\nscripts\nscripts/backup-guess-pokemon.sh\nscripts/deploy-guess-pokemon.sh' ]]; then
     fail "runtime config file allowlist does not match"
   fi
+  validate_release_scripts "${release_dir}"
+}
+
+release_has_synced_scripts() {
+  local release_dir="$1"
+
+  [[ -f "${release_dir}/scripts/backup-guess-pokemon.sh" ]] \
+    && [[ ! -L "${release_dir}/scripts/backup-guess-pokemon.sh" ]] \
+    && [[ -f "${release_dir}/scripts/deploy-guess-pokemon.sh" ]] \
+    && [[ ! -L "${release_dir}/scripts/deploy-guess-pokemon.sh" ]]
+}
+
+validate_release_scripts() {
+  local release_dir="$1"
+  local script
+
+  for script in \
+    "${release_dir}/scripts/backup-guess-pokemon.sh" \
+    "${release_dir}/scripts/deploy-guess-pokemon.sh"
+  do
+    if [[ ! -x "${script}" ]]; then
+      fail "runtime config script is not executable"
+    fi
+    if ! /usr/bin/python3 -c \
+      'import os, stat, sys; raise SystemExit(0 if stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o700 else 1)' \
+      "${script}"
+    then
+      fail "runtime config script mode must be 700"
+    fi
+    if ! /bin/bash -n "${script}"; then
+      fail "runtime config script syntax is invalid"
+    fi
+  done
 }
 
 runtime_config_content_sha256() {
@@ -123,6 +159,12 @@ runtime_config_content_sha256() {
     /usr/bin/shasum -a 256 "${release_dir}/compose.yaml"
     /usr/bin/shasum -a 256 \
       "${release_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+    if release_has_synced_scripts "${release_dir}"; then
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/backup-guess-pokemon.sh"
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/deploy-guess-pokemon.sh"
+    fi
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 }
 

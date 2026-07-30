@@ -165,7 +165,7 @@ if [[ "${legacy_mode}" == true ]]; then
   require_legacy_compose
 fi
 
-if [[ "${recovery_mode}" == false && ! -x "${BACKUP_SCRIPT}" ]]; then
+if [[ "${legacy_mode}" == true && ! -x "${BACKUP_SCRIPT}" ]]; then
   fail "production backup script is not executable"
 fi
 
@@ -404,8 +404,12 @@ release_dir_for_digest() {
 
 validate_release_files() {
   local release_dir="$1"
+  local entries
   local unexpected
-  local files
+
+  if [[ ! -d "${release_dir}" || -L "${release_dir}" ]]; then
+    fail "runtime config release is missing or unsafe"
+  fi
 
   unexpected="$(
     /usr/bin/find "${release_dir}" ! -type d ! -type f -print
@@ -414,14 +418,59 @@ validate_release_files() {
     fail "runtime config contains unsupported file types"
   fi
 
-  files="$(
-    /usr/bin/find "${release_dir}" -type f -print \
+  entries="$(
+    /usr/bin/find "${release_dir}" -mindepth 1 -print \
       | /usr/bin/sed "s#^${release_dir}/##" \
       | LC_ALL=C /usr/bin/sort
   )"
-  if [[ "${files}" != $'compose.yaml\ninfra/nginx/cloudflare-edge-real-ip.conf' ]]; then
+  if [[ "${entries}" == $'compose.yaml\ninfra\ninfra/nginx\ninfra/nginx/cloudflare-edge-real-ip.conf' ]]; then
+    return
+  fi
+  if [[ "${entries}" != $'compose.yaml\ninfra\ninfra/nginx\ninfra/nginx/cloudflare-edge-real-ip.conf\nscripts\nscripts/backup-guess-pokemon.sh\nscripts/deploy-guess-pokemon.sh' ]]; then
     fail "runtime config file allowlist does not match"
   fi
+  validate_release_scripts "${release_dir}"
+}
+
+validate_candidate_release_files() {
+  local release_dir="$1"
+
+  validate_release_files "${release_dir}"
+  if ! release_has_synced_scripts "${release_dir}"; then
+    fail "candidate runtime config must contain deploy and backup scripts"
+  fi
+}
+
+release_has_synced_scripts() {
+  local release_dir="$1"
+
+  [[ -f "${release_dir}/scripts/backup-guess-pokemon.sh" ]] \
+    && [[ ! -L "${release_dir}/scripts/backup-guess-pokemon.sh" ]] \
+    && [[ -f "${release_dir}/scripts/deploy-guess-pokemon.sh" ]] \
+    && [[ ! -L "${release_dir}/scripts/deploy-guess-pokemon.sh" ]]
+}
+
+validate_release_scripts() {
+  local release_dir="$1"
+  local script
+
+  for script in \
+    "${release_dir}/scripts/backup-guess-pokemon.sh" \
+    "${release_dir}/scripts/deploy-guess-pokemon.sh"
+  do
+    if [[ ! -x "${script}" ]]; then
+      fail "runtime config script is not executable"
+    fi
+    if ! "${PYTHON_BIN}" -c \
+      'import os, stat, sys; raise SystemExit(0 if stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o700 else 1)' \
+      "${script}"
+    then
+      fail "runtime config script mode must be 700"
+    fi
+    if ! /bin/bash -n "${script}"; then
+      fail "runtime config script syntax is invalid"
+    fi
+  done
 }
 
 runtime_config_content_sha256() {
@@ -430,6 +479,12 @@ runtime_config_content_sha256() {
     /usr/bin/shasum -a 256 "${release_dir}/compose.yaml"
     /usr/bin/shasum -a 256 \
       "${release_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+    if release_has_synced_scripts "${release_dir}"; then
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/backup-guess-pokemon.sh"
+      /usr/bin/shasum -a 256 \
+        "${release_dir}/scripts/deploy-guess-pokemon.sh"
+    fi
   } | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}'
 }
 
@@ -560,11 +615,23 @@ def environment_for(service, name):
     return environment
 
 def protected_environment(environment, prefixes, exact_names=()):
-    return {
-        key: value
-        for key, value in environment.items()
-        if key in exact_names or any(key.startswith(prefix) for prefix in prefixes)
-    }
+    protected = {}
+    original_names = {}
+    for key, value in environment.items():
+        if not isinstance(key, str):
+            raise SystemExit("environment variable name is invalid")
+        normalized = key.upper().replace(".", "_").replace("-", "_")
+        if normalized not in exact_names and not any(
+            normalized.startswith(prefix) for prefix in prefixes
+        ):
+            continue
+        if normalized in original_names and original_names[normalized] != key:
+            raise SystemExit(
+                "environment variable names collide after relaxed binding normalization"
+            )
+        original_names[normalized] = key
+        protected[normalized] = value
+    return protected
 
 candidate_db_environment = environment_for(services["db"], "database")
 baseline_db_environment = environment_for(baseline_services["db"], "active database")
@@ -644,6 +711,11 @@ def tmpfs_targets_for(service, label):
     return set(targets)
 
 for name in ("db", "api", "web"):
+    for lifecycle_hook in ("post_start", "pre_stop"):
+        if lifecycle_hook in services[name]:
+            raise SystemExit(
+                f"{name} must not define Compose lifecycle hook {lifecycle_hook}"
+            )
     if services[name].get("user") != baseline_services[name].get("user"):
         raise SystemExit(f"{name} user differs from the active verified configuration")
     if tmpfs_targets_for(services[name], name) != tmpfs_targets_for(
@@ -844,11 +916,12 @@ prepare_runtime_release() {
   "${DOCKER_BIN}" rm "${config_container_id}" >/dev/null
   config_container_id=
 
-  validate_release_files "${release_temp}"
+  validate_candidate_release_files "${release_temp}"
   /bin/chmod -R go-rwx "${release_temp}"
+  validate_candidate_release_files "${release_temp}"
 
   if [[ -d "${release_dir}" ]]; then
-    validate_release_files "${release_dir}"
+    validate_candidate_release_files "${release_dir}"
     if ! /usr/bin/diff -qr "${release_temp}" "${release_dir}" >/dev/null; then
       fail "existing runtime config release differs from exact digest artifact"
     fi
@@ -1250,6 +1323,7 @@ registry_token=
 "${DOCKER_BIN}" --config "${docker_config_dir}" pull "${new_api_image}"
 "${DOCKER_BIN}" --config "${docker_config_dir}" pull "${new_web_image}"
 
+active_backup_script="${BACKUP_SCRIPT}"
 if [[ "${legacy_mode}" == true ]]; then
   current_compose_file="${LEGACY_COMPOSE_FILE}"
   candidate_compose_file="${LEGACY_COMPOSE_FILE}"
@@ -1337,6 +1411,10 @@ else
     candidate_release="${current_release}"
   fi
 
+  if release_has_synced_scripts "${candidate_release}"; then
+    active_backup_script="${candidate_release}/scripts/backup-guess-pokemon.sh"
+  fi
+
   candidate_compose_file="${candidate_release}/compose.yaml"
 fi
 
@@ -1356,7 +1434,10 @@ fi
 
 wait_for_no_active_games
 
-"${BACKUP_SCRIPT}"
+if [[ ! -x "${active_backup_script}" || -L "${active_backup_script}" ]]; then
+  fail "verified production backup script is missing or unsafe"
+fi
+"${active_backup_script}"
 
 if [[ "${legacy_mode}" == false ]]; then
   previous_config_digest="${current_config_digest:-${ZERO_DIGEST}}"
