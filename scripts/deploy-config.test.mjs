@@ -428,7 +428,10 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
   );
   assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
-  assert.match(operations, /변경된 배포만 immutable runtime-config/);
+  assert.match(
+    operations,
+    /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,
+  );
   assert.match(operations, /이전 API·Web SHA와 runtime config를 함께 복구한다/);
 });
 
@@ -444,6 +447,14 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
   assert.match(
     deployWorkflow,
     /RUNTIME_CONFIG_MODE: \$\{\{ needs\.publish\.outputs\.runtime_config_mode \}\}/,
+  );
+  assert.match(
+    deployWorkflow,
+    /deployments\?environment=Production[\s\S]*steps\.deployed-base\.outputs\.sha/,
+  );
+  assert.match(
+    deployScript,
+    /write_pending_state[\s\S]*"\$\{previous_sha:-\$\{ZERO_SHA\}\}"/,
   );
   assert.match(
     runtimeConfigDetector,

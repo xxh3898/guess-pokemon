@@ -384,10 +384,11 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
 - `main` 배포는 변경 경로와 무관하게 API·Web 동일 SHA image 두 개를
   발행하고 함께 교체하는 rollback 계약을 유지한다.
-- `compose.production.yaml`, Cloudflare real-IP 설정 또는
-  `runtime-config.Dockerfile`이 변경된 배포만 immutable runtime-config
-  image를 새로 발행하고 `update`한다. 애플리케이션만 바뀌면 `keep`으로
-  현재 검증된 config digest를 유지한다.
+- 마지막 성공 Production deployment 이후 `compose.production.yaml`,
+  Cloudflare real-IP 설정 또는 `runtime-config.Dockerfile`이 변경된 배포만
+  immutable runtime-config image를 새로 발행하고 `update`한다. 따라서 설정
+  배포가 실패해도 다음 배포가 변경을 이어받는다. 애플리케이션만 바뀌면
+  `keep`으로 현재 검증된 config digest를 유지한다.
 - 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
   `home-mini`에 연결한다.
 - forced command wrapper는 기존 v1과 전환용 v2의 정확한 형식만 허용한다.
@@ -447,7 +448,8 @@ v2 배포가 강제 종료되거나 host가 재시작되어
 
 recovery는 pending key와 SHA/digest 형식, 마지막 검증 state, release
 allowlist와 content hash를 대조한다. 성공 state가 이미 target pair면
-`.env`, `current` pointer와 실행 service를 확인한 뒤 marker만 정리하고,
+`.env`와 실행 service를 확인한 뒤 검증된 target release로 stale `current`
+pointer를 원자 조정하고 marker를 정리하며,
 state가 previous pair면 이전 API/Web SHA와 config release를
 `--pull never`로 다시 적용한다. runtime config 도입 전 기존 설치는 legacy
 Compose와 이전 SHA로 복구한다. 정상 image가 한 번도 없던 bootstrap 중단은

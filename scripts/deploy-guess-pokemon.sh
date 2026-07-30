@@ -534,6 +534,18 @@ write_pending_state() {
   pending_temp=
 }
 
+replace_current_link() {
+  local release_dir="$1"
+
+  current_link_temp="${RUNTIME_CONFIG_ROOT}/.current.$$"
+  /bin/ln -s "releases/$("/usr/bin/basename" "${release_dir}")" "${current_link_temp}"
+  "${PYTHON_BIN}" -c \
+    'import os, sys; os.replace(sys.argv[1], sys.argv[2])' \
+    "${current_link_temp}" \
+    "${RUNTIME_CONFIG_CURRENT}"
+  current_link_temp=
+}
+
 write_success_state() {
   local application_revision="$1"
   local runtime_config_digest="$2"
@@ -558,13 +570,7 @@ write_success_state() {
   /bin/mv -f -- "${state_temp}" "${RUNTIME_CONFIG_STATE}"
   state_temp=
 
-  current_link_temp="${RUNTIME_CONFIG_ROOT}/.current.$$"
-  /bin/ln -s "releases/$("/usr/bin/basename" "${release_dir}")" "${current_link_temp}"
-  "${PYTHON_BIN}" -c \
-    'import os, sys; os.replace(sys.argv[1], sys.argv[2])' \
-    "${current_link_temp}" \
-    "${RUNTIME_CONFIG_CURRENT}"
-  current_link_temp=
+  replace_current_link "${release_dir}"
   /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
 }
 
@@ -673,13 +679,6 @@ recover_pending_transaction() {
     recovery_release="$(
       validate_verified_release "${target_digest}" "${state_content_sha}"
     )"
-    expected_current="releases/$("/usr/bin/basename" "${recovery_release}")"
-    if [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]] \
-      || [[ "$(/usr/bin/readlink "${RUNTIME_CONFIG_CURRENT}")" != "${expected_current}" ]]
-    then
-      fail "runtime config current pointer does not match completed target state"
-    fi
-
     recovery_api_image="${API_IMAGE_REPOSITORY}:${target_sha}"
     recovery_web_image="${WEB_IMAGE_REPOSITORY}:${target_sha}"
     if [[ "$(read_env_value API_IMAGE)" != "${recovery_api_image}" ]] \
@@ -697,6 +696,12 @@ recover_pending_transaction() {
       fail "completed target services are not all running"
     fi
 
+    expected_current="releases/$("/usr/bin/basename" "${recovery_release}")"
+    if [[ ! -L "${RUNTIME_CONFIG_CURRENT}" ]] \
+      || [[ "$(/usr/bin/readlink "${RUNTIME_CONFIG_CURRENT}")" != "${expected_current}" ]]
+    then
+      replace_current_link "${recovery_release}"
+    fi
     /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
     printf 'Completed Guess Pokémon runtime config transaction finalized: %s\n' "${target_sha}"
     return 0
@@ -870,7 +875,7 @@ wait_for_no_active_games
 if [[ "${legacy_mode}" == false ]]; then
   previous_config_digest="${current_config_digest:-${ZERO_DIGEST}}"
   write_pending_state \
-    "${previous_sha}" \
+    "${previous_sha:-${ZERO_SHA}}" \
     "${previous_config_digest}" \
     "${normalized_sha}" \
     "${candidate_config_digest}"
@@ -893,7 +898,7 @@ then
       "${candidate_config_digest}" \
       "${candidate_config_revision}" \
       "${candidate_config_content_sha}" \
-      "${previous_sha}" \
+      "${previous_sha:-${ZERO_SHA}}" \
       "${previous_config_digest}" \
       "${candidate_release}"
   fi
