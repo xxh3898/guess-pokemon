@@ -14,7 +14,11 @@ if [[ -n "${FAKE_DOCKER_LOG:-}" ]]; then
 fi
 
 case "${command_name}" in
-  login|logout|pull|rm)
+  login)
+    /bin/cat >/dev/null
+    exit 0
+    ;;
+  logout|pull|rm)
     exit 0
     ;;
   create)
