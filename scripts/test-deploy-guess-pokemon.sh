@@ -117,6 +117,15 @@ pending_file="${app_dir}/runtime-config/pending"
   "${app_dir}/.env" >"${app_dir}/.env.interrupted"
 /bin/mv "${app_dir}/.env.interrupted" "${app_dir}/.env"
 
+set +e
+run_deploy "${REVISION_ONE}" test-user >/dev/null 2>&1
+legacy_pending_exit_code="$?"
+set -e
+if [[ "${legacy_pending_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
+  printf 'Legacy Guess Pokémon deploy must preserve and reject pending transaction\n' >&2
+  exit 1
+fi
+
 run_recovery
 
 test ! -e "${pending_file}"
