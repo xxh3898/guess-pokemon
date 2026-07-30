@@ -447,8 +447,61 @@ expected = {
     "api": {"application", "egress"},
     "web": {"application", "edge"},
 }
+allowed_service_keys = {
+    "db": {
+        "command",
+        "entrypoint",
+        "environment",
+        "healthcheck",
+        "image",
+        "logging",
+        "networks",
+        "restart",
+        "volumes",
+    },
+    "api": {
+        "command",
+        "depends_on",
+        "entrypoint",
+        "environment",
+        "healthcheck",
+        "image",
+        "init",
+        "logging",
+        "networks",
+        "pids_limit",
+        "read_only",
+        "restart",
+        "security_opt",
+        "tmpfs",
+    },
+    "web": {
+        "command",
+        "depends_on",
+        "entrypoint",
+        "healthcheck",
+        "image",
+        "init",
+        "logging",
+        "networks",
+        "pids_limit",
+        "read_only",
+        "restart",
+        "security_opt",
+        "tmpfs",
+        "volumes",
+    },
+}
 for name, expected_networks in expected.items():
     service = services[name]
+    allowed_keys = allowed_service_keys[name] | {"profiles", "scale", "user"}
+    unsupported_service_keys = {
+        key
+        for key, value in service.items()
+        if key not in allowed_keys and value not in (None, False, "", [], {})
+    }
+    if unsupported_service_keys:
+        raise SystemExit(f"{name} contains an unsupported Compose service field")
     if set(service.get("networks", {})) != expected_networks:
         raise SystemExit(f"{name} network contract is invalid")
     if service.get("ports"):
