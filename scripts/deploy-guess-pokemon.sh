@@ -452,6 +452,10 @@ for name, expected_networks in expected.items():
         raise SystemExit(f"{name} must not use Compose profiles")
     if service.get("restart") != "unless-stopped":
         raise SystemExit(f"{name} restart policy must remain unless-stopped")
+    if service.get("scale", 1) != 1:
+        raise SystemExit(f"{name} must run exactly one replica")
+    if service.get("deploy", {}).get("replicas", 1) != 1:
+        raise SystemExit(f"{name} deploy replicas must remain one")
 if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
