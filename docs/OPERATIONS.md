@@ -397,18 +397,22 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
   종료 시 정리한다.
 
-배포 script는 Compose JSON 계약 검증과 atomic pointer 교체에 고정
-system Python을 사용한다. workflow 병합 전 Mac mini에서 아래
-preflight를 통과해야 한다. backup script는 Python에 의존하지 않는다.
+배포 script는 Compose JSON의 최소 운영 보호 invariant 검증과 atomic
+pointer 교체에 고정 system Python을 사용한다. workflow 병합 전 Mac mini에서
+아래 preflight를 통과해야 한다. backup script는 Python에 의존하지 않는다.
 
 ```bash
 test -x /usr/bin/python3
 /usr/bin/python3 --version
+test -x /usr/local/bin/docker
+/usr/local/bin/docker compose config --help \
+  | /usr/bin/grep -q -- '--no-env-resolution'
 ```
 
-`/usr/bin/python3`가 없으면 Homebrew Python이나 임의 PATH로 대체하지
-말고 준비를 중단한다. Xcode Command Line Tools 설치 여부와 운영 영향은
-별도 승인 후 확인한다.
+`/usr/bin/python3`가 없거나 운영 Docker Compose가
+`--no-env-resolution`을 지원하지 않으면 Homebrew Python이나 임의 PATH로
+우회하지 말고 준비를 중단한다. Xcode Command Line Tools 또는 Docker
+Compose 갱신 여부와 운영 영향은 별도 승인 후 확인한다.
 
 v2 workflow를 `main`에 병합하기 전에 repository의
 `scripts/deploy-guess-pokemon.sh`, `scripts/deploy-guess-pokemon-ci.sh`,
@@ -427,8 +431,21 @@ artifact의 자동 동기화 대상이 아니다.
 
 1. 두 SHA image를 pull하고 `update`일 때만 runtime-config image를 exact
    digest로 pull·추출한다.
-2. config revision, project label, 파일 allowlist와 production Compose
-   network/bind 계약을 검증한다. `keep`은 현재 release 무결성만 확인한다.
+2. config revision, project label, 파일 allowlist와 production Compose의
+   exact `db`·`api`·`web` service, `application`·`egress`·`edge` network,
+   `postgres-data` volume 집합을 검증한다. DB는 승인된 named volume 하나만,
+   API는 volume 없이, Web은 candidate release의 Nginx bind 하나만 사용한다.
+   exact API·Web image와 network 경계를 확인하고 DB image·command·entrypoint·
+   `POSTGRES_*`·`PGDATA`, API의 datasource·JPA·Flyway·Liquibase·SQL 초기화
+   설정, Spring 외부 설정·JVM property override와 readiness probe 의미는
+   활성 Compose와 같게 유지한다. API·Web image process override를 허용하지
+   않고 Web의 `edge` alias는 `guess-pokemon-web` 하나만 허용한다. host
+   port·privileged·추가 capability·device·Docker socket·host namespace·그 밖의 host bind와
+   `volumes_from`·`configs`·`secrets`·`env_file`, `extra_hosts`·link 기반
+   service discovery 우회를 금지한다. healthcheck timing, logging, restart,
+   replica, resource limit과 일반 application 환경 변수의 정확값은 deploy
+   script에 복제하지 않으며 repository review와 CI 검증 대상으로 둔다.
+   `keep`은 현재 release 무결성만 확인한다.
 3. DB가 실행 중인지 확인한다.
 4. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
    기다린다.
@@ -436,7 +453,8 @@ artifact의 자동 동기화 대상이 아니다.
    15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
 6. custom-format DB backup과 archive 검증을 완료한다.
 7. API·Web image와 runtime config를 한 transaction으로 적용한다.
-8. 전체 service health를 제한 시간 동안 기다린다.
+8. 전체 service health를 제한 시간 동안 기다리고 `db`·`api`·`web`이 모두
+   실행 중인 경우에만 성공 state를 기록한다.
 9. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
 
 GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대

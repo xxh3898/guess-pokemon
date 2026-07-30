@@ -5,6 +5,7 @@ set -Eeuo pipefail
 readonly DOCKER_BIN=/usr/local/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
 readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon
+readonly PROJECT_NAME=guess-pokemon
 readonly LEGACY_COMPOSE_FILE="${APP_DIR}/compose.yaml"
 readonly ENV_FILE="${APP_DIR}/.env"
 readonly BACKUP_SCRIPT=/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh
@@ -244,6 +245,7 @@ active_compose_file="${LEGACY_COMPOSE_FILE}"
 compose() {
   "${DOCKER_BIN}" \
     compose \
+    --project-name "${PROJECT_NAME}" \
     --project-directory "$(/usr/bin/dirname "${active_compose_file}")" \
     --env-file "${ENV_FILE}" \
     --file "${active_compose_file}" \
@@ -435,17 +437,22 @@ validate_compose_contract() {
   local compose_file="$1"
   local api_image="$2"
   local web_image="$3"
+  local baseline_compose_file="$4"
+  local baseline_api_image="$5"
+  local baseline_web_image="$6"
+  local baseline_rendered
   local rendered
-  local resolved_environment
 
   API_IMAGE="${api_image}" \
   WEB_IMAGE="${web_image}" \
     "${DOCKER_BIN}" \
       compose \
+      --project-name "${PROJECT_NAME}" \
       --project-directory "$(/usr/bin/dirname "${compose_file}")" \
       --env-file "${ENV_FILE}" \
       --file "${compose_file}" \
       config \
+      --no-env-resolution \
       --quiet
 
   rendered="$(
@@ -453,327 +460,291 @@ validate_compose_contract() {
     WEB_IMAGE="${web_image}" \
       "${DOCKER_BIN}" \
         compose \
+        --project-name "${PROJECT_NAME}" \
         --project-directory "$(/usr/bin/dirname "${compose_file}")" \
         --env-file "${ENV_FILE}" \
         --file "${compose_file}" \
         config \
+        --no-env-resolution \
         --format json
   )"
 
-  resolved_environment="$(
-    printf '%s\n' \
-      'name: guess-pokemon-environment-probe' \
-      'services:' \
-      '  probe:' \
-      '    image: scratch' \
-      '    environment:' \
-      '      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}' \
-      '      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}' \
-      '      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}' \
-      | "${DOCKER_BIN}" \
-          compose \
-          --project-directory "$(/usr/bin/dirname "${compose_file}")" \
-          --env-file "${ENV_FILE}" \
-          --file - \
-          config \
-          --format json
+  API_IMAGE="${baseline_api_image}" \
+  WEB_IMAGE="${baseline_web_image}" \
+    "${DOCKER_BIN}" \
+      compose \
+      --project-name "${PROJECT_NAME}" \
+      --project-directory "$(/usr/bin/dirname "${baseline_compose_file}")" \
+      --env-file "${ENV_FILE}" \
+      --file "${baseline_compose_file}" \
+      config \
+      --no-env-resolution \
+      --quiet
+
+  baseline_rendered="$(
+    API_IMAGE="${baseline_api_image}" \
+    WEB_IMAGE="${baseline_web_image}" \
+      "${DOCKER_BIN}" \
+        compose \
+        --project-name "${PROJECT_NAME}" \
+        --project-directory "$(/usr/bin/dirname "${baseline_compose_file}")" \
+        --env-file "${ENV_FILE}" \
+        --file "${baseline_compose_file}" \
+        config \
+        --no-env-resolution \
+        --format json
   )"
 
-  printf '[%s,%s]' "${rendered}" "${resolved_environment}" \
+  printf '%s\0%s' "${rendered}" "${baseline_rendered}" \
     | "${PYTHON_BIN}" -c '
 import json
-import hashlib
 import sys
 
-config, environment_probe = json.load(sys.stdin)
+documents = sys.stdin.buffer.read().split(b"\0")
+if len(documents) != 2:
+    raise SystemExit("Compose validation input is invalid")
+config = json.loads(documents[0])
+baseline = json.loads(documents[1])
 (
     expected_api_image,
     expected_web_image,
     expected_real_ip_source,
 ) = sys.argv[1:4]
-host_environment = (
-    environment_probe.get("services", {})
-    .get("probe", {})
-    .get("environment", {})
-)
-if not isinstance(host_environment, dict):
-    raise SystemExit("resolved Compose environment probe is invalid")
-try:
-    expected_database_name = host_environment["POSTGRES_DB"]
-    expected_database_user = host_environment["POSTGRES_USER"]
-    expected_database_password = host_environment["POSTGRES_PASSWORD"]
-except KeyError as error:
-    raise SystemExit(
-        f"resolved Compose environment is missing: {error.args[0]}"
-    ) from error
-expected_database_password_sha256 = hashlib.sha256(
-    expected_database_password.encode()
-).hexdigest()
 services = config.get("services", {})
+baseline_services = baseline.get("services", {})
 networks = config.get("networks", {})
 volumes = config.get("volumes", {})
-if config.get("name") != "guess-pokemon":
-    raise SystemExit("Compose project name must remain guess-pokemon")
+
+if not isinstance(services, dict):
+    raise SystemExit("Compose services must be an object")
+if not isinstance(baseline_services, dict):
+    raise SystemExit("active Compose services must be an object")
+if not isinstance(networks, dict):
+    raise SystemExit("Compose networks must be an object")
+if not isinstance(volumes, dict):
+    raise SystemExit("Compose volumes must be an object")
 if set(services) != {"db", "api", "web"}:
-    raise SystemExit("unexpected Guess Pokemon service set")
-expected = {
-    "db": {"application": None},
-    "api": {"application": None, "egress": None},
-    "web": {
-        "application": None,
-        "edge": {"aliases": ["guess-pokemon-web"]},
-    },
-}
-allowed_service_keys = {
-    "db": {
-        "command",
-        "entrypoint",
-        "environment",
-        "healthcheck",
-        "image",
-        "logging",
-        "networks",
-        "restart",
-        "volumes",
-    },
-    "api": {
-        "command",
-        "depends_on",
-        "entrypoint",
-        "environment",
-        "healthcheck",
-        "image",
-        "init",
-        "logging",
-        "networks",
-        "pids_limit",
-        "read_only",
-        "restart",
-        "security_opt",
-        "tmpfs",
-    },
-    "web": {
-        "command",
-        "depends_on",
-        "entrypoint",
-        "healthcheck",
-        "image",
-        "init",
-        "logging",
-        "networks",
-        "pids_limit",
-        "read_only",
-        "restart",
-        "security_opt",
-        "tmpfs",
-        "volumes",
-    },
-}
-for name, expected_networks in expected.items():
-    service = services[name]
-    allowed_keys = allowed_service_keys[name] | {"profiles", "scale", "user"}
-    unsupported_service_keys = {
-        key
-        for key, value in service.items()
-        if key not in allowed_keys and value not in (None, False, "", [], {})
-    }
-    if unsupported_service_keys:
-        raise SystemExit(f"{name} contains an unsupported Compose service field")
-    if service.get("networks", {}) != expected_networks:
-        raise SystemExit(f"{name} network contract is invalid")
-    if service.get("ports"):
-        raise SystemExit(f"{name} must not publish host ports")
-    if service.get("profiles"):
-        raise SystemExit(f"{name} must not use Compose profiles")
-    if service.get("restart") != "unless-stopped":
-        raise SystemExit(f"{name} restart policy must remain unless-stopped")
-    if (
-        service.get("user") not in (None, "")
-        or service.get("privileged") is True
-        or service.get("cap_add")
-        or service.get("devices")
-        or service.get("use_api_socket") is True
-        or service.get("pid") is not None
-        or service.get("ipc") is not None
-        or service.get("uts") is not None
-        or service.get("userns_mode") is not None
-    ):
-        raise SystemExit(f"{name} must not override image user or add privileges")
-    if service.get("command") is not None or service.get("entrypoint") is not None:
-        raise SystemExit(f"{name} must not override the image process")
-    if service.get("post_start") is not None or service.get("pre_stop") is not None:
-        raise SystemExit(f"{name} must not define lifecycle hooks")
-    if service.get("volumes_from") or service.get("configs") or service.get("secrets"):
-        raise SystemExit(f"{name} contains an unapproved mount source")
-    if (
-        service.get("extra_hosts")
-        or service.get("dns")
-        or service.get("dns_search")
-        or service.get("network_mode")
-    ):
-        raise SystemExit(f"{name} must not override service name resolution")
-    if service.get("scale", 1) != 1:
-        raise SystemExit(f"{name} must run exactly one replica")
-    if service.get("deploy", {}).get("replicas", 1) != 1:
-        raise SystemExit(f"{name} deploy replicas must remain one")
-expected_hardening = {
-    "api": {
-        "init": True,
-        "read_only": True,
-        "pids_limit": 256,
-        "security_opt": ["no-new-privileges:true"],
-        "tmpfs": ["/tmp:size=128m,mode=1777"],
-    },
-    "web": {
-        "init": True,
-        "read_only": True,
-        "pids_limit": 100,
-        "security_opt": ["no-new-privileges:true"],
-        "tmpfs": [
-            "/var/cache/nginx:size=32m,mode=0755",
-            "/var/run:size=4m,mode=0755",
-            "/tmp:size=16m,mode=1777",
-        ],
-    },
-}
-for name, expected_values in expected_hardening.items():
-    service = services[name]
-    for field, expected_value in expected_values.items():
-        if service.get(field) != expected_value:
-            raise SystemExit(f"{name} hardening contract is invalid: {field}")
-expected_logging = {
-    "driver": "json-file",
-    "options": {"max-file": "3", "max-size": "10m"},
-}
-for name, service in services.items():
-    if service.get("logging") != expected_logging:
-        raise SystemExit(f"{name} logging rotation contract is invalid")
+    raise SystemExit("Compose service set is invalid")
+if set(networks) != {"application", "egress", "edge"}:
+    raise SystemExit("Compose network set is invalid")
+if set(volumes) != {"postgres-data"}:
+    raise SystemExit("Compose top-level volume set is invalid")
+for name in ("db", "api", "web"):
+    if not isinstance(services.get(name), dict):
+        raise SystemExit(f"required service is missing: {name}")
+    if not isinstance(baseline_services.get(name), dict):
+        raise SystemExit(f"active required service is missing: {name}")
+
 if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
-if services["db"].get("image") != "postgres:18.4-alpine3.24":
-    raise SystemExit("PostgreSQL image changes require a separate data migration")
-db_environment = services["db"].get("environment", {})
-if set(db_environment) != {"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"}:
-    raise SystemExit("PostgreSQL environment key allowlist is invalid")
-if db_environment.get("POSTGRES_DB") != expected_database_name:
-    raise SystemExit("PostgreSQL database name must match the production environment")
-if db_environment.get("POSTGRES_USER") != expected_database_user:
-    raise SystemExit("PostgreSQL user must match the protected host environment")
-database_password = db_environment.get("POSTGRES_PASSWORD")
-if (
-    not isinstance(database_password, str)
-    or hashlib.sha256(database_password.encode()).hexdigest()
-    != expected_database_password_sha256
+for name in ("api", "web"):
+    for field in ("command", "entrypoint"):
+        if services[name].get(field) is not None:
+            raise SystemExit(f"{name} must not override the image {field}")
+if services["db"].get("image") != baseline_services["db"].get("image"):
+    raise SystemExit("database image differs from the active verified configuration")
+
+for field in ("command", "entrypoint"):
+    if services["db"].get(field) != baseline_services["db"].get(field):
+        raise SystemExit(f"database {field} differs from the active verified configuration")
+
+def environment_for(service, name):
+    environment = service.get("environment", {})
+    if environment is None:
+        return {}
+    if not isinstance(environment, dict):
+        raise SystemExit(f"{name} environment contract is invalid")
+    return environment
+
+def protected_environment(environment, prefixes, exact_names=()):
+    return {
+        key: value
+        for key, value in environment.items()
+        if key in exact_names or any(key.startswith(prefix) for prefix in prefixes)
+    }
+
+candidate_db_environment = environment_for(services["db"], "database")
+baseline_db_environment = environment_for(baseline_services["db"], "active database")
+if protected_environment(
+    candidate_db_environment,
+    ("POSTGRES_",),
+    ("PGDATA",),
+) != protected_environment(
+    baseline_db_environment,
+    ("POSTGRES_",),
+    ("PGDATA",),
 ):
-    raise SystemExit("PostgreSQL password must match the protected host environment")
-if (
-    services["api"]
-    .get("environment", {})
-    .get("SPRING_JPA_HIBERNATE_DDL_AUTO", "validate")
-    != "validate"
+    raise SystemExit("database storage environment differs from the active verified configuration")
+
+candidate_api_environment = environment_for(services["api"], "API")
+baseline_api_environment = environment_for(baseline_services["api"], "active API")
+data_environment_prefixes = (
+    "SPRING_DATASOURCE_",
+    "SPRING_FLYWAY_",
+    "SPRING_JPA_",
+    "SPRING_LIQUIBASE_",
+    "SPRING_PROFILES_",
+    "SPRING_CONFIG_",
+    "SPRING_SQL_INIT_",
+)
+data_environment_names = (
+    "SPRING_APPLICATION_JSON",
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "_JAVA_OPTIONS",
+    "JAVA_OPTS",
+)
+if protected_environment(
+    candidate_api_environment,
+    data_environment_prefixes,
+    data_environment_names,
+) != protected_environment(
+    baseline_api_environment,
+    data_environment_prefixes,
+    data_environment_names,
 ):
-    raise SystemExit("Hibernate schema handling must remain validate")
-api_environment = services["api"].get("environment", {})
-required_api_environment = {
-    "SPRING_DATASOURCE_URL",
-    "SPRING_DATASOURCE_USERNAME",
-    "SPRING_DATASOURCE_PASSWORD",
-    "SERVER_FORWARD_HEADERS_STRATEGY",
-    "SESSION_COOKIE_SECURE",
-    "POKEMON_ARTWORK_ENABLED",
+    raise SystemExit("API data configuration differs from the active verified configuration")
+
+expected_healthcheck_fragments = {
+    "db": ("pg_isready",),
+    "api": (
+        "http://127.0.0.1:8080/actuator/health/readiness",
+        "status",
+        "UP",
+    ),
+    "web": ("http://127.0.0.1/actuator/health/readiness",),
 }
-api_environment_keys = set(api_environment)
-if api_environment_keys not in (
-    required_api_environment,
-    required_api_environment | {"SPRING_JPA_HIBERNATE_DDL_AUTO"},
-):
-    raise SystemExit("API environment key allowlist is invalid")
-expected_datasource_url = f"jdbc:postgresql://db:5432/{expected_database_name}"
-if api_environment.get("SPRING_DATASOURCE_URL") != expected_datasource_url:
-    raise SystemExit("API datasource must use the production DB service")
-if api_environment.get("SPRING_DATASOURCE_USERNAME") != expected_database_user:
-    raise SystemExit("API datasource user must match the protected host environment")
-api_database_password = api_environment.get("SPRING_DATASOURCE_PASSWORD")
-if (
-    not isinstance(api_database_password, str)
-    or hashlib.sha256(api_database_password.encode()).hexdigest()
-    != expected_database_password_sha256
-):
-    raise SystemExit("API datasource password must match the protected host environment")
-expected_api_environment = {
-    "SERVER_FORWARD_HEADERS_STRATEGY": "native",
-    "SESSION_COOKIE_SECURE": "true",
-}
-for name, expected_value in expected_api_environment.items():
-    if api_environment.get(name) != expected_value:
-        raise SystemExit(f"API environment contract is invalid: {name}")
-expected_healthchecks = {
-    "db": {
-        "test": [
-            "CMD-SHELL",
-            "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
-        ],
-        "timeout": "5s",
-        "interval": "5s",
-        "retries": 10,
-        "start_period": "10s",
-    },
-    "api": {
-        "test": [
-            "CMD-SHELL",
-            "wget -qO- http://127.0.0.1:8080/actuator/health/readiness "
-            "| grep -q "
-            + chr(39)
-            + "\"status\":\"UP\""
-            + chr(39),
-        ],
-        "timeout": "5s",
-        "interval": "10s",
-        "retries": 12,
-        "start_period": "30s",
-    },
-    "web": {
-        "test": [
-            "CMD",
-            "wget",
-            "-q",
-            "-O",
-            "/dev/null",
-            "http://127.0.0.1/actuator/health/readiness",
-        ],
-        "timeout": "5s",
-        "interval": "10s",
-        "retries": 6,
-        "start_period": "10s",
-    },
-}
-for name, expected_healthcheck in expected_healthchecks.items():
-    healthcheck = services[name].get("healthcheck", {})
-    if healthcheck != expected_healthcheck:
+for name, expected_fragments in expected_healthcheck_fragments.items():
+    candidate_healthcheck = services[name].get("healthcheck", {})
+    if not isinstance(candidate_healthcheck, dict):
         raise SystemExit(f"{name} healthcheck contract is invalid")
-if networks.get("application", {}) != {
-    "name": "guess-pokemon_application",
-    "ipam": {},
-    "internal": True,
-}:
-    raise SystemExit("application network must remain the project-private bridge")
-if networks.get("edge", {}) != {
-    "name": "edge",
-    "external": True,
-    "ipam": {},
-}:
-    raise SystemExit("edge network contract is invalid")
-if networks.get("egress", {}) != {
-    "name": "guess-pokemon_egress",
-    "driver": "bridge",
-    "ipam": {},
-}:
-    raise SystemExit("egress must remain the project-private outbound bridge")
+    healthcheck_test = candidate_healthcheck.get("test")
+    if (
+        not isinstance(healthcheck_test, list)
+        or not healthcheck_test
+        or healthcheck_test[0] not in ("CMD", "CMD-SHELL")
+        or candidate_healthcheck.get("disable") is True
+    ):
+        raise SystemExit(f"{name} healthcheck probe is invalid")
+    serialized_healthcheck = json.dumps(healthcheck_test, separators=(",", ":"))
+    if any(fragment not in serialized_healthcheck for fragment in expected_fragments):
+        raise SystemExit(f"{name} healthcheck probe is invalid")
+
+expected_service_networks = {
+    "db": {"application"},
+    "api": {"application", "egress"},
+    "web": {"application", "edge"},
+}
+for name, expected_networks in expected_service_networks.items():
+    service_networks = services[name].get("networks", {})
+    if not isinstance(service_networks, dict):
+        raise SystemExit(f"{name} network contract is invalid")
+    if set(service_networks) != expected_networks:
+        raise SystemExit(f"{name} network contract is invalid")
+
+web_edge = services["web"]["networks"].get("edge")
+web_edge_aliases = web_edge.get("aliases", []) if isinstance(web_edge, dict) else []
+if (
+    not isinstance(web_edge_aliases, list)
+    or len(web_edge_aliases) != 1
+    or set(web_edge_aliases) != {"guess-pokemon-web"}
+):
+    raise SystemExit("web edge alias set is invalid")
+
+application_network = networks.get("application", {})
+egress_network = networks.get("egress", {})
+edge_network = networks.get("edge", {})
+if (
+    not isinstance(application_network, dict)
+    or application_network.get("name") != "guess-pokemon_application"
+    or application_network.get("driver", "bridge") != "bridge"
+    or application_network.get("internal") is not True
+    or application_network.get("external") is True
+    or application_network.get("driver_opts")
+):
+    raise SystemExit("application network boundary is invalid")
+if (
+    not isinstance(egress_network, dict)
+    or egress_network.get("name") != "guess-pokemon_egress"
+    or egress_network.get("external") is True
+    or egress_network.get("driver", "bridge") != "bridge"
+    or egress_network.get("internal") is True
+    or egress_network.get("driver_opts")
+):
+    raise SystemExit("egress network boundary is invalid")
+if (
+    not isinstance(edge_network, dict)
+    or edge_network.get("name") != "edge"
+    or edge_network.get("external") is not True
+):
+    raise SystemExit("edge network boundary is invalid")
+
+expected_real_ip_target = "/etc/nginx/conf.d/00-cloudflare-real-ip.conf"
+candidate_bind_count = 0
+for name, service in services.items():
+    if not isinstance(service, dict):
+        raise SystemExit(f"{name} service contract is invalid")
+    if service.get("ports"):
+        raise SystemExit(f"{name} must not publish host ports")
+    if service.get("privileged") is True:
+        raise SystemExit(f"{name} must not run privileged")
+    if service.get("cap_add") or service.get("devices"):
+        raise SystemExit(f"{name} must not add host privileges or devices")
+    if service.get("use_api_socket") is True:
+        raise SystemExit(f"{name} must not use the Docker API socket")
+    for field in ("volumes_from", "configs", "secrets", "env_file"):
+        if service.get(field):
+            raise SystemExit(f"{name} must not use {field}")
+    for field in ("extra_hosts", "external_links", "links"):
+        if service.get(field):
+            raise SystemExit(f"{name} must not override service discovery with {field}")
+    for field in ("pid", "ipc", "uts", "userns_mode", "network_mode", "cgroup"):
+        if service.get(field) == "host":
+            raise SystemExit(f"{name} must not join a host namespace")
+
+    service_volumes = service.get("volumes", [])
+    if not isinstance(service_volumes, list):
+        raise SystemExit(f"{name} volume contract is invalid")
+    for volume in service_volumes:
+        if not isinstance(volume, dict):
+            raise SystemExit(f"{name} volume contract is invalid")
+        source = volume.get("source")
+        target = volume.get("target")
+        if source in ("/var/run/docker.sock", "/run/docker.sock") or target in (
+            "/var/run/docker.sock",
+            "/run/docker.sock",
+        ):
+            raise SystemExit(f"{name} must not mount the Docker socket")
+        if volume.get("type") == "bind":
+            if (
+                name != "web"
+                or source != expected_real_ip_source
+                or target != expected_real_ip_target
+                or volume.get("read_only") is not True
+            ):
+                raise SystemExit(f"{name} contains an unapproved host bind")
+            candidate_bind_count += 1
+
 db_volumes = services["db"].get("volumes", [])
-if len(db_volumes) != 1 or services["api"].get("volumes"):
-    raise SystemExit("unexpected DB or API volume mount")
+api_volumes = services["api"].get("volumes", [])
+web_volumes = services["web"].get("volumes", [])
+if len(db_volumes) != 1:
+    raise SystemExit("database service volume set is invalid")
+if api_volumes:
+    raise SystemExit("API service must not mount volumes")
+if len(web_volumes) != 1:
+    raise SystemExit("Web service volume set is invalid")
+if candidate_bind_count != 1:
+    raise SystemExit("pinned Cloudflare real-IP bind is missing")
+
+for name, volume in volumes.items():
+    if not isinstance(volume, dict):
+        raise SystemExit(f"{name} top-level volume contract is invalid")
+    if volume.get("driver_opts"):
+        raise SystemExit(f"{name} top-level volume must not map a host path")
+
 db_data = next(
     (
         volume
@@ -783,27 +754,22 @@ db_data = next(
     ),
     None,
 )
-if volumes != {
-    "postgres-data": {"name": "guess-pokemon_postgres-data"},
-}:
+postgres_data = volumes.get("postgres-data")
+if (
+    not isinstance(postgres_data, dict)
+    or postgres_data.get("name") != "guess-pokemon_postgres-data"
+    or postgres_data.get("external") is True
+    or postgres_data.get("driver", "local") != "local"
+):
     raise SystemExit("top-level PostgreSQL volume contract is invalid")
-if db_data != {
-    "type": "volume",
-    "source": "postgres-data",
-    "target": "/var/lib/postgresql",
-    "volume": {},
-}:
+if (
+    db_data is None
+    or db_data.get("type") != "volume"
+    or db_data.get("source") != "postgres-data"
+    or db_data.get("target") != "/var/lib/postgresql"
+    or db_data.get("volume", {}).get("subpath")
+):
     raise SystemExit("PostgreSQL persistent volume contract is invalid")
-web_volumes = services["web"].get("volumes", [])
-if web_volumes != [
-    {
-        "type": "bind",
-        "source": expected_real_ip_source,
-        "target": "/etc/nginx/conf.d/00-cloudflare-real-ip.conf",
-        "read_only": True,
-    }
-]:
-    raise SystemExit("pinned Cloudflare real-IP bind is missing")
 ' \
       "${api_image}" \
       "${web_image}" \
@@ -1054,7 +1020,9 @@ running_service_set_is_complete() {
   local services
 
   services="$(compose ps --status running --services | LC_ALL=C /usr/bin/sort)"
-  [[ "${services}" == $'api\ndb\nweb' ]]
+  /usr/bin/grep -qx api <<<"${services}" \
+    && /usr/bin/grep -qx db <<<"${services}" \
+    && /usr/bin/grep -qx web <<<"${services}"
 }
 
 recover_pending_transaction() {
@@ -1121,9 +1089,20 @@ recover_pending_transaction() {
     validate_compose_contract \
       "${active_compose_file}" \
       "${recovery_api_image}" \
+      "${recovery_web_image}" \
+      "${active_compose_file}" \
+      "${recovery_api_image}" \
       "${recovery_web_image}"
-    if ! running_service_set_is_complete; then
-      fail "completed target services are not all running"
+    if ! compose up \
+      --detach \
+      --no-build \
+      --pull never \
+      --remove-orphans \
+      --wait \
+      --wait-timeout "${HEALTH_TIMEOUT_SECONDS}" \
+      || ! running_service_set_is_complete
+    then
+      fail "completed target services did not pass readiness verification"
     fi
 
     expected_current="releases/$("/usr/bin/basename" "${recovery_release}")"
@@ -1173,6 +1152,9 @@ recover_pending_transaction() {
   validate_compose_contract \
     "${active_compose_file}" \
     "${recovery_api_image}" \
+    "${recovery_web_image}" \
+    "${active_compose_file}" \
+    "${recovery_api_image}" \
     "${recovery_web_image}"
 
   write_image_env "${recovery_api_image}" "${recovery_web_image}"
@@ -1185,6 +1167,9 @@ recover_pending_transaction() {
     --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
   then
     fail "runtime config recovery could not restore the previous verified pair"
+  fi
+  if ! running_service_set_is_complete; then
+    fail "runtime config recovery did not restore every required service"
   fi
 
   if [[ -n "${state_sha}" ]]; then
@@ -1333,7 +1318,10 @@ fi
 validate_compose_contract \
   "${candidate_compose_file}" \
   "${new_api_image}" \
-  "${new_web_image}"
+  "${new_web_image}" \
+  "${current_compose_file}" \
+  "${current_api_image}" \
+  "${current_web_image}"
 
 active_compose_file="${current_compose_file}"
 running_services="$(compose ps --status running --services)"
@@ -1357,6 +1345,7 @@ fi
 write_image_env "${new_api_image}" "${new_web_image}"
 active_compose_file="${candidate_compose_file}"
 
+deployment_ready=false
 if compose up \
   --detach \
   --no-build \
@@ -1365,6 +1354,14 @@ if compose up \
   --wait \
   --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
 then
+  if running_service_set_is_complete; then
+    deployment_ready=true
+  else
+    printf 'Guess Pokémon deployment did not start every required service\n' >&2
+  fi
+fi
+
+if [[ "${deployment_ready}" == true ]]; then
   if [[ "${legacy_mode}" == false ]]; then
     write_success_state \
       "${normalized_sha}" \
@@ -1396,7 +1393,8 @@ if [[ -n "${previous_sha}" ]]; then
     --pull never \
     --remove-orphans \
     --wait \
-    --wait-timeout "${HEALTH_TIMEOUT_SECONDS}"
+    --wait-timeout "${HEALTH_TIMEOUT_SECONDS}" \
+    && running_service_set_is_complete
   then
     if [[ "${legacy_mode}" == false ]]; then
       /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"

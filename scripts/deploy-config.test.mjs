@@ -279,6 +279,99 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
   );
 });
 
+test("should_updateDeployedBaselineOnly_when_productionDeploymentSucceeded", () => {
+  const deployedBaseStep = deployWorkflow.match(
+    /- name: Resolve last successful production revision[\s\S]*?(?=\n      - name: Detect runtime config changes)/,
+  )?.[0];
+
+  assert.ok(deployedBaseStep);
+  assert.match(
+    deployedBaseStep,
+    /deployed_sha=0{40}[\s\S]*while IFS=\$'\\t' read -r deployment_id deployment_candidate_sha; do/,
+  );
+  assert.match(
+    deployedBaseStep,
+    /if \[\[ "\$\{state\}" == success \]\]; then\s+deployed_sha="\$\{deployment_candidate_sha\}"/,
+  );
+  assert.doesNotMatch(
+    deployedBaseStep,
+    /read -r deployment_id deployment_sha/,
+  );
+});
+
+test("should_pinEveryExternalWorkflowActionToExpectedFullSha", () => {
+  const expectedActionPins = new Map([
+    [
+      "actions/cache",
+      "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    ],
+    [
+      "actions/checkout",
+      "d23441a48e516b6c34aea4fa41551a30e30af803",
+    ],
+    [
+      "docker/build-push-action",
+      "53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+    ],
+    [
+      "docker/login-action",
+      "371161bbe7024a29a25c5e19bfcbc0804fe9ad2c",
+    ],
+    [
+      "docker/setup-buildx-action",
+      "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c",
+    ],
+    [
+      "tailscale/github-action",
+      "780049a30b6ff5c378a9e7b389d15ece7a204888",
+    ],
+  ]);
+  const externalActions = [validateWorkflow, deployWorkflow].flatMap(
+    (workflow) =>
+      workflowActionReferences(workflow).filter(
+        (reference) => !reference.startsWith("./"),
+      ),
+  );
+
+  assert.ok(externalActions.length > 0);
+  for (const reference of externalActions) {
+    const separator = reference.lastIndexOf("@");
+    assert.ok(separator > 0, `Missing action ref: ${reference}`);
+    const action = reference.slice(0, separator);
+    const ref = reference.slice(separator + 1);
+    assert.match(ref, /^[0-9a-f]{40}$/, `Unpinned action: ${reference}`);
+    assert.equal(
+      ref,
+      expectedActionPins.get(action),
+      `Unexpected action pin: ${reference}`,
+    );
+  }
+  assert.deepEqual(
+    [...new Set(externalActions.map((reference) => reference.split("@")[0]))]
+      .sort(),
+    [...expectedActionPins.keys()].sort(),
+  );
+});
+
+test("should_collectWorkflowActions_when_usesKeyOrValueIsQuoted", () => {
+  assert.deepEqual(
+    workflowActionReferences(`
+      steps:
+        - "uses": owner/action@v1
+        - 'uses': "owner/second-action@v2"
+    `),
+    ["owner/action@v1", "owner/second-action@v2"],
+  );
+  assert.throws(
+    () =>
+      workflowActionReferences(`
+        steps:
+          - { "uses": owner/action@v1 }
+      `),
+    /Unsupported uses syntax/,
+  );
+});
+
 test("should_useTailscaleAndRestrictedSshForDeployment", () => {
   assert.match(
     deployWorkflow,
@@ -353,7 +446,7 @@ test(
 
     assert.ok(composeFunction);
     assert.ok(composeConfig);
-    assert.equal(composeUpCommands?.length, 3);
+    assert.equal(composeUpCommands?.length, 4);
     assert.doesNotMatch(composeFunction, /--config/);
     assert.doesNotMatch(composeConfig, /--config/);
     for (const command of composeUpCommands) {
@@ -434,6 +527,10 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
   assert.match(operations, /\/usr\/bin\/python3 --version/);
   assert.match(
     operations,
+    /docker compose config --help[\s\S]*--no-env-resolution/,
+  );
+  assert.match(
+    operations,
     /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,
   );
   assert.match(operations, /이전 API·Web SHA와 runtime config를 함께 복구한다/);
@@ -464,8 +561,49 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
     deployScript,
     /write_pending_state[\s\S]*"\$\{previous_sha:-\$\{ZERO_SHA\}\}"/,
   );
-  assert.match(deployScript, /Compose project name must remain guess-pokemon/);
+  assert.match(deployScript, /required service is missing/);
+  assert.match(deployScript, /Compose service set is invalid/);
+  assert.match(deployScript, /Compose network set is invalid/);
+  assert.match(deployScript, /Compose top-level volume set is invalid/);
+  assert.match(deployScript, /API service must not mount volumes/);
+  assert.match(deployScript, /must not publish host ports/);
+  assert.match(deployScript, /must not add host privileges or devices/);
+  assert.match(
+    deployScript,
+    /for field in \("volumes_from", "configs", "secrets", "env_file"\)/,
+  );
+  assert.match(deployScript, /must not use \{field\}/);
+  assert.match(
+    deployScript,
+    /for field in \("extra_hosts", "external_links", "links"\)/,
+  );
+  assert.match(deployScript, /must not override service discovery/);
+  assert.match(deployScript, /contains an unapproved host bind/);
   assert.match(deployScript, /PostgreSQL persistent volume contract is invalid/);
+  assert.match(
+    deployScript,
+    /database storage environment differs from the active verified configuration/,
+  );
+  assert.match(
+    deployScript,
+    /API data configuration differs from the active verified configuration/,
+  );
+  assert.match(deployScript, /must not override the image \{field\}/);
+  assert.match(deployScript, /SPRING_APPLICATION_JSON/);
+  assert.match(deployScript, /JAVA_TOOL_OPTIONS/);
+  assert.match(
+    deployScript,
+    /healthcheck probe is invalid/,
+  );
+  assert.match(deployScript, /web edge alias set is invalid/);
+  assert.match(
+    deployScript,
+    /deployment did not start every required service/,
+  );
+  assert.doesNotMatch(
+    deployScript,
+    /restart policy must remain|logging rotation contract is invalid|API environment key allowlist is invalid/,
+  );
   assert.match(
     runtimeConfigDetector,
     /compose\.production\.yaml[\s\S]*infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*runtime-config\.Dockerfile/,
@@ -517,4 +655,20 @@ function workflowJob(workflow, jobId) {
   return nextJobOffset >= 0
     ? workflow.slice(start, bodyStart + nextJobOffset)
     : workflow.slice(start);
+}
+
+function workflowActionReferences(workflow) {
+  const possibleUsesKey = /(?:^|[\s{,-])(?:"uses"|'uses'|uses)\s*:/;
+
+  return workflow.split("\n").flatMap((line) => {
+    if (line.trimStart().startsWith("#") || !possibleUsesKey.test(line)) {
+      return [];
+    }
+    const match =
+      /^\s*(?:-\s*)?(?:"uses"|'uses'|uses)\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))(?:\s+#.*)?\s*$/.exec(
+        line,
+      );
+    assert.ok(match, `Unsupported uses syntax: ${line.trim()}`);
+    return [match[1] ?? match[2] ?? match[3]];
+  });
 }
