@@ -67,11 +67,14 @@ run_deploy() {
         FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_DB_IMAGE="${FAKE_RENDER_DB_IMAGE:-}" \
+        FAKE_RENDER_DATASOURCE_URL="${FAKE_RENDER_DATASOURCE_URL:-}" \
         FAKE_RENDER_DDL_AUTO="${FAKE_RENDER_DDL_AUTO:-}" \
+        FAKE_RENDER_EGRESS_EXTERNAL="${FAKE_RENDER_EGRESS_EXTERNAL:-false}" \
         FAKE_RENDER_EDGE_ALIAS="${FAKE_RENDER_EDGE_ALIAS:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
         FAKE_RENDER_RESTART_POLICY="${FAKE_RENDER_RESTART_POLICY:-}" \
+        FAKE_RENDER_SESSION_COOKIE_SECURE="${FAKE_RENDER_SESSION_COOKIE_SECURE:-}" \
         FAKE_RENDER_WEB_SCALE="${FAKE_RENDER_WEB_SCALE:-}" \
         FAKE_RENDER_WEB_PROFILE="${FAKE_RENDER_WEB_PROFILE:-false}" \
         /bin/bash "${test_script}" "$@"
@@ -331,6 +334,26 @@ wrong_ddl_auto_exit_code="$?"
 set -e
 if [[ "${wrong_ddl_auto_exit_code}" -ne 1 ]]; then
   printf 'Runtime config with unsafe Hibernate schema handling must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_EGRESS_EXTERNAL=true \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+external_egress_exit_code="$?"
+set -e
+if [[ "${external_egress_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with an external egress network must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_SESSION_COOKIE_SECURE=false \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+insecure_cookie_exit_code="$?"
+set -e
+if [[ "${insecure_cookie_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with insecure session cookies must fail\n' >&2
   exit 1
 fi
 

@@ -488,6 +488,17 @@ if (
     != "validate"
 ):
     raise SystemExit("Hibernate schema handling must remain validate")
+api_environment = services["api"].get("environment", {})
+expected_datasource_url = f"jdbc:postgresql://db:5432/{expected_database_name}"
+if api_environment.get("SPRING_DATASOURCE_URL") != expected_datasource_url:
+    raise SystemExit("API datasource must use the production DB service")
+expected_api_environment = {
+    "SERVER_FORWARD_HEADERS_STRATEGY": "native",
+    "SESSION_COOKIE_SECURE": "true",
+}
+for name, expected_value in expected_api_environment.items():
+    if api_environment.get(name) != expected_value:
+        raise SystemExit(f"API environment contract is invalid: {name}")
 expected_healthchecks = {
     "db": [
         "CMD-SHELL",
@@ -519,8 +530,14 @@ if networks.get("application", {}).get("internal") is not True:
 edge = networks.get("edge", {})
 if edge.get("external") is not True or edge.get("name") != "edge":
     raise SystemExit("edge network contract is invalid")
-if networks.get("egress", {}).get("internal") is True:
-    raise SystemExit("egress network must permit outbound access")
+egress = networks.get("egress", {})
+if (
+    egress.get("internal") is True
+    or egress.get("external") is True
+    or egress.get("name") != "guess-pokemon_egress"
+    or egress.get("driver") != "bridge"
+):
+    raise SystemExit("egress must remain the project-private outbound bridge")
 db_volumes = services["db"].get("volumes", [])
 db_data = next(
     (
