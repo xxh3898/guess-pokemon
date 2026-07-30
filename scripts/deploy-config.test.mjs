@@ -279,6 +279,21 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
   );
 });
 
+test("should_pinDockerBuildActionToVerifiedRelease", () => {
+  const expectedAction =
+    "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a";
+
+  for (const workflow of [validateWorkflow, deployWorkflow]) {
+    const actions = [
+      ...workflow.matchAll(/uses: (docker\/build-push-action@[0-9a-f]{40})/g),
+    ];
+    assert.ok(actions.length > 0);
+    for (const action of actions) {
+      assert.equal(action[1], expectedAction);
+    }
+  }
+});
+
 test("should_useTailscaleAndRestrictedSshForDeployment", () => {
   assert.match(
     deployWorkflow,
