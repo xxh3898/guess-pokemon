@@ -384,25 +384,33 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
 - `main` 배포는 변경 경로와 무관하게 API·Web 동일 SHA image 두 개를
   발행하고 함께 교체하는 rollback 계약을 유지한다.
+- `compose.production.yaml`, Cloudflare real-IP 설정 또는
+  `runtime-config.Dockerfile`이 변경된 배포만 immutable runtime-config
+  image를 새로 발행하고 `update`한다. 애플리케이션만 바뀌면 `keep`으로
+  현재 검증된 config digest를 유지한다.
 - 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
   `home-mini`에 연결한다.
-- forced command wrapper는
-  `deploy-guess-pokemon <40자리-sha> <registry-user>`만 허용한다.
+- forced command wrapper는 기존 v1과 전환용 v2의 정확한 형식만 허용한다.
+  v2는 `deploy-guess-pokemon-v2 <40자리-sha> keep <registry-user>` 또는
+  `deploy-guess-pokemon-v2 <40자리-sha> update <config-digest> <registry-user>`다.
 - Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
   종료 시 정리한다.
 
 배포 순서는 다음과 같다.
 
-1. 두 SHA image를 pull하고 production Compose를 render한다.
-2. DB가 실행 중인지 확인한다.
-3. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
+1. 두 SHA image를 pull하고 `update`일 때만 runtime-config image를 exact
+   digest로 pull·추출한다.
+2. config revision, project label, 파일 allowlist와 production Compose
+   network/bind 계약을 검증한다. `keep`은 현재 release 무결성만 확인한다.
+3. DB가 실행 중인지 확인한다.
+4. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
    기다린다.
-4. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
+5. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
    15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
-5. custom-format DB backup과 archive 검증을 완료한다.
-6. API·web image tag를 함께 갱신한다.
-7. 전체 service health를 제한 시간 동안 기다린다.
-8. 실패하면 이전 API·web SHA를 함께 복구한다.
+6. custom-format DB backup과 archive 검증을 완료한다.
+7. API·Web image와 runtime config를 한 transaction으로 적용한다.
+8. 전체 service health를 제한 시간 동안 기다린다.
+9. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
 
 GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
 15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,

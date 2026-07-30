@@ -60,6 +60,7 @@ services:
       - ./.env.example:/workspace/.env.example:ro
       - ./.env.production.example:/workspace/.env.production.example:ro
       - ./README.md:/workspace/README.md:ro
+      - ./runtime-config.Dockerfile:/workspace/runtime-config.Dockerfile:ro
       - ./compose.dev.yaml:/workspace/compose.dev.yaml:ro
       - ./compose.production.yaml:/workspace/compose.production.yaml:ro
       - ./compose.test.yaml:/workspace/compose.test.yaml:ro
