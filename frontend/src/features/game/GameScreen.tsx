@@ -1,6 +1,7 @@
 import {
   Check,
   CircleHelp,
+  RotateCw,
   Search,
   Send,
   UserRound,
@@ -101,6 +102,7 @@ export function GameScreen({
             <SilhouetteChallengePanel
               commandPending={commandPending}
               gameId={snapshot.game.gameId}
+              key={snapshot.game.gameId}
               onOpenPokedex={onOpenPokedex}
               paused={snapshot.status === "PAUSED"}
               roomCode={snapshot.roomCode}
@@ -202,6 +204,13 @@ function SilhouetteChallengePanel({
   roomCode: string;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageRequestVersion, setImageRequestVersion] = useState(0);
+  const silhouetteUrl = `/api/v1/rooms/${encodeURIComponent(roomCode)}/silhouette${
+    imageRequestVersion === 0
+      ? ""
+      : `?retry=${imageRequestVersion}`
+  }`;
+
   return (
     <section className="silhouette-challenge panel-card">
       <header>
@@ -213,15 +222,30 @@ function SilhouetteChallengePanel({
       </header>
       <div className="silhouette-stage">
         {imageFailed ? (
-          <p role="status">실루엣을 준비하지 못했어요.</p>
+          <div className="silhouette-load-error">
+            <p role="status">실루엣을 준비하지 못했어요.</p>
+            <button
+              className="secondary-game-button"
+              onClick={() => {
+                setImageFailed(false);
+                setImageRequestVersion(
+                  (currentVersion) => currentVersion + 1,
+                );
+              }}
+              type="button"
+            >
+              <RotateCw aria-hidden="true" size={18} />
+              실루엣 다시 불러오기
+            </button>
+          </div>
         ) : (
           <img
             alt="정답 포켓몬 실루엣"
-            key={gameId}
+            key={`${gameId}-${imageRequestVersion}`}
             onError={() => {
               setImageFailed(true);
             }}
-            src={`/api/v1/rooms/${encodeURIComponent(roomCode)}/silhouette`}
+            src={silhouetteUrl}
           />
         )}
       </div>

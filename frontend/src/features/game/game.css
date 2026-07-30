@@ -555,6 +555,18 @@
   object-fit: contain;
 }
 
+.silhouette-load-error {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.silhouette-load-error p {
+  margin: 0;
+}
+
 .silhouette-selector-panel strong {
   border-radius: 9px;
   padding: 12px;

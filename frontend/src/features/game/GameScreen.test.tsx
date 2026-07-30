@@ -124,6 +124,50 @@ describe("GameScreen", () => {
     expect(screen.queryByLabelText("질문")).not.toBeInTheDocument();
   });
 
+  it("should_retrySilhouetteRequest_when_imageLoadingFails", () => {
+    const base = questionerSnapshot();
+    render(
+      <GameScreen
+        commandPending={false}
+        onAnswer={vi.fn()}
+        onAsk={vi.fn()}
+        onOpenPokedex={vi.fn()}
+        snapshot={{
+          ...base,
+          game: {
+            ...base.game,
+            remainingActionCount: 3,
+          },
+          mode: "SILHOUETTE",
+        }}
+      />,
+    );
+
+    fireEvent.error(
+      screen.getByRole("img", {
+        name: "정답 포켓몬 실루엣",
+      }),
+    );
+
+    expect(
+      screen.getByText("실루엣을 준비하지 못했어요."),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "실루엣 다시 불러오기",
+      }),
+    );
+
+    expect(
+      screen.getByRole("img", {
+        name: "정답 포켓몬 실루엣",
+      }),
+    ).toHaveAttribute(
+      "src",
+      "/api/v1/rooms/AB3K7M/silhouette?retry=1",
+    );
+  });
+
   it("should_allowPokedexBrowsing_when_questionIsWaitingForAnswer", () => {
     const base = questionerSnapshot();
     const onOpenPokedex = vi.fn();
