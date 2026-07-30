@@ -37,6 +37,10 @@ fail() {
   exit 1
 }
 
+is_digest() {
+  [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]] && [[ "$1" != "${ZERO_DIGEST}" ]]
+}
+
 legacy_mode=false
 recovery_mode=false
 config_mode=legacy
@@ -676,7 +680,13 @@ validate_pending_state() {
 }
 
 validate_state_file() {
+  local application_revision
   local keys
+  local previous_revision
+  local previous_digest
+  local runtime_content_sha
+  local runtime_digest
+  local runtime_revision
 
   if [[ ! -f "${RUNTIME_CONFIG_STATE}" || -L "${RUNTIME_CONFIG_STATE}" ]]; then
     fail "runtime config state must be a regular non-symlink file"
@@ -687,6 +697,24 @@ validate_state_file() {
   )"
   if [[ "${keys}" != $'APPLICATION_REVISION\nPREVIOUS_APPLICATION_REVISION\nPREVIOUS_RUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_CONTENT_SHA256\nRUNTIME_CONFIG_DIGEST\nRUNTIME_CONFIG_REVISION' ]]; then
     fail "runtime config state keys are invalid"
+  fi
+
+  application_revision="$(read_state_value APPLICATION_REVISION)"
+  previous_revision="$(read_state_value PREVIOUS_APPLICATION_REVISION)"
+  previous_digest="$(read_state_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
+  runtime_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+  runtime_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
+  runtime_revision="$(read_state_value RUNTIME_CONFIG_REVISION)"
+  if [[ ! "${application_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ "${application_revision}" == "${ZERO_SHA}" ]] \
+    || [[ ! "${previous_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || { [[ "${previous_digest}" != "${ZERO_DIGEST}" ]] && ! is_digest "${previous_digest}"; } \
+    || [[ ! "${runtime_content_sha}" =~ ^[0-9a-f]{64}$ ]] \
+    || ! is_digest "${runtime_digest}" \
+    || [[ ! "${runtime_revision}" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ "${runtime_revision}" == "${ZERO_SHA}" ]]
+  then
+    fail "runtime config state values are invalid"
   fi
 }
 

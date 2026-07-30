@@ -218,6 +218,20 @@ target_content_sha="$(
   "${app_dir}/.env" >"${app_dir}/.env.target"
 /bin/mv "${app_dir}/.env.target" "${app_dir}/.env"
 
+/bin/cp "${state_file}" "${state_file}.valid"
+/usr/bin/sed \
+  -e 's#^RUNTIME_CONFIG_REVISION=.*#RUNTIME_CONFIG_REVISION=garbage#' \
+  "${state_file}.valid" >"${state_file}"
+set +e
+run_recovery >/dev/null 2>&1
+invalid_state_recovery_exit_code="$?"
+set -e
+if [[ "${invalid_state_recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
+  printf 'Recovery with invalid state values must fail and preserve pending\n' >&2
+  exit 1
+fi
+/bin/mv "${state_file}.valid" "${state_file}"
+
 run_recovery
 
 test "$(/usr/bin/readlink "${app_dir}/runtime-config/current")" \
