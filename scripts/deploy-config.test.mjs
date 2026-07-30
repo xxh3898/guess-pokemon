@@ -453,6 +453,10 @@ test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
     /deployments\?environment=Production[\s\S]*steps\.deployed-base\.outputs\.sha/,
   );
   assert.match(
+    deployWorkflow,
+    /deploy:[\s\S]*environment: Production[\s\S]*RUNTIME_CONFIG_MODE/,
+  );
+  assert.match(
     deployScript,
     /write_pending_state[\s\S]*"\$\{previous_sha:-\$\{ZERO_SHA\}\}"/,
   );
