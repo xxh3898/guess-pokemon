@@ -239,6 +239,20 @@ if [[ "${invalid_state_recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; 
 fi
 /bin/mv "${state_file}.valid" "${state_file}"
 
+set +e
+run_recovery >/dev/null 2>&1
+mismatched_predecessor_exit_code="$?"
+set -e
+if [[ "${mismatched_predecessor_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
+  printf 'Completed target recovery with a mismatched predecessor must fail\n' >&2
+  exit 1
+fi
+/usr/bin/sed \
+  -e "s#^PREVIOUS_APPLICATION_REVISION=.*#PREVIOUS_APPLICATION_REVISION=${REVISION_TWO}#" \
+  -e "s#^PREVIOUS_RUNTIME_CONFIG_DIGEST=.*#PREVIOUS_RUNTIME_CONFIG_DIGEST=${CONFIG_DIGEST}#" \
+  "${state_file}" >"${state_file}.matched"
+/bin/mv "${state_file}.matched" "${state_file}"
+
 run_recovery
 
 test "$(/usr/bin/readlink "${app_dir}/runtime-config/current")" \

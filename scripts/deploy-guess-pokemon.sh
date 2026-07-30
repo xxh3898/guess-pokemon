@@ -794,6 +794,8 @@ recover_pending_transaction() {
   local state_sha
   local state_digest
   local state_content_sha
+  local state_previous_sha
+  local state_previous_digest
   local recovery_release
   local recovery_api_image
   local recovery_web_image
@@ -820,8 +822,15 @@ recover_pending_transaction() {
   state_sha="$(read_state_value APPLICATION_REVISION)"
   state_digest="$(read_state_value RUNTIME_CONFIG_DIGEST)"
   state_content_sha="$(read_state_value RUNTIME_CONFIG_CONTENT_SHA256)"
+  state_previous_sha="$(read_state_value PREVIOUS_APPLICATION_REVISION)"
+  state_previous_digest="$(read_state_value PREVIOUS_RUNTIME_CONFIG_DIGEST)"
 
   if [[ "${state_sha}" == "${target_sha}" && "${state_digest}" == "${target_digest}" ]]; then
+    if [[ "${state_previous_sha}" != "${previous_sha}" ]] \
+      || [[ "${state_previous_digest}" != "${previous_digest}" ]]
+    then
+      fail "completed target predecessor does not match pending state"
+    fi
     recovery_release="$(
       validate_verified_release "${target_digest}" "${state_content_sha}"
     )"
