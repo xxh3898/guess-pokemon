@@ -5,6 +5,7 @@ import static com.guesspokemon.game.GameTypes.GameStatus.ABORTED;
 
 import com.guesspokemon.game.GamePersistencePort.GameState;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,6 +40,10 @@ public class GameRecord {
 
     @Column(name = "round_group_id", nullable = false)
     private UUID roundGroupId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private GameMode mode;
 
     @Column(name = "answer_pokemon_id", nullable = false)
     private Integer answerPokemonId;
@@ -75,6 +80,7 @@ public class GameRecord {
     private GameRecord(GameState state) {
         id = state.gameId();
         roundGroupId = state.roundGroupId();
+        mode = state.mode();
         answerPokemonId =
                 state.answerPokemonNationalDexId();
         status = state.status();
@@ -126,6 +132,10 @@ public class GameRecord {
         return answerPokemonId;
     }
 
+    public GameMode getMode() {
+        return mode;
+    }
+
     public GameStatus getStatus() {
         return status;
     }
@@ -161,6 +171,7 @@ public class GameRecord {
     private void requireSameIdentity(GameState state) {
         if (!id.equals(state.gameId())
                 || !roundGroupId.equals(state.roundGroupId())
+                || mode != state.mode()
                 || answerPokemonId
                         != state.answerPokemonNationalDexId()
                 || !startedAt.equals(state.startedAt())) {

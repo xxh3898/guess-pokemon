@@ -152,6 +152,11 @@ function HistoryDetailContent({
         className="history-detail-summary"
       >
         <article className="history-answer-card">
+          <span className={`history-mode-badge mode-${(detail.mode ?? "TWENTY_QUESTIONS").toLowerCase()}`}>
+            {detail.mode === "SILHOUETTE"
+              ? "실루엣 퀴즈"
+              : "스무고개"}
+          </span>
           <span className="history-answer-number">
             {formatNationalDexId(
               detail.answerPokemon.nationalDexId,
@@ -188,7 +193,10 @@ function HistoryDetailContent({
                 <CircleHelp aria-hidden="true" size={19} />
                 사용한 기회
               </dt>
-              <dd>{detail.actionCount} / 20</dd>
+              <dd>
+                {detail.actionCount} /{" "}
+                {detail.mode === "SILHOUETTE" ? 3 : 20}
+              </dd>
             </div>
             <div>
               <dt>
@@ -206,6 +214,7 @@ function HistoryDetailContent({
             {detail.participants.map((participant) => (
               <ParticipantCard
                 key={participant.userId}
+                mode={detail.mode}
                 participant={participant}
               />
             ))}
@@ -232,8 +241,10 @@ function HistoryDetailContent({
 }
 
 function ParticipantCard({
+  mode,
   participant,
 }: {
+  readonly mode: NonNullable<HistoryDetail["mode"]> | undefined;
   readonly participant: HistoryParticipant;
 }) {
   return (
@@ -248,7 +259,7 @@ function ParticipantCard({
       <span
         className={`history-role-badge role-${participant.role.toLowerCase()}`}
       >
-        {gameRoleLabel(participant.role)}
+        {gameRoleLabel(participant.role, mode)}
       </span>
       <span
         className={`participant-result result-${participant.result.toLowerCase()}`}

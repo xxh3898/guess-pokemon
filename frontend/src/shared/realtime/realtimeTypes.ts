@@ -475,7 +475,12 @@ function parseActionCounts(
     0,
     20,
   );
-  if (usedActionCount + remainingActionCount !== 20) {
+  const maximumActionCount =
+    usedActionCount + remainingActionCount;
+  if (
+    maximumActionCount !== 20 &&
+    maximumActionCount !== 3
+  ) {
     throw ApiError.invalidResponse();
   }
   return { remainingActionCount, usedActionCount };
@@ -524,6 +529,7 @@ function requireGameEndReason(value: unknown): GameEndReason {
   if (
     value !== "CORRECT_GUESS" &&
     value !== "QUESTION_LIMIT" &&
+    value !== "GUESS_LIMIT" &&
     value !== "PLAYER_LEFT" &&
     value !== "RECONNECT_TIMEOUT" &&
     value !== "BOTH_DISCONNECTED" &&

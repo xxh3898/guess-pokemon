@@ -66,7 +66,9 @@ describe("LobbyPage", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "방 만들기" }),
+      await screen.findByRole("button", {
+        name: "스무고개 방 만들기",
+      }),
     );
 
     await waitFor(() => {
@@ -74,6 +76,32 @@ describe("LobbyPage", () => {
     });
     expect(gateway.create).toHaveBeenCalledOnce();
     expect(setActiveRoomCode).toHaveBeenCalledWith("AB3K7M");
+  });
+
+  it("should_createSilhouetteRoom_when_silhouetteModeIsSelected", async () => {
+    const gateway = createRoomGateway();
+    renderLobby(
+      createAuthContextValue({
+        currentUser: TEST_CURRENT_USER,
+        status: "authenticated",
+      }),
+      gateway,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("radio", {
+        name: /실루엣 퀴즈/,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "실루엣 퀴즈 방 만들기",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(gateway.create).toHaveBeenCalledWith("SILHOUETTE");
+    });
   });
 
   it("should_normalizeAndJoinRoom_when_codeIsValid", async () => {
@@ -177,7 +205,9 @@ describe("LobbyPage", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: "방 만들기" }),
+      await screen.findByRole("button", {
+        name: "스무고개 방 만들기",
+      }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", {

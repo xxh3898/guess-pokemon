@@ -56,6 +56,10 @@ public enum ApiErrorCode {
             HttpStatus.NOT_FOUND,
             "포켓몬 없음",
             "요청한 포켓몬을 찾을 수 없습니다."),
+    SILHOUETTE_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "실루엣 준비 실패",
+            "포켓몬 실루엣을 준비하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     GAME_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "경기 기록 없음",

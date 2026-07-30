@@ -4,6 +4,8 @@ import static com.guesspokemon.common.error.ApiErrorCode.CANNOT_JOIN_OWN_ROOM;
 import static com.guesspokemon.common.error.ApiErrorCode.ROOM_FULL;
 import static com.guesspokemon.common.error.ApiErrorCode.ROOM_MEMBERSHIP_REQUIRED;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.DUPLICATE_COMMAND;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
+import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_ROLE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.STALE_ROOM_STATE;
 import static com.guesspokemon.room.RoomDtos.RoomRole.QUESTIONER;
 import static com.guesspokemon.room.RoomDtos.RoomRole.SELECTOR;
@@ -15,6 +17,8 @@ import static com.guesspokemon.room.RoomDtos.RoomStatus.PLAYING;
 import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
 import static com.guesspokemon.game.GameTypes.GameStatus.COMPLETED;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
+import static com.guesspokemon.game.GameTypes.GameMode.SILHOUETTE;
+import static com.guesspokemon.game.GameTypes.GameMode.TWENTY_QUESTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -49,6 +53,7 @@ class RoomTest {
         RoomSnapshot snapshot = room.snapshotFor(HOST_ID);
 
         assertEquals("ABC234", snapshot.roomCode());
+        assertEquals(TWENTY_QUESTIONS, snapshot.mode());
         assertEquals(WAITING_FOR_OPPONENT, snapshot.status());
         assertEquals(1L, snapshot.stateVersion());
         assertEquals(1, snapshot.roundNumber());
@@ -59,6 +64,38 @@ class RoomTest {
         assertNull(snapshot.game());
         assertNull(snapshot.roleSelection());
         assertNull(snapshot.roleAssignment());
+    }
+
+    @Test
+    void should_keepSilhouetteMode_when_roomIsCreated() {
+        Room room =
+                new Room(
+                        "ABC234",
+                        HOST_ID,
+                        "레드",
+                        SILHOUETTE,
+                        CREATED_AT);
+
+        assertEquals(SILHOUETTE, room.snapshotFor(HOST_ID).mode());
+    }
+
+    @Test
+    void should_allowOnlyQuestionerToReadSilhouette_when_silhouetteGameIsPlaying() {
+        Room room = startedSilhouetteRoom();
+
+        room.requireSilhouetteAccess(GUEST_ID);
+        assertRuleError(
+                INVALID_ROLE,
+                () -> room.requireSilhouetteAccess(HOST_ID));
+    }
+
+    @Test
+    void should_rejectSilhouetteAccess_when_twentyQuestionsGameIsPlaying() {
+        Room room = startedRoom();
+
+        assertRuleError(
+                INVALID_GAME_STATE,
+                () -> room.requireSilhouetteAccess(GUEST_ID));
     }
 
     @Test
@@ -491,6 +528,35 @@ class RoomTest {
                         GUEST_ID,
                         HOST_ID,
                         CORRECT_GUESS,
+                        List.of()));
+        return room;
+    }
+
+    private Room startedSilhouetteRoom() {
+        Room room =
+                new Room(
+                        "ABC234",
+                        HOST_ID,
+                        "레드",
+                        SILHOUETTE,
+                        CREATED_AT);
+        room.join(GUEST_ID, "그린");
+        assignFirstRoundRoles(room);
+        room.applyGameView(
+                UUID.randomUUID(),
+                new SelectorGameView(
+                        UUID.randomUUID(),
+                        IN_PROGRESS,
+                        SILHOUETTE,
+                        5,
+                        0,
+                        3,
+                        com.guesspokemon.game.GameTypes.GameRole
+                                .SELECTOR,
+                        25,
+                        null,
+                        null,
+                        null,
                         List.of()));
         return room;
     }

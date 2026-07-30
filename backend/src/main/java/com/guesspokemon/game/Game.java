@@ -12,7 +12,10 @@ import static com.guesspokemon.game.GameTypes.GameEndReason.CORRECT_GUESS;
 import static com.guesspokemon.game.GameTypes.GameEndReason.BOTH_DISCONNECTED;
 import static com.guesspokemon.game.GameTypes.GameEndReason.PLAYER_LEFT;
 import static com.guesspokemon.game.GameTypes.GameEndReason.QUESTION_LIMIT;
+import static com.guesspokemon.game.GameTypes.GameEndReason.GUESS_LIMIT;
 import static com.guesspokemon.game.GameTypes.GameEndReason.RECONNECT_TIMEOUT;
+import static com.guesspokemon.game.GameTypes.GameMode.SILHOUETTE;
+import static com.guesspokemon.game.GameTypes.GameMode.TWENTY_QUESTIONS;
 import static com.guesspokemon.game.GameTypes.GameResult.LOSS;
 import static com.guesspokemon.game.GameTypes.GameResult.NONE;
 import static com.guesspokemon.game.GameTypes.GameResult.WIN;
@@ -24,6 +27,7 @@ import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
 
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameResult;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameTypes.GameStatus;
@@ -43,6 +47,7 @@ import java.util.UUID;
 final class Game {
 
     static final int MAX_ACTION_COUNT = 20;
+    static final int MAX_SILHOUETTE_GUESS_COUNT = 3;
     private static final int MAX_ANSWER_COMMENT_LENGTH = 200;
     private static final int MAX_QUESTION_LENGTH = 200;
 
@@ -50,6 +55,7 @@ final class Game {
     private final UUID roundGroupId;
     private final UUID selectorUserId;
     private final UUID questionerUserId;
+    private final GameMode mode;
     private final int answerPokemonId;
     private final GameStatus status;
     private final GameEndReason endReason;
@@ -67,6 +73,7 @@ final class Game {
             UUID roundGroupId,
             UUID selectorUserId,
             UUID questionerUserId,
+            GameMode mode,
             int answerPokemonId,
             GameStatus status,
             GameEndReason endReason,
@@ -86,6 +93,7 @@ final class Game {
             throw new IllegalArgumentException(
                     "selector와 questioner가 같습니다.");
         }
+        this.mode = Objects.requireNonNull(mode);
         if (answerPokemonId <= 0) {
             throw new IllegalArgumentException(
                     "answerPokemonId가 올바르지 않습니다.");
@@ -95,7 +103,8 @@ final class Game {
         this.endReason = endReason;
         this.winnerUserId = winnerUserId;
         this.loserUserId = loserUserId;
-        if (actionCount < 0 || actionCount > MAX_ACTION_COUNT) {
+        if (actionCount < 0
+                || actionCount > maxActionCount()) {
             throw new IllegalArgumentException(
                     "actionCount가 범위를 벗어났습니다.");
         }
@@ -121,11 +130,34 @@ final class Game {
             UUID commandId,
             long initialStateVersion,
             Instant startedAt) {
+        return start(
+                id,
+                roundGroupId,
+                selectorUserId,
+                questionerUserId,
+                TWENTY_QUESTIONS,
+                answerPokemonId,
+                commandId,
+                initialStateVersion,
+                startedAt);
+    }
+
+    static Game start(
+            UUID id,
+            UUID roundGroupId,
+            UUID selectorUserId,
+            UUID questionerUserId,
+            GameMode mode,
+            int answerPokemonId,
+            UUID commandId,
+            long initialStateVersion,
+            Instant startedAt) {
         return new Game(
                 id,
                 roundGroupId,
                 selectorUserId,
                 questionerUserId,
+                mode,
                 answerPokemonId,
                 IN_PROGRESS,
                 null,
@@ -162,6 +194,7 @@ final class Game {
             long targetStateVersion,
             Instant now) {
         requireInProgress();
+        requireTwentyQuestionsMode();
         requireRole(userId, QUESTIONER);
         rejectDuplicateCommand(commandId);
         requireNextStateVersion(targetStateVersion);
@@ -241,6 +274,7 @@ final class Game {
             long targetStateVersion,
             Instant now) {
         requireInProgress();
+        requireTwentyQuestionsMode();
         requireRole(userId, SELECTOR);
         rejectDuplicateCommand(commandId);
         requireNextStateVersion(targetStateVersion);
@@ -256,7 +290,7 @@ final class Game {
         List<GameAction> updatedActions =
                 replaceLastAction(answeredAction);
         Set<UUID> updatedCommands = addCommand(commandId);
-        if (actionCount == MAX_ACTION_COUNT) {
+        if (actionCount == maxActionCount()) {
             Game completed =
                     completed(
                             QUESTION_LIMIT,
@@ -337,12 +371,14 @@ final class Game {
                     selectorUserId,
                     now);
         }
-        if (nextActionCount == MAX_ACTION_COUNT) {
+        if (nextActionCount == maxActionCount()) {
             return transitionWithAction(
                     action,
                     nextActionCount,
                     targetStateVersion,
-                    QUESTION_LIMIT,
+                    mode == SILHOUETTE
+                            ? GUESS_LIMIT
+                            : QUESTION_LIMIT,
                     selectorUserId,
                     questionerUserId,
                     now);
@@ -416,11 +452,12 @@ final class Game {
                         .map(Game::toActionView)
                         .toList();
         int remainingActionCount =
-                MAX_ACTION_COUNT - actionCount;
+                maxActionCount() - actionCount;
         if (role == SELECTOR) {
             return new SelectorGameView(
                     id,
                     status,
+                    mode,
                     stateVersion,
                     actionCount,
                     remainingActionCount,
@@ -434,6 +471,7 @@ final class Game {
         return new QuestionerGameView(
                 id,
                 status,
+                mode,
                 stateVersion,
                 actionCount,
                 remainingActionCount,
@@ -466,6 +504,10 @@ final class Game {
 
     int answerPokemonId() {
         return answerPokemonId;
+    }
+
+    GameMode mode() {
+        return mode;
     }
 
     GameStatus status() {
@@ -575,6 +617,7 @@ final class Game {
                 roundGroupId,
                 selectorUserId,
                 questionerUserId,
+                mode,
                 answerPokemonId,
                 newStatus,
                 newEndReason,
@@ -659,8 +702,20 @@ final class Game {
     }
 
     private void requireActionAvailable() {
-        if (actionCount >= MAX_ACTION_COUNT) {
+        if (actionCount >= maxActionCount()) {
             throw new GameRuleException(ACTION_LIMIT_REACHED);
+        }
+    }
+
+    private int maxActionCount() {
+        return mode == SILHOUETTE
+                ? MAX_SILHOUETTE_GUESS_COUNT
+                : MAX_ACTION_COUNT;
+    }
+
+    private void requireTwentyQuestionsMode() {
+        if (mode != TWENTY_QUESTIONS) {
+            throw new GameRuleException(INVALID_GAME_STATE);
         }
     }
 

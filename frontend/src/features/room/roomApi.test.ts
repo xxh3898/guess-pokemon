@@ -35,6 +35,20 @@ describe("roomApi", () => {
     expect(fetcher.mock.calls[1]?.[1]?.method).toBe("POST");
   });
 
+  it("should_sendSelectedMode_when_silhouetteRoomIsCreated", async () => {
+    const fetcher = stateChangingFetcher({
+      ...HOST_SNAPSHOT,
+      mode: "SILHOUETTE",
+    });
+    const gateway = createRoomGateway(new HttpClient(fetcher));
+
+    await gateway.create("SILHOUETTE");
+
+    expect(fetcher.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({ mode: "SILHOUETTE" }),
+    );
+  });
+
   it("should_parseJoinableRooms_when_lobbyListIsRequested", async () => {
     const payload = {
       rooms: [

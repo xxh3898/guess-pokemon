@@ -544,7 +544,17 @@ version보다 room version이 앞설 수 있으며 다음 game command가 성공
 
 접근: 회원
 
-요청 body: 없음
+요청 body:
+
+```json
+{
+  "mode": "SILHOUETTE"
+}
+```
+
+`mode`: `TWENTY_QUESTIONS`, `SILHOUETTE`. 새 client는 반드시
+명시한다. 기존 무본문 client는 호환을 위해 `TWENTY_QUESTIONS`로
+처리한다.
 
 응답 `201`: 방장용 `RoomSnapshot`
 
@@ -568,7 +578,8 @@ version보다 room version이 앞설 수 있으며 다음 game command가 성공
   "rooms": [
     {
       "roomCode": "AB3K7M",
-      "hostNickname": "레드"
+      "hostNickname": "레드",
+      "mode": "SILHOUETTE"
     }
   ]
 }
@@ -624,7 +635,23 @@ version보다 room version이 앞설 수 있으며 다음 game command가 성공
 
 새로고침과 STOMP reconnect 뒤 state 복구에 사용한다.
 
-### 7.5 명시적 나가기
+### 7.5 실루엣 이미지
+
+`GET /api/v1/rooms/{roomCode}/silhouette`
+
+접근: 진행 중 `SILHOUETTE` 경기의 도전자
+
+응답 `200`: `image/png`, `Cache-Control: no-store`
+
+- URL, header, alt, 응답 metadata에 정답 식별자를 포함하지 않는다.
+- 서버는 catalog의 허용된 HTTPS artwork를 제한된 크기·시간으로
+  읽고 원본 alpha만 유지한 검은 PNG로 변환한다.
+- 출제자, 비참가자, 다른 모드 또는 진행 중이 아닌 방은 접근할 수
+  없다.
+- artwork가 비활성화됐거나 변환에 실패하면
+  `503 SILHOUETTE_UNAVAILABLE`을 반환한다.
+
+### 7.6 명시적 나가기
 
 `DELETE /api/v1/rooms/{roomCode}/members/me`
 

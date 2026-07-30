@@ -14,12 +14,17 @@ import {
 import {
   parseRoomSnapshot,
   parseWaitingRoomSnapshot,
+  type GameMode,
   type RoomSnapshot,
   type WaitingRoomSnapshot,
 } from "./roomTypes";
 
 export interface RoomGateway {
   create(signal?: AbortSignal): Promise<WaitingRoomSnapshot>;
+  create(
+    mode: GameMode,
+    signal?: AbortSignal,
+  ): Promise<WaitingRoomSnapshot>;
   list(signal?: AbortSignal): Promise<JoinableRoomListResponse>;
   get(
     roomCode: string,
@@ -34,11 +39,22 @@ export interface RoomGateway {
 
 export function createRoomGateway(client: HttpClient): RoomGateway {
   return {
-    async create(signal) {
+    async create(
+      modeOrSignal?: GameMode | AbortSignal,
+      signal?: AbortSignal,
+    ) {
+      const mode =
+        typeof modeOrSignal === "string"
+          ? modeOrSignal
+          : "TWENTY_QUESTIONS";
+      const requestSignal =
+        typeof modeOrSignal === "string"
+          ? signal
+          : modeOrSignal;
       const payload = await client.post(
         "/api/v1/rooms",
-        undefined,
-        signal,
+        { mode },
+        requestSignal,
       );
       return parseWaitingRoomSnapshot(payload);
     },

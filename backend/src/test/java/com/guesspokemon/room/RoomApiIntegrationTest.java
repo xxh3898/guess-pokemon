@@ -244,7 +244,7 @@ class RoomApiIntegrationTest {
 
         assertTrue(rooms.size() <= 50);
         assertEquals(
-                Set.of("roomCode", "hostNickname"),
+                Set.of("roomCode", "hostNickname", "mode"),
                 findRoomSummary(rooms, "목록레드").keySet());
         assertEquals(
                 firstRoomCode,
@@ -252,6 +252,9 @@ class RoomApiIntegrationTest {
         assertEquals(
                 secondRoomCode,
                 findRoomSummary(rooms, "목록그린").get("roomCode"));
+        assertEquals(
+                "TWENTY_QUESTIONS",
+                findRoomSummary(rooms, "목록레드").get("mode"));
         assertFalse(
                 rooms.stream()
                         .anyMatch(

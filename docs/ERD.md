@@ -58,6 +58,7 @@ erDiagram
     GAME {
         uuid id PK
         uuid round_group_id
+        varchar mode
         int answer_pokemon_id FK
         varchar status
         varchar end_reason
@@ -161,10 +162,11 @@ V6는 `evolves_from_national_dex_id`에 `pokemon_species(national_dex_id)` self 
 |---|---|---:|---|---|
 | `id` | `uuid` | N | PK | 경기 ID |
 | `round_group_id` | `uuid` | N | INDEX | 같은 방의 재대결 묶음, 방 자체는 저장하지 않음 |
+| `mode` | `varchar(30)` | N | CHECK | `TWENTY_QUESTIONS`, `SILHOUETTE` |
 | `answer_pokemon_id` | `integer` | N | FK | 정답 포켓몬 |
 | `status` | `varchar(20)` | N | CHECK | `IN_PROGRESS`, `COMPLETED`, `ABORTED` |
 | `end_reason` | `varchar(40)` | Y | CHECK | 진행 중에는 null |
-| `action_count` | `smallint` | N | CHECK 0~20 | 질문+추측 횟수 |
+| `action_count` | `smallint` | N | mode별 CHECK | 스무고개 0~20, 실루엣 0~3 |
 | `state_version` | `bigint` | N | CHECK >= 0 | 상태 전이 version |
 | `started_at` | `timestamptz` | N |  | 정답 선택으로 경기 시작 |
 | `ended_at` | `timestamptz` | Y |  | 종료·중단 시각 |
@@ -175,6 +177,7 @@ V6는 `evolves_from_national_dex_id`에 `pokemon_species(national_dex_id)` self 
 
 - `CORRECT_GUESS`
 - `QUESTION_LIMIT`
+- `GUESS_LIMIT`
 - `PLAYER_LEFT`
 - `RECONNECT_TIMEOUT`
 - `BOTH_DISCONNECTED`
@@ -185,7 +188,7 @@ V6는 `evolves_from_national_dex_id`에 `pokemon_species(national_dex_id)` self 
 table-level `CHECK`가 다음 lifecycle 조합을 강제한다.
 
 - `IN_PROGRESS`: `end_reason`, `ended_at` 모두 null
-- `COMPLETED`: `CORRECT_GUESS`, `QUESTION_LIMIT`, `PLAYER_LEFT`, `RECONNECT_TIMEOUT` 중 하나와 `ended_at` not null
+- `COMPLETED`: `CORRECT_GUESS`, `QUESTION_LIMIT`, `GUESS_LIMIT`, `PLAYER_LEFT`, `RECONNECT_TIMEOUT` 중 하나와 `ended_at` not null
 - `ABORTED`: `BOTH_DISCONNECTED`, `SERVER_RESTART` 중 하나와 `ended_at` not null
 - 종료 시각은 시작 시각보다 빠를 수 없다.
 

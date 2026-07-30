@@ -1,6 +1,7 @@
 import {
   Check,
   CircleHelp,
+  RotateCw,
   Search,
   Send,
   UserRound,
@@ -20,6 +21,7 @@ import {
 import type { PokemonEvolutionGateway } from "../pokemon/pokemonApi";
 import {
   MAX_GAME_ACTION_COUNT,
+  MAX_SILHOUETTE_GUESS_COUNT,
   type ActiveRoomSnapshot,
   type GameAnswer,
   type QuestionGameAction,
@@ -45,6 +47,7 @@ export function GameScreen({
   snapshot,
 }: GameScreenProps) {
   const isSelector = "selectedPokemon" in snapshot.game;
+  const isSilhouette = snapshot.mode === "SILHOUETTE";
   const pendingQuestion = useMemo(
     () => findPendingQuestion(snapshot.game.actions),
     [snapshot.game.actions],
@@ -66,7 +69,7 @@ export function GameScreen({
           />
         ) : (
           <RoleCard
-            label="내 역할 · 질문자"
+            label={`내 역할 · ${isSilhouette ? "도전자" : "질문자"}`}
             member={snapshot.me}
             tone="blue"
           />
@@ -79,12 +82,33 @@ export function GameScreen({
           />
         ) : null}
         <RemainingActions
+          maximum={
+            isSilhouette
+              ? MAX_SILHOUETTE_GUESS_COUNT
+              : MAX_GAME_ACTION_COUNT
+          }
           remaining={snapshot.game.remainingActionCount}
         />
       </aside>
 
       <section className="game-command-column">
-        {isSelector ? (
+        {isSilhouette ? (
+          isSelector ? (
+            <SilhouetteSelectorPanel
+              actionCount={snapshot.game.usedActionCount}
+              paused={snapshot.status === "PAUSED"}
+            />
+          ) : (
+            <SilhouetteChallengePanel
+              commandPending={commandPending}
+              gameId={snapshot.game.gameId}
+              key={snapshot.game.gameId}
+              onOpenPokedex={onOpenPokedex}
+              paused={snapshot.status === "PAUSED"}
+              roomCode={snapshot.roomCode}
+            />
+          )
+        ) : isSelector ? (
           <AnswerPanel
             commandPending={commandPending}
             key={pendingQuestion?.sequenceNumber ?? "waiting"}
@@ -104,7 +128,10 @@ export function GameScreen({
         )}
       </section>
 
-      <GameActionTimeline actions={snapshot.game.actions} />
+      <GameActionTimeline
+        actions={snapshot.game.actions}
+        silhouette={isSilhouette}
+      />
     </div>
   );
 }
@@ -131,7 +158,13 @@ function RoleCard({
   );
 }
 
-function RemainingActions({ remaining }: { remaining: number }) {
+function RemainingActions({
+  maximum,
+  remaining,
+}: {
+  maximum: number;
+  remaining: number;
+}) {
   return (
     <section
       aria-label={`남은 기회 ${remaining}회`}
@@ -139,10 +172,10 @@ function RemainingActions({ remaining }: { remaining: number }) {
     >
       <span>남은 기회</span>
       <strong>{remaining}</strong>
-      <span>/ {MAX_GAME_ACTION_COUNT}</span>
+      <span>/ {maximum}</span>
       <div aria-hidden="true" className="action-dots">
         {Array.from(
-          { length: MAX_GAME_ACTION_COUNT },
+          { length: maximum },
           (_, index) => (
             <i
               className={
@@ -153,6 +186,103 @@ function RemainingActions({ remaining }: { remaining: number }) {
           ),
         )}
       </div>
+    </section>
+  );
+}
+
+function SilhouetteChallengePanel({
+  commandPending,
+  gameId,
+  onOpenPokedex,
+  paused,
+  roomCode,
+}: {
+  commandPending: boolean;
+  gameId: string;
+  onOpenPokedex(): void;
+  paused: boolean;
+  roomCode: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const [imageRequestVersion, setImageRequestVersion] = useState(0);
+  const silhouetteUrl = `/api/v1/rooms/${encodeURIComponent(roomCode)}/silhouette${
+    imageRequestVersion === 0
+      ? ""
+      : `?retry=${imageRequestVersion}`
+  }`;
+
+  return (
+    <section className="silhouette-challenge panel-card">
+      <header>
+        <span className="game-mode-badge mode-silhouette">
+          실루엣 퀴즈
+        </span>
+        <h2>이 포켓몬은 누구일까요?</h2>
+        <p>추가 힌트 없이 같은 실루엣으로 세 번까지 맞힐 수 있어요.</p>
+      </header>
+      <div className="silhouette-stage">
+        {imageFailed ? (
+          <div className="silhouette-load-error">
+            <p role="status">실루엣을 준비하지 못했어요.</p>
+            <button
+              className="secondary-game-button"
+              onClick={() => {
+                setImageFailed(false);
+                setImageRequestVersion(
+                  (currentVersion) => currentVersion + 1,
+                );
+              }}
+              type="button"
+            >
+              <RotateCw aria-hidden="true" size={18} />
+              실루엣 다시 불러오기
+            </button>
+          </div>
+        ) : (
+          <img
+            alt="정답 포켓몬 실루엣"
+            key={`${gameId}-${imageRequestVersion}`}
+            onError={() => {
+              setImageFailed(true);
+            }}
+            src={silhouetteUrl}
+          />
+        )}
+      </div>
+      <button
+        className="primary-game-button"
+        disabled={commandPending || paused}
+        onClick={onOpenPokedex}
+        type="button"
+      >
+        <Search aria-hidden="true" size={19} />
+        전국도감에서 추측하기
+      </button>
+    </section>
+  );
+}
+
+function SilhouetteSelectorPanel({
+  actionCount,
+  paused,
+}: {
+  actionCount: number;
+  paused: boolean;
+}) {
+  return (
+    <section className="silhouette-selector-panel panel-card">
+      <span className="game-mode-badge mode-silhouette">
+        실루엣 퀴즈
+      </span>
+      <h2>도전자가 추측하고 있어요</h2>
+      <p>
+        {paused
+          ? "상대의 재접속을 기다리고 있어요."
+          : actionCount === 0
+            ? "첫 번째 추측을 기다리고 있어요."
+            : `${actionCount}번째 추측 결과가 기록됐어요.`}
+      </p>
+      <strong>정답은 경기 중에 바꿀 수 없어요.</strong>
     </section>
   );
 }

@@ -278,6 +278,11 @@ export function JoinableRoomList({
                     </span>
                     <span>
                       <strong>{room.hostNickname}님의 방</strong>
+                      <em className={`game-mode-badge mode-${(room.mode ?? "TWENTY_QUESTIONS").toLowerCase()}`}>
+                        {room.mode === "SILHOUETTE"
+                          ? "실루엣 퀴즈"
+                          : "스무고개"}
+                      </em>
                       <small className="room-code">
                         {room.roomCode}
                       </small>

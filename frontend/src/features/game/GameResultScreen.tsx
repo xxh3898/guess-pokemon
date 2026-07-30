@@ -12,6 +12,7 @@ import {
 import { PokemonTypeBadges } from "../pokemon/PokemonTypeBadges";
 import {
   MAX_GAME_ACTION_COUNT,
+  MAX_SILHOUETTE_GUESS_COUNT,
   type ResultRoomSnapshot,
   type RoomMember,
   type RoomRole,
@@ -39,6 +40,10 @@ export function GameResultScreen({
   const won = winner === snapshot.me.userId;
   const roomRemoved =
     snapshot.game.endReason === "PLAYER_LEFT";
+  const maximum =
+    snapshot.mode === "SILHOUETTE"
+      ? MAX_SILHOUETTE_GUESS_COUNT
+      : MAX_GAME_ACTION_COUNT;
   const outcome = aborted
     ? {
         detail: endReasonCopy(snapshot.game.endReason),
@@ -85,7 +90,7 @@ export function GameResultScreen({
         <div className="used-action-summary panel-card">
           <span>사용한 기회</span>
           <strong>{snapshot.game.usedActionCount}</strong>
-          <span>/ {MAX_GAME_ACTION_COUNT}</span>
+          <span>/ {maximum}</span>
         </div>
       </section>
 
@@ -94,10 +99,12 @@ export function GameResultScreen({
           <h2>참가자</h2>
           <ResultParticipant
             member={snapshot.me}
+            mode={snapshot.mode}
             winnerUserId={winner}
           />
           <ResultParticipant
             member={snapshot.opponent}
+            mode={snapshot.mode}
             winnerUserId={winner}
           />
         </div>
@@ -119,10 +126,16 @@ export function GameResultScreen({
           </div>
         ) : (
           <div className="result-role-selection">
+            {snapshot.mode === "SILHOUETTE" ? (
+              <p className="result-fixed-mode-note">
+                이 방은 실루엣 퀴즈로 계속 진행해요.
+              </p>
+            ) : null}
             <RolePreferencePanel
               commandPending={commandPending}
               connected={connected}
               me={snapshot.me}
+              mode={snapshot.mode}
               onSelect={onRolePreference}
               opponent={snapshot.opponent}
               selection={snapshot.roleSelection}
@@ -140,7 +153,10 @@ export function GameResultScreen({
           </div>
         )}
 
-        <GameActionTimeline actions={snapshot.game.actions} />
+        <GameActionTimeline
+          actions={snapshot.game.actions}
+          silhouette={snapshot.mode === "SILHOUETTE"}
+        />
       </section>
     </div>
   );
@@ -148,9 +164,11 @@ export function GameResultScreen({
 
 function ResultParticipant({
   member,
+  mode,
   winnerUserId,
 }: {
   member: RoomMember;
+  mode: ResultRoomSnapshot["mode"];
   winnerUserId: string | null;
 }) {
   const won = member.userId === winnerUserId;
@@ -161,7 +179,9 @@ function ResultParticipant({
         <strong>{member.nickname}</strong>
         <span>
           {member.role === "QUESTIONER"
-            ? "질문자"
+            ? mode === "SILHOUETTE"
+              ? "도전자"
+              : "질문자"
             : member.role === "SELECTOR"
               ? "출제자"
               : "역할 미정"}
@@ -190,6 +210,7 @@ function endReasonCopy(
     BOTH_DISCONNECTED: "두 참가자의 연결이 모두 끊겼어요.",
     CORRECT_GUESS: "정답 포켓몬을 맞혔어요.",
     PLAYER_LEFT: "상대가 게임에서 나갔어요.",
+    GUESS_LIMIT: "세 번의 추측 기회를 모두 사용했어요.",
     QUESTION_LIMIT: "스무 번의 기회를 모두 사용했어요.",
     RECONNECT_TIMEOUT: "재접속 대기 시간이 끝났어요.",
     SERVER_RESTART: "서버가 다시 시작되어 경기를 중단했어요.",

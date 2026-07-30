@@ -316,11 +316,20 @@ guess-pokemon.chochiho.cloud
   -> edge network의 guess-pokemon-web:80
   -> application network의 api:8080
   -> application network의 db:5432
+
+api
+  -> egress network
+  -> raw.githubusercontent.com:443
 ```
 
 - `db`, `api`는 host port와 `edge` network를 사용하지 않는다.
+- `db`는 `application` network에만 참여한다.
+- `api`는 DB 통신용 `application`과 프로젝트 전용 `egress` bridge에만
+  참여한다. application code의 scheme·host allowlist가 실루엣 원본
+  요청을 `https://raw.githubusercontent.com`으로 제한한다.
 - `web`만 `edge`에 `guess-pokemon-web` alias로 참여한다.
-- `application` network는 `internal: true`로 외부 연결을 차단한다.
+- `application` network는 `internal: true`로 외부 연결을 차단하고
+  `egress`에는 DB와 Web을 연결하지 않는다.
 - Portfolio와 Compose project, 환경 파일, DB volume을 공유하지 않는다.
 - 운영 session cookie는 항상 `Secure=true`다.
 - 운영 image는 backend·frontend 모두 같은 40자리 commit SHA tag를

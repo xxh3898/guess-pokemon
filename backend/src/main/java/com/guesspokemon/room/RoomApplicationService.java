@@ -12,6 +12,7 @@ import com.guesspokemon.game.GameCommands.EndGameCommand;
 import com.guesspokemon.game.GameCommands.GuessPokemonCommand;
 import com.guesspokemon.game.GameCommands.StartGameCommand;
 import com.guesspokemon.game.GameTypes.GameAnswer;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameViews.ActionView;
 import com.guesspokemon.game.GameViews.ParticipantGameView;
 import com.guesspokemon.game.GameViews.QuestionerGameView;
@@ -66,7 +67,17 @@ public class RoomApplicationService {
     public RoomSnapshot create(
             UUID userId,
             String nickname) {
-        return roomRegistry.create(userId, nickname);
+        return create(
+                userId,
+                nickname,
+                GameMode.TWENTY_QUESTIONS);
+    }
+
+    public RoomSnapshot create(
+            UUID userId,
+            String nickname,
+            GameMode mode) {
+        return roomRegistry.create(userId, nickname, mode);
     }
 
     public JoinableRoomListResponse listJoinableRooms() {
@@ -97,6 +108,19 @@ public class RoomApplicationService {
                 userId,
                 room ->
                         snapshotsFor(room).get(userId));
+    }
+
+    public int silhouettePokemonId(
+            String roomCode,
+            UUID userId) {
+        return roomRegistry.executeLocked(
+                roomCode,
+                userId,
+                room -> {
+                    room.requireSilhouetteAccess(userId);
+                    return gameCommandService
+                            .silhouetteAnswerPokemonId(room.code());
+                });
     }
 
     public LeaveOutcome leave(
@@ -149,6 +173,7 @@ public class RoomApplicationService {
                                             context.roundGroupId(),
                                             context.selectorUserId(),
                                             context.questionerUserId(),
+                                            context.mode(),
                                             nationalDexId,
                                             commandId,
                                             context.targetStateVersion()));

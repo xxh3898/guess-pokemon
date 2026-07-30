@@ -21,6 +21,7 @@ public interface GameRecordRepository
                     """
                     SELECT
                         game.id AS game_id,
+                        game.mode AS mode,
                         game.started_at AS started_at,
                         game.ended_at AS ended_at,
                         me.role AS my_role,
@@ -86,6 +87,7 @@ public interface GameRecordRepository
                     """
                     SELECT
                         game.id AS game_id,
+                        game.mode AS mode,
                         game.status AS status,
                         game.started_at AS started_at,
                         game.ended_at AS ended_at,
@@ -127,6 +129,8 @@ public interface GameRecordRepository
 
         UUID getGameId();
 
+        String getMode();
+
         Instant getStartedAt();
 
         Instant getEndedAt();
@@ -161,6 +165,8 @@ public interface GameRecordRepository
     interface GameDetailRow {
 
         UUID getGameId();
+
+        String getMode();
 
         String getStatus();
 

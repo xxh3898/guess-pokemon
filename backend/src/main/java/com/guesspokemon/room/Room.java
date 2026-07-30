@@ -22,6 +22,7 @@ import static com.guesspokemon.room.RoomDtos.RoomStatus.WAITING_FOR_SELECTION;
 import com.guesspokemon.common.error.ApiException;
 import com.guesspokemon.game.GameRuleException;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameRole;
 import com.guesspokemon.game.GameViews.ParticipantGameView;
 import com.guesspokemon.room.RoomDtos.RoleAssignmentState;
@@ -44,6 +45,7 @@ final class Room {
     private final Participant host;
     private final Instant createdAt;
     private final UUID roundGroupId;
+    private final GameMode mode;
     private final Set<UUID> processedRoomCommandIds =
             new HashSet<>();
     private Participant guest;
@@ -57,14 +59,33 @@ final class Room {
     private RoomRole guestRolePreference;
     private Boolean roleAssignmentRandomized;
 
-    Room(String code, UUID hostUserId, String hostNickname, Instant createdAt) {
+    Room(
+            String code,
+            UUID hostUserId,
+            String hostNickname,
+            GameMode mode,
+            Instant createdAt) {
         this.code = Objects.requireNonNull(code);
         this.host = new Participant(hostUserId, hostNickname);
+        this.mode = Objects.requireNonNull(mode);
         this.createdAt = Objects.requireNonNull(createdAt);
         this.roundGroupId = UUID.randomUUID();
         this.status = WAITING_FOR_OPPONENT;
         this.stateVersion = 1;
         this.roundNumber = 1;
+    }
+
+    Room(
+            String code,
+            UUID hostUserId,
+            String hostNickname,
+            Instant createdAt) {
+        this(
+                code,
+                hostUserId,
+                hostNickname,
+                GameMode.TWENTY_QUESTIONS,
+                createdAt);
     }
 
     void join(UUID guestUserId, String guestNickname) {
@@ -123,6 +144,7 @@ final class Room {
                 roundGroupId,
                 selectorUserId,
                 questionerUserId,
+                mode,
                 stateVersion + 1);
     }
 
@@ -137,6 +159,15 @@ final class Room {
         }
         requireRole(userId, expectedRole);
         return stateVersion + 1;
+    }
+
+    void requireSilhouetteAccess(UUID userId) {
+        requireParticipant(userId);
+        if ((status != PLAYING && status != PAUSED)
+                || mode != GameMode.SILHOUETTE) {
+            throw new GameRuleException(INVALID_GAME_STATE);
+        }
+        requireRole(userId, QUESTIONER);
     }
 
     void applyGameView(
@@ -367,6 +398,10 @@ final class Room {
         return code;
     }
 
+    GameMode mode() {
+        return mode;
+    }
+
     private RoomSnapshot snapshot(
             Participant me,
             RoomRole myRole,
@@ -395,6 +430,7 @@ final class Room {
                         : null;
         return new RoomSnapshot(
                 code,
+                mode,
                 status,
                 stateVersion,
                 roundNumber,
@@ -528,6 +564,7 @@ final class Room {
             UUID roundGroupId,
             UUID selectorUserId,
             UUID questionerUserId,
+            GameMode mode,
             long targetStateVersion) {
     }
 

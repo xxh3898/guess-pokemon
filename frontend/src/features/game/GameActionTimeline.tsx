@@ -15,8 +15,10 @@ const TIMELINE_END_THRESHOLD = 32;
 
 export function GameActionTimeline({
   actions,
+  silhouette = false,
 }: {
   actions: readonly GameAction[];
+  silhouette?: boolean;
 }) {
   const listRef = useRef<HTMLOListElement>(null);
   const readerAtEndRef = useRef(true);
@@ -37,15 +39,23 @@ export function GameActionTimeline({
     >
       <header className="game-panel-heading">
         <Clock3 aria-hidden="true" size={20} />
-        <h2 id="game-timeline-title">질문 &amp; 답변 기록</h2>
+        <h2 id="game-timeline-title">
+          {silhouette ? "도전 기록" : "질문 & 답변 기록"}
+        </h2>
       </header>
       {actions.length === 0 ? (
         <div className="game-empty-timeline">
-          첫 질문을 기다리고 있어요.
+          {silhouette
+            ? "첫 번째 추측을 기다리고 있어요."
+            : "첫 질문을 기다리고 있어요."}
         </div>
       ) : (
         <ol
-          aria-label="질문과 답변 기록 목록"
+          aria-label={
+            silhouette
+              ? "포켓몬 추측 기록 목록"
+              : "질문과 답변 기록 목록"
+          }
           onScroll={(event) => {
             const list = event.currentTarget;
             readerAtEndRef.current =

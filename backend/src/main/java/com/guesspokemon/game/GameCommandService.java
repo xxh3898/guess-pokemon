@@ -57,6 +57,7 @@ public class GameCommandService {
                                         command.roundGroupId(),
                                         command.selectorUserId(),
                                         command.questionerUserId(),
+                                        command.mode(),
                                         command.answerPokemonNationalDexId(),
                                         command.commandId(),
                                         command.initialStateVersion(),
@@ -65,6 +66,10 @@ public class GameCommandService {
                                 gamePersistencePort.createGame(
                                         toGameState(candidate)));
         return game.viewFor(command.selectorUserId());
+    }
+
+    public int silhouetteAnswerPokemonId(String roomCode) {
+        return gameRegistry.silhouetteAnswerPokemonId(roomCode);
     }
 
     public ParticipantGameView askQuestion(
@@ -282,6 +287,7 @@ public class GameCommandService {
         return new GameState(
                 game.id(),
                 game.roundGroupId(),
+                game.mode(),
                 game.answerPokemonId(),
                 game.status(),
                 game.endReason(),

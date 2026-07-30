@@ -257,17 +257,24 @@ function HistoryListRow({
   const roleClass = item.myRole.toLowerCase();
   return (
     <article className="history-list-row">
-      <div
-        className={`history-result-badge result-${resultClass}`}
-      >
-        {item.myResult === "WIN" ? (
-          <CircleCheckBig aria-hidden="true" size={17} />
-        ) : item.myResult === "LOSS" ? (
-          <CircleX aria-hidden="true" size={17} />
-        ) : (
-          <CircleHelp aria-hidden="true" size={17} />
-        )}
-        {gameResultLabel(item.myResult)}
+      <div className="history-result-cell">
+        <span
+          className={`history-result-badge result-${resultClass}`}
+        >
+          {item.myResult === "WIN" ? (
+            <CircleCheckBig aria-hidden="true" size={17} />
+          ) : item.myResult === "LOSS" ? (
+            <CircleX aria-hidden="true" size={17} />
+          ) : (
+            <CircleHelp aria-hidden="true" size={17} />
+          )}
+          {gameResultLabel(item.myResult)}
+        </span>
+        <small className={`history-mode-badge mode-${(item.mode ?? "TWENTY_QUESTIONS").toLowerCase()}`}>
+          {item.mode === "SILHOUETTE"
+            ? "실루엣 퀴즈"
+            : "스무고개"}
+        </small>
       </div>
       <time className="history-list-date" dateTime={item.endedAt}>
         <span>{playedAt.date}</span>
@@ -279,7 +286,7 @@ function HistoryListRow({
       </div>
       <div className={`history-role-badge role-${roleClass}`}>
         <UserRound aria-hidden="true" size={17} />
-        {gameRoleLabel(item.myRole)}
+        {gameRoleLabel(item.myRole, item.mode)}
       </div>
       <div className="history-answer-summary">
         <PokemonArtwork
@@ -296,7 +303,7 @@ function HistoryListRow({
         </span>
       </div>
       <strong className="history-action-count">
-        {item.actionCount}회
+        {item.actionCount} / {item.mode === "SILHOUETTE" ? 3 : 20}회
       </strong>
       <span className="history-end-reason">
         {gameEndReasonLabel(item.endReason)}

@@ -3,6 +3,7 @@ package com.guesspokemon.room;
 import com.guesspokemon.game.GameTypes.GameActionType;
 import com.guesspokemon.game.GameTypes.GameAnswer;
 import com.guesspokemon.game.GameTypes.GameEndReason;
+import com.guesspokemon.game.GameTypes.GameMode;
 import com.guesspokemon.game.GameTypes.GameStatus;
 import com.guesspokemon.pokemon.PokemonDtos.PokemonSummary;
 import java.time.Instant;
@@ -121,11 +122,22 @@ public final class RoomDtos {
 
     public record JoinableRoomSummary(
             String roomCode,
-            String hostNickname) {
+            String hostNickname,
+            GameMode mode) {
 
         public JoinableRoomSummary {
             roomCode = Objects.requireNonNull(roomCode);
             hostNickname = Objects.requireNonNull(hostNickname);
+            mode = Objects.requireNonNull(mode);
+        }
+
+        public JoinableRoomSummary(
+                String roomCode,
+                String hostNickname) {
+            this(
+                    roomCode,
+                    hostNickname,
+                    GameMode.TWENTY_QUESTIONS);
         }
     }
 
@@ -139,6 +151,7 @@ public final class RoomDtos {
 
     public record RoomSnapshot(
             String roomCode,
+            GameMode mode,
             RoomStatus status,
             long stateVersion,
             int roundNumber,
@@ -147,5 +160,28 @@ public final class RoomDtos {
             RoomGameSnapshot game,
             RoleSelectionState roleSelection,
             RoleAssignmentState roleAssignment) {
+
+        public RoomSnapshot(
+                String roomCode,
+                RoomStatus status,
+                long stateVersion,
+                int roundNumber,
+                RoomMember me,
+                RoomMember opponent,
+                RoomGameSnapshot game,
+                RoleSelectionState roleSelection,
+                RoleAssignmentState roleAssignment) {
+            this(
+                    roomCode,
+                    GameMode.TWENTY_QUESTIONS,
+                    status,
+                    stateVersion,
+                    roundNumber,
+                    me,
+                    opponent,
+                    game,
+                    roleSelection,
+                    roleAssignment);
+        }
     }
 }

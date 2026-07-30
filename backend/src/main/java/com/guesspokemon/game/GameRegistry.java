@@ -4,6 +4,7 @@ import static com.guesspokemon.game.GameRuleException.GameRuleError.DUPLICATE_CO
 import static com.guesspokemon.game.GameRuleException.GameRuleError.INVALID_GAME_STATE;
 import static com.guesspokemon.game.GameRuleException.GameRuleError.VALIDATION_FAILED;
 import static com.guesspokemon.game.GameTypes.GameStatus.IN_PROGRESS;
+import static com.guesspokemon.game.GameTypes.GameMode.SILHOUETTE;
 
 import com.guesspokemon.game.GameViews.ParticipantGameView;
 import java.util.HashMap;
@@ -102,6 +103,21 @@ final class GameRegistry {
         commandLock.lock();
         try {
             return requireGame(roomCode).viewFor(userId);
+        } finally {
+            commandLock.unlock();
+        }
+    }
+
+    int silhouetteAnswerPokemonId(String roomCodeInput) {
+        String roomCode = normalizeRoomCode(roomCodeInput);
+        commandLock.lock();
+        try {
+            Game game = requireGame(roomCode);
+            if (game.status() != IN_PROGRESS
+                    || game.mode() != SILHOUETTE) {
+                throw new GameRuleException(INVALID_GAME_STATE);
+            }
+            return game.answerPokemonId();
         } finally {
             commandLock.unlock();
         }
