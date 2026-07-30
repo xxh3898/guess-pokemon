@@ -11,6 +11,8 @@ const [
   productionBackupScript,
   operations,
   pathClassifier,
+  runtimeConfigDockerfile,
+  runtimeConfigDetector,
 ] = await Promise.all([
   read("../.github/workflows/validate.yml"),
   read("../.github/workflows/deploy.yml"),
@@ -19,6 +21,8 @@ const [
   read("./backup-production-db.sh"),
   read("../docs/OPERATIONS.md"),
   read("./classify-ci-paths.sh"),
+  read("../runtime-config.Dockerfile"),
+  read("./detect-runtime-config-change.sh"),
 ]);
 
 test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () => {
@@ -137,6 +141,16 @@ test("should_runInfraAndFrontendImage_when_nginxChanges", () => {
 
 test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
   assert.deepEqual(classifyPaths(["docs/OPERATIONS.md"]), {
+    backend: "false",
+    frontend: "false",
+    infrastructure: "true",
+    backend_image: "false",
+    frontend_image: "false",
+  });
+});
+
+test("should_runOnlyInfrastructureChecks_when_runtimeConfigImageChanges", () => {
+  assert.deepEqual(classifyPaths(["runtime-config.Dockerfile"]), {
     backend: "false",
     frontend: "false",
     infrastructure: "true",
@@ -274,11 +288,11 @@ test("should_useTailscaleAndRestrictedSshForDeployment", () => {
   assert.match(deployWorkflow, /ping: home-mini/);
   assert.match(
     deployWorkflow,
-    /"deploy-guess-pokemon \$\{GITHUB_SHA\} \$\{GITHUB_ACTOR\}"/,
+    /deploy_command="deploy-guess-pokemon-v2 \$\{GITHUB_SHA\} keep \$\{GITHUB_ACTOR\}"/,
   );
   assert.match(
     restrictedWrapper,
-    /\^deploy-guess-pokemon\[\[:space:\]\]\(\[0-9a-fA-F\]\{40\}\)\[\[:space:\]\]\(\[A-Za-z0-9_-\]\+\)\$/,
+    /deploy-guess-pokemon-v2[\s\S]*keep[\s\S]*deploy-guess-pokemon-v2[\s\S]*update/,
   );
   assert.doesNotMatch(restrictedWrapper, /eval|bash -c|sh -c/);
   assert.match(
@@ -331,7 +345,7 @@ test(
       /compose\(\) \{[\s\S]*?\n\}/,
     )?.[0];
     const composeConfig = deployScript.match(
-      /API_IMAGE="\$\{new_api_image\}"[\s\S]*?config \\\n    --quiet/,
+      /validate_compose_contract\(\) \{[\s\S]*?\n\}/,
     )?.[0];
     const composeUpCommands = deployScript.match(
       /compose up \\\n[\s\S]*?--wait-timeout "\$\{HEALTH_TIMEOUT_SECONDS\}"/g,
@@ -339,7 +353,7 @@ test(
 
     assert.ok(composeFunction);
     assert.ok(composeConfig);
-    assert.equal(composeUpCommands?.length, 2);
+    assert.equal(composeUpCommands?.length, 3);
     assert.doesNotMatch(composeFunction, /--config/);
     assert.doesNotMatch(composeConfig, /--config/);
     for (const command of composeUpCommands) {
@@ -360,6 +374,14 @@ test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
   assert.match(
     deployScript,
     /Database migration is not rolled back automatically/,
+  );
+  assert.match(
+    deployScript,
+    /active_compose_file="\$\{current_compose_file\}"/,
+  );
+  assert.match(
+    deployScript,
+    /RUNTIME_CONFIG_PENDING/,
   );
   assert.doesNotMatch(
     deployScript,
@@ -406,6 +428,56 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
   );
   assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
+  assert.match(deployScript, /readonly PYTHON_BIN=\/usr\/bin\/python3/);
+  assert.match(productionBackupScript, /readonly PROJECT_NAME=guess-pokemon/);
+  assert.match(operations, /test -x \/usr\/bin\/python3/);
+  assert.match(operations, /\/usr\/bin\/python3 --version/);
+  assert.match(
+    operations,
+    /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,
+  );
+  assert.match(operations, /이전 API·Web SHA와 runtime config를 함께 복구한다/);
+});
+
+test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
+  assert.match(
+    deployWorkflow,
+    /RUNTIME_CONFIG_IMAGE_NAME: ghcr\.io\/xxh3898\/guess-pokemon-runtime-config/,
+  );
+  assert.match(
+    deployWorkflow,
+    /if: steps\.runtime-config-mode\.outputs\.mode == 'update'/,
+  );
+  assert.match(
+    deployWorkflow,
+    /RUNTIME_CONFIG_MODE: \$\{\{ needs\.publish\.outputs\.runtime_config_mode \}\}/,
+  );
+  assert.match(
+    deployWorkflow,
+    /deployments\?environment=Production[\s\S]*steps\.deployed-base\.outputs\.sha/,
+  );
+  assert.match(
+    deployWorkflow,
+    /deploy:[\s\S]*environment: Production[\s\S]*RUNTIME_CONFIG_MODE/,
+  );
+  assert.match(
+    deployScript,
+    /write_pending_state[\s\S]*"\$\{previous_sha:-\$\{ZERO_SHA\}\}"/,
+  );
+  assert.match(deployScript, /Compose project name must remain guess-pokemon/);
+  assert.match(deployScript, /PostgreSQL persistent volume contract is invalid/);
+  assert.match(
+    runtimeConfigDetector,
+    /compose\.production\.yaml[\s\S]*infra\/nginx\/cloudflare-edge-real-ip\.conf[\s\S]*runtime-config\.Dockerfile/,
+  );
+  assert.match(
+    runtimeConfigDockerfile,
+    /FROM scratch[\s\S]*COPY compose\.production\.yaml \/runtime\/compose\.yaml[\s\S]*COPY infra\/nginx\/cloudflare-edge-real-ip\.conf/,
+  );
+
+  assert.match(runtimeConfigDetector, /git diff --quiet/);
+  assert.match(runtimeConfigDetector, /printf 'keep\\n'/);
+  assert.match(runtimeConfigDetector, /printf 'update\\n'/);
 });
 
 function read(path) {

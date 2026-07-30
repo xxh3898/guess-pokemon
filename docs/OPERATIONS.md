@@ -384,25 +384,60 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
 - `main` 배포는 변경 경로와 무관하게 API·Web 동일 SHA image 두 개를
   발행하고 함께 교체하는 rollback 계약을 유지한다.
+- 마지막 성공 Production deployment 이후 `compose.production.yaml`,
+  Cloudflare real-IP 설정 또는 `runtime-config.Dockerfile`이 변경된 배포만
+  immutable runtime-config image를 새로 발행하고 `update`한다. 따라서 설정
+  배포가 실패해도 다음 배포가 변경을 이어받는다. 애플리케이션만 바뀌면
+  `keep`으로 현재 검증된 config digest를 유지한다.
 - 두 image 발행이 모두 끝나야 Tailscale OIDC와 제한된 SSH key로
   `home-mini`에 연결한다.
-- forced command wrapper는
-  `deploy-guess-pokemon <40자리-sha> <registry-user>`만 허용한다.
+- forced command wrapper는 기존 v1과 전환용 v2의 정확한 형식만 허용한다.
+  v2는 `deploy-guess-pokemon-v2 <40자리-sha> keep <registry-user>` 또는
+  `deploy-guess-pokemon-v2 <40자리-sha> update <config-digest> <registry-user>`다.
 - Mac mini deploy script는 GHCR token을 임시 Docker config에만 쓰고
   종료 시 정리한다.
 
+배포 script는 Compose JSON 계약 검증과 atomic pointer 교체에 고정
+system Python을 사용한다. workflow 병합 전 Mac mini에서 아래
+preflight를 통과해야 한다. backup script는 Python에 의존하지 않는다.
+
+```bash
+test -x /usr/bin/python3
+/usr/bin/python3 --version
+```
+
+`/usr/bin/python3`가 없으면 Homebrew Python이나 임의 PATH로 대체하지
+말고 준비를 중단한다. Xcode Command Line Tools 설치 여부와 운영 영향은
+별도 승인 후 확인한다.
+
+v2 workflow를 `main`에 병합하기 전에 repository의
+`scripts/deploy-guess-pokemon.sh`, `scripts/deploy-guess-pokemon-ci.sh`,
+`scripts/backup-production-db.sh`를 각각 Mac mini의
+`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh`와
+`/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon-ci.sh`,
+`/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh`에 사전
+설치해야 한다. 기존 파일을 timestamp backup으로 보존하고, 설치본
+SHA-256과 repository 원본의 일치, mode `700`, `/bin/bash -n`, 잘못된
+forced command 거부를 확인한 뒤에만 merge한다. 완료하지 않으면 기존
+wrapper가 v2 명령을 거부하거나 backup이 legacy Compose만 찾으므로
+workflow를 병합하지 않는다. deploy·backup script는 runtime config
+artifact의 자동 동기화 대상이 아니다.
+
 배포 순서는 다음과 같다.
 
-1. 두 SHA image를 pull하고 production Compose를 render한다.
-2. DB가 실행 중인지 확인한다.
-3. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
+1. 두 SHA image를 pull하고 `update`일 때만 runtime-config image를 exact
+   digest로 pull·추출한다.
+2. config revision, project label, 파일 allowlist와 production Compose
+   network/bind 계약을 검증한다. `keep`은 현재 release 무결성만 확인한다.
+3. DB가 실행 중인지 확인한다.
+4. 진행 중 game이 1건 이상이면 60초마다 다시 확인하며 최대 15분간
    기다린다.
-4. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
+5. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
    15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
-5. custom-format DB backup과 archive 검증을 완료한다.
-6. API·web image tag를 함께 갱신한다.
-7. 전체 service health를 제한 시간 동안 기다린다.
-8. 실패하면 이전 API·web SHA를 함께 복구한다.
+6. custom-format DB backup과 archive 검증을 완료한다.
+7. API·Web image와 runtime config를 한 transaction으로 적용한다.
+8. 전체 service health를 제한 시간 동안 기다린다.
+9. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
 
 GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
 15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,
@@ -415,6 +450,36 @@ schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다
 migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
 사용한다.
 
+### 중단된 runtime config transaction 복구
+
+v2 배포가 강제 종료되거나 host가 재시작되어
+`/Users/homeserver/Server/apps/guess-pokemon/runtime-config/pending`이
+남으면 후속 v2 배포는 fail closed한다. pending 파일을 직접 삭제하거나
+수정하지 말고 Mac mini에서 다음 명령을 실행한다.
+
+```bash
+/Users/homeserver/Server/scripts/deploy/deploy-guess-pokemon.sh recover
+```
+
+recovery는 pending key와 SHA/digest 형식, 마지막 검증 state, release
+allowlist와 content hash를 대조한다. 성공 state가 이미 target pair면
+`.env`와 실행 service를 확인한 뒤 검증된 target release로 stale `current`
+pointer를 원자 조정하고 marker를 정리하며,
+state가 previous pair면 이전 API/Web SHA와 config release를
+`--pull never`로 다시 적용한다. runtime config 도입 전 기존 설치는 legacy
+Compose와 이전 SHA로 복구한다. 정상 image가 한 번도 없던 bootstrap 중단은
+API/Web을 중지하고 zero-SHA placeholder로 되돌린다. pending/state가
+불일치하거나 release가 변조됐으면 marker를 유지한 채 실패한다.
+첫 성공 시 app directory에 별도 initialization marker를 원자 생성한다.
+이 marker가 있는데 `state` 또는 `current`가 사라지면 pre-v2 설치로
+fallback하지 않고 실패한다. marker가 생기기 전 실패한 bootstrap의
+동일 digest candidate release는 다음 `update`에서 image와 다시 대조한
+뒤 재사용할 수 있다.
+
+복구 후 production Compose `ps`, DB/API/Web health, artwork egress와 public
+Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌리지
+않는다.
+
 ## 14. 운영 backup과 3일 보존
 
 `scripts/backup-production-db.sh`를 Mac mini의
@@ -422,6 +487,9 @@ migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계�
 설치한다.
 
 - 실행 중인 production DB만 대상으로 한다.
+- runtime config v2 state가 있으면 state의 content hash와 `current` pointer가
+  함께 가리키는 immutable release Compose만 사용한다. v2 state가 아직 없는
+  기존 설치에서만 app directory의 legacy Compose를 사용한다.
 - mode `600`의 temporary file에 custom-format dump를 기록한다.
 - `pg_restore --list`가 성공한 archive만 최종 이름으로 공개한다.
 - 새 backup이 성공한 뒤 3일을 초과한 Guess Pokémon archive만 정리한다.

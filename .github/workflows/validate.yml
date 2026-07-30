@@ -102,7 +102,35 @@ jobs:
             scripts/backup-production-db.sh \
             scripts/deploy-guess-pokemon-ci.sh \
             scripts/deploy-guess-pokemon.sh \
+            scripts/detect-runtime-config-change.sh \
+            scripts/test-backup-production-db.sh \
+            scripts/test-deploy-guess-pokemon.sh \
             scripts/verify-compose.sh
+
+      - name: Verify runtime config change detection
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: |
+          current_sha="$(git rev-parse HEAD)"
+          test "$(
+            ./scripts/detect-runtime-config-change.sh \
+              "${current_sha}" \
+              "${current_sha}" \
+              false
+          )" = keep
+          test "$(
+            ./scripts/detect-runtime-config-change.sh \
+              "${current_sha}" \
+              "${current_sha}" \
+              true
+          )" = update
+
+      - name: Test deploy v2 state transitions
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: ./scripts/test-deploy-guess-pokemon.sh
+
+      - name: Test production backup Compose selection
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: ./scripts/test-backup-production-db.sh
 
       - name: Render Compose variants
         if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
@@ -119,6 +147,45 @@ jobs:
             --file compose.test.yaml \
             run --rm \
             nginx-config-test
+
+      - name: Build and verify runtime config image
+        if: needs.changes.result == 'success' && needs.changes.outputs.infrastructure == 'true'
+        run: |
+          docker build \
+            --file runtime-config.Dockerfile \
+            --build-arg REVISION=1111111111111111111111111111111111111111 \
+            --tag guess-pokemon-runtime-config:verify \
+            .
+
+          actual_revision="$(
+            docker image inspect \
+              --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+              guess-pokemon-runtime-config:verify
+          )"
+          test "${actual_revision}" = 1111111111111111111111111111111111111111
+
+          container_id="$(docker create guess-pokemon-runtime-config:verify)"
+          runtime_dir="$(mktemp -d)"
+
+          cleanup_runtime_config() {
+            docker rm "${container_id}" >/dev/null 2>&1 || true
+            rm -rf -- "${runtime_dir}"
+          }
+          trap cleanup_runtime_config EXIT INT TERM
+
+          docker cp "${container_id}:/runtime/." "${runtime_dir}"
+          test -f "${runtime_dir}/compose.yaml"
+          test -f "${runtime_dir}/infra/nginx/cloudflare-edge-real-ip.conf"
+
+          cp .env.production.example "${runtime_dir}/.env"
+          API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:1111111111111111111111111111111111111111 \
+          WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:1111111111111111111111111111111111111111 \
+            docker compose \
+              --project-directory "${runtime_dir}" \
+              --env-file "${runtime_dir}/.env" \
+              --file "${runtime_dir}/compose.yaml" \
+              config \
+              --quiet
 
   frontend:
     name: Frontend checks

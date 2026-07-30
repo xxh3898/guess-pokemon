@@ -31,7 +31,7 @@ for changed_path in "$@"; do
       infrastructure=true
       frontend_image=true
       ;;
-    infra/* | scripts/* | compose*.yaml | .env.example | .env.production.example | README.md | docs/*)
+    infra/* | scripts/* | compose*.yaml | runtime-config.Dockerfile | .env.example | .env.production.example | README.md | docs/*)
       infrastructure=true
       ;;
   esac
