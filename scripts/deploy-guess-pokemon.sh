@@ -448,6 +448,32 @@ if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
+expected_healthchecks = {
+    "db": [
+        "CMD-SHELL",
+        "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+    ],
+    "api": [
+        "CMD-SHELL",
+        "wget -qO- http://127.0.0.1:8080/actuator/health/readiness "
+        "| grep -q "
+        + chr(39)
+        + "\"status\":\"UP\""
+        + chr(39),
+    ],
+    "web": [
+        "CMD",
+        "wget",
+        "-q",
+        "-O",
+        "/dev/null",
+        "http://127.0.0.1/actuator/health/readiness",
+    ],
+}
+for name, expected_test in expected_healthchecks.items():
+    healthcheck = services[name].get("healthcheck", {})
+    if healthcheck.get("disable") is True or healthcheck.get("test") != expected_test:
+        raise SystemExit(f"{name} healthcheck contract is invalid")
 if networks.get("application", {}).get("internal") is not True:
     raise SystemExit("application network must be internal")
 edge = networks.get("edge", {})

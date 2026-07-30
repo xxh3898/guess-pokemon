@@ -77,10 +77,15 @@ case "${command_name}" in
         /usr/bin/dirname "${compose_file}"
       )/infra/nginx/cloudflare-edge-real-ip.conf"
       real_ip_source="${FAKE_RENDER_REAL_IP_SOURCE:-${real_ip_source}}"
+      web_healthcheck='{"test":["CMD","wget","-q","-O","/dev/null","http://127.0.0.1/actuator/health/readiness"]}'
+      if [[ "${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" == true ]]; then
+        web_healthcheck='{"disable":true}'
+      fi
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","networks":{"application":null,"egress":null}},"web":{"image":"%s","networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"healthcheck":{"test":["CMD-SHELL","pg_isready -U \\\"$${POSTGRES_USER}\\\" -d \\\"$${POSTGRES_DB}\\\""]},"networks":{"application":null},"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql"}]},"api":{"image":"%s","healthcheck":{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\\\"status\\\":\\\"UP\\\"'\''"]},"networks":{"application":null,"egress":null}},"web":{"image":"%s","healthcheck":%s,"networks":{"application":null,"edge":null},"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}]}},"networks":{"application":{"internal":true},"egress":{},"edge":{"external":true,"name":"edge"}},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"}}}\n' \
         "${api_image}" \
         "${web_image}" \
+        "${web_healthcheck}" \
         "${real_ip_source}"
     elif [[ "${arguments}" == *" ps --status running --services "* ]]; then
       printf 'db\napi\nweb\n'

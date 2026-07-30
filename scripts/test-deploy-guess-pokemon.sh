@@ -62,6 +62,7 @@ run_deploy() {
         FAKE_REVISION_TWO="${REVISION_TWO}" \
         FAKE_REVISION_THREE="${REVISION_THREE}" \
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
+        FAKE_DISABLE_WEB_HEALTHCHECK="${FAKE_DISABLE_WEB_HEALTHCHECK:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
@@ -247,6 +248,16 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
   exit 1
 fi
 /bin/rm -f -- "${pending_file}"
+
+set +e
+FAKE_DISABLE_WEB_HEALTHCHECK=true \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+disabled_healthcheck_exit_code="$?"
+set -e
+if [[ "${disabled_healthcheck_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a disabled Web healthcheck must fail\n' >&2
+  exit 1
+fi
 
 /usr/bin/sed \
   -e "s#^API_IMAGE=.*#API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_ONE}#" \
