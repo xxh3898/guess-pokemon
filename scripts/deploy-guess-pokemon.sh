@@ -464,7 +464,7 @@ for name, expected_networks in expected.items():
         or service.get("devices")
     ):
         raise SystemExit(f"{name} must not override image user or add privileges")
-    if service.get("command") or service.get("entrypoint"):
+    if service.get("command") is not None or service.get("entrypoint") is not None:
         raise SystemExit(f"{name} must not override the image process")
     if service.get("scale", 1) != 1:
         raise SystemExit(f"{name} must run exactly one replica")
