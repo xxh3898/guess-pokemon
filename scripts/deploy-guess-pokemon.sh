@@ -426,6 +426,7 @@ validate_compose_contract() {
   printf '%s' "${rendered}" \
     | "${PYTHON_BIN}" -c '
 import json
+import hashlib
 import sys
 
 config = json.load(sys.stdin)
@@ -434,7 +435,9 @@ config = json.load(sys.stdin)
     expected_web_image,
     expected_real_ip_source,
     expected_database_name,
-) = sys.argv[1:5]
+    expected_database_user,
+    expected_database_password_sha256,
+) = sys.argv[1:7]
 services = config.get("services", {})
 networks = config.get("networks", {})
 volumes = config.get("volumes", {})
@@ -587,6 +590,15 @@ if set(db_environment) != {"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"}:
     raise SystemExit("PostgreSQL environment key allowlist is invalid")
 if db_environment.get("POSTGRES_DB") != expected_database_name:
     raise SystemExit("PostgreSQL database name must match the production environment")
+if db_environment.get("POSTGRES_USER") != expected_database_user:
+    raise SystemExit("PostgreSQL user must match the protected host environment")
+database_password = db_environment.get("POSTGRES_PASSWORD")
+if (
+    not isinstance(database_password, str)
+    or hashlib.sha256(database_password.encode()).hexdigest()
+    != expected_database_password_sha256
+):
+    raise SystemExit("PostgreSQL password must match the protected host environment")
 if (
     services["api"]
     .get("environment", {})
@@ -612,6 +624,15 @@ if api_environment_keys not in (
 expected_datasource_url = f"jdbc:postgresql://db:5432/{expected_database_name}"
 if api_environment.get("SPRING_DATASOURCE_URL") != expected_datasource_url:
     raise SystemExit("API datasource must use the production DB service")
+if api_environment.get("SPRING_DATASOURCE_USERNAME") != expected_database_user:
+    raise SystemExit("API datasource user must match the protected host environment")
+api_database_password = api_environment.get("SPRING_DATASOURCE_PASSWORD")
+if (
+    not isinstance(api_database_password, str)
+    or hashlib.sha256(api_database_password.encode()).hexdigest()
+    != expected_database_password_sha256
+):
+    raise SystemExit("API datasource password must match the protected host environment")
 expected_api_environment = {
     "SERVER_FORWARD_HEADERS_STRATEGY": "native",
     "SESSION_COOKIE_SECURE": "true",
@@ -693,7 +714,9 @@ if not any(
       "${api_image}" \
       "${web_image}" \
       "$(/usr/bin/dirname "${compose_file}")/infra/nginx/cloudflare-edge-real-ip.conf" \
-      "$(read_env_value POSTGRES_DB)"
+      "$(read_env_value POSTGRES_DB)" \
+      "$(read_env_value POSTGRES_USER)" \
+      "$(printf '%s' "$(read_env_value POSTGRES_PASSWORD)" | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}')"
 }
 
 prepare_runtime_release() {

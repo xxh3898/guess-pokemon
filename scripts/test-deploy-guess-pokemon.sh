@@ -66,6 +66,10 @@ run_deploy() {
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
         FAKE_RENDER_DATABASE_NAME="${FAKE_RENDER_DATABASE_NAME:-}" \
         FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
+        FAKE_RENDER_DB_USER="${FAKE_RENDER_DB_USER:-}" \
+        FAKE_RENDER_DB_PASSWORD="${FAKE_RENDER_DB_PASSWORD:-}" \
+        FAKE_RENDER_API_DB_USER="${FAKE_RENDER_API_DB_USER:-}" \
+        FAKE_RENDER_API_DB_PASSWORD="${FAKE_RENDER_API_DB_PASSWORD:-}" \
         FAKE_RENDER_API_COMMAND_JSON="${FAKE_RENDER_API_COMMAND_JSON:-}" \
         FAKE_RENDER_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
@@ -339,6 +343,19 @@ db_data_directory_override_exit_code="$?"
 set -e
 if [[ "${db_data_directory_override_exit_code}" -ne 1 ]]; then
   printf 'PostgreSQL data-directory override must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_DB_USER=known-packaged-user \
+FAKE_RENDER_API_DB_USER=known-packaged-user \
+FAKE_RENDER_DB_PASSWORD=known-packaged-password \
+FAKE_RENDER_API_DB_PASSWORD=known-packaged-password \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+replaced_database_credentials_exit_code="$?"
+set -e
+if [[ "${replaced_database_credentials_exit_code}" -ne 1 ]]; then
+  printf 'Packaged PostgreSQL credentials must fail\n' >&2
   exit 1
 fi
 
