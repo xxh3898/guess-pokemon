@@ -465,8 +465,17 @@ if services["api"].get("image") != expected_api_image:
     raise SystemExit("API image does not match the requested deployment")
 if services["web"].get("image") != expected_web_image:
     raise SystemExit("Web image does not match the requested deployment")
+if services["db"].get("image") != "postgres:18.4-alpine3.24":
+    raise SystemExit("PostgreSQL image changes require a separate data migration")
 if services["db"].get("environment", {}).get("POSTGRES_DB") != expected_database_name:
     raise SystemExit("PostgreSQL database name must match the production environment")
+if (
+    services["api"]
+    .get("environment", {})
+    .get("SPRING_JPA_HIBERNATE_DDL_AUTO", "validate")
+    != "validate"
+):
+    raise SystemExit("Hibernate schema handling must remain validate")
 expected_healthchecks = {
     "db": [
         "CMD-SHELL",
