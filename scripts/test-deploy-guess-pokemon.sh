@@ -67,6 +67,7 @@ run_deploy() {
         FAKE_RENDER_API_IMAGE="${FAKE_RENDER_API_IMAGE:-}" \
         FAKE_RENDER_WEB_IMAGE="${FAKE_RENDER_WEB_IMAGE:-}" \
         FAKE_RENDER_REAL_IP_SOURCE="${FAKE_RENDER_REAL_IP_SOURCE:-}" \
+        FAKE_RENDER_WEB_PROFILE="${FAKE_RENDER_WEB_PROFILE:-false}" \
         /bin/bash "${test_script}" "$@"
 }
 
@@ -262,6 +263,16 @@ if [[ "${recovery_exit_code}" -ne 1 || ! -f "${pending_file}" ]]; then
   exit 1
 fi
 /bin/rm -f -- "${pending_file}"
+
+set +e
+FAKE_RENDER_WEB_PROFILE=true \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+profiled_service_exit_code="$?"
+set -e
+if [[ "${profiled_service_exit_code}" -ne 1 ]]; then
+  printf 'Runtime config with a profiled Web service must fail\n' >&2
+  exit 1
+fi
 
 set +e
 FAKE_DISABLE_WEB_HEALTHCHECK=true \
