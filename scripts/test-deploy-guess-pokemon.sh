@@ -68,6 +68,9 @@ run_deploy() {
         FAKE_RENDER_DB_EXTRA_ENVIRONMENT="${FAKE_RENDER_DB_EXTRA_ENVIRONMENT:-}" \
         FAKE_RENDER_DB_USER="${FAKE_RENDER_DB_USER:-}" \
         FAKE_RENDER_DB_PASSWORD="${FAKE_RENDER_DB_PASSWORD:-}" \
+        FAKE_RENDER_DB_VOLUME_EXTRA="${FAKE_RENDER_DB_VOLUME_EXTRA:-}" \
+        FAKE_RENDER_DB_HEALTHCHECK_JSON="${FAKE_RENDER_DB_HEALTHCHECK_JSON:-}" \
+        FAKE_RENDER_API_HEALTHCHECK_JSON="${FAKE_RENDER_API_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_API_DB_USER="${FAKE_RENDER_API_DB_USER:-}" \
         FAKE_RENDER_API_DB_PASSWORD="${FAKE_RENDER_API_DB_PASSWORD:-}" \
         FAKE_RENDER_API_COMMAND_JSON="${FAKE_RENDER_API_COMMAND_JSON:-}" \
@@ -356,6 +359,26 @@ replaced_database_credentials_exit_code="$?"
 set -e
 if [[ "${replaced_database_credentials_exit_code}" -ne 1 ]]; then
   printf 'Packaged PostgreSQL credentials must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_DB_VOLUME_EXTRA=',"subpath":"18/docker/base"' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+database_volume_subpath_exit_code="$?"
+set -e
+if [[ "${database_volume_subpath_exit_code}" -ne 1 ]]; then
+  printf 'PostgreSQL volume subpath override must fail\n' >&2
+  exit 1
+fi
+
+set +e
+FAKE_RENDER_DB_HEALTHCHECK_JSON='{"test":["CMD-SHELL","pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""],"timeout":"5s","interval":"1ms","retries":10,"start_period":"10s"}' \
+  run_deploy "${REVISION_THREE}" keep test-user >/dev/null 2>&1
+healthcheck_timing_exit_code="$?"
+set -e
+if [[ "${healthcheck_timing_exit_code}" -ne 1 ]]; then
+  printf 'PostgreSQL healthcheck timing override must fail\n' >&2
   exit 1
 fi
 

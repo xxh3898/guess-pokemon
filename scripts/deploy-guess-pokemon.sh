@@ -641,30 +641,48 @@ for name, expected_value in expected_api_environment.items():
     if api_environment.get(name) != expected_value:
         raise SystemExit(f"API environment contract is invalid: {name}")
 expected_healthchecks = {
-    "db": [
-        "CMD-SHELL",
-        "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
-    ],
-    "api": [
-        "CMD-SHELL",
-        "wget -qO- http://127.0.0.1:8080/actuator/health/readiness "
-        "| grep -q "
-        + chr(39)
-        + "\"status\":\"UP\""
-        + chr(39),
-    ],
-    "web": [
-        "CMD",
-        "wget",
-        "-q",
-        "-O",
-        "/dev/null",
-        "http://127.0.0.1/actuator/health/readiness",
-    ],
+    "db": {
+        "test": [
+            "CMD-SHELL",
+            "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ],
+        "timeout": "5s",
+        "interval": "5s",
+        "retries": 10,
+        "start_period": "10s",
+    },
+    "api": {
+        "test": [
+            "CMD-SHELL",
+            "wget -qO- http://127.0.0.1:8080/actuator/health/readiness "
+            "| grep -q "
+            + chr(39)
+            + "\"status\":\"UP\""
+            + chr(39),
+        ],
+        "timeout": "5s",
+        "interval": "10s",
+        "retries": 12,
+        "start_period": "30s",
+    },
+    "web": {
+        "test": [
+            "CMD",
+            "wget",
+            "-q",
+            "-O",
+            "/dev/null",
+            "http://127.0.0.1/actuator/health/readiness",
+        ],
+        "timeout": "5s",
+        "interval": "10s",
+        "retries": 6,
+        "start_period": "10s",
+    },
 }
-for name, expected_test in expected_healthchecks.items():
+for name, expected_healthcheck in expected_healthchecks.items():
     healthcheck = services[name].get("healthcheck", {})
-    if healthcheck.get("disable") is True or healthcheck.get("test") != expected_test:
+    if healthcheck != expected_healthcheck:
         raise SystemExit(f"{name} healthcheck contract is invalid")
 if networks.get("application", {}).get("internal") is not True:
     raise SystemExit("application network must be internal")
@@ -691,13 +709,12 @@ db_data = next(
     ),
     None,
 )
-if (
-    not db_data
-    or db_data.get("type") != "volume"
-    or db_data.get("source") != "postgres-data"
-    or volumes.get("postgres-data", {}).get("name")
-    != "guess-pokemon_postgres-data"
-):
+if db_data != {
+    "type": "volume",
+    "source": "postgres-data",
+    "target": "/var/lib/postgresql",
+    "volume": {},
+} or volumes.get("postgres-data", {}).get("name") != "guess-pokemon_postgres-data":
     raise SystemExit("PostgreSQL persistent volume contract is invalid")
 web_volumes = services["web"].get("volumes", [])
 if len(web_volumes) != 1:
