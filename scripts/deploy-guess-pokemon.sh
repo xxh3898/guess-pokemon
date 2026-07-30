@@ -37,6 +37,12 @@ fail() {
   exit 1
 }
 
+require_legacy_compose() {
+  if [[ ! -f "${LEGACY_COMPOSE_FILE}" ]]; then
+    fail "legacy production Compose configuration is missing"
+  fi
+}
+
 is_digest() {
   [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]] && [[ "$1" != "${ZERO_DIGEST}" ]]
 }
@@ -112,8 +118,8 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
   fail "Python is not executable: ${PYTHON_BIN}"
 fi
 
-if [[ ! -f "${LEGACY_COMPOSE_FILE}" || ! -f "${ENV_FILE}" ]]; then
-  fail "production Compose configuration is incomplete"
+if [[ ! -f "${ENV_FILE}" ]]; then
+  fail "production environment configuration is missing"
 fi
 
 if [[ "${recovery_mode}" == false ]] \
@@ -128,6 +134,9 @@ if [[ "${legacy_mode}" == true ]] \
   }
 then
   fail "legacy deployment is disabled after runtime config state initialization"
+fi
+if [[ "${legacy_mode}" == true ]]; then
+  require_legacy_compose
 fi
 
 if [[ "${recovery_mode}" == false && ! -x "${BACKUP_SCRIPT}" ]]; then
@@ -1089,6 +1098,7 @@ recover_pending_transaction() {
     if [[ -n "${state_sha}" || "${previous_digest}" != "${ZERO_DIGEST}" ]]; then
       fail "bootstrap recovery state is inconsistent"
     fi
+    require_legacy_compose
     write_image_env \
       "${API_IMAGE_REPOSITORY}:${ZERO_SHA}" \
       "${WEB_IMAGE_REPOSITORY}:${ZERO_SHA}"
@@ -1104,6 +1114,7 @@ recover_pending_transaction() {
   recovery_api_image="${API_IMAGE_REPOSITORY}:${previous_sha}"
   recovery_web_image="${WEB_IMAGE_REPOSITORY}:${previous_sha}"
   if [[ -z "${state_sha}" && -z "${state_digest}" && "${previous_digest}" == "${ZERO_DIGEST}" ]]; then
+    require_legacy_compose
     active_compose_file="${LEGACY_COMPOSE_FILE}"
   else
     if [[ "${state_sha}" != "${previous_sha}" || "${state_digest}" != "${previous_digest}" ]]; then
@@ -1227,6 +1238,7 @@ else
     current_compose_file="${current_release}/compose.yaml"
   else
     current_release=
+    require_legacy_compose
     current_compose_file="${LEGACY_COMPOSE_FILE}"
   fi
 

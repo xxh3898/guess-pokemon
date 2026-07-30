@@ -156,7 +156,9 @@ if [[ "${legacy_after_v2_exit_code}" -ne 1 ]]; then
   exit 1
 fi
 
+/bin/mv "${app_dir}/compose.yaml" "${app_dir}/compose.yaml.legacy"
 run_deploy "${REVISION_TWO}" keep test-user
+/bin/mv "${app_dir}/compose.yaml.legacy" "${app_dir}/compose.yaml"
 
 /usr/bin/grep -Fxq \
   "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
@@ -207,7 +209,9 @@ fi
 /bin/rm -f -- "${state_file}"
 /bin/mv "${state_file}.real" "${state_file}"
 
+/bin/mv "${app_dir}/compose.yaml" "${app_dir}/compose.yaml.legacy"
 run_recovery
+/bin/mv "${app_dir}/compose.yaml.legacy" "${app_dir}/compose.yaml"
 
 test ! -e "${pending_file}"
 /usr/bin/grep -Fxq \
