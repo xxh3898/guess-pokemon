@@ -7,6 +7,7 @@ readonly SCRIPT_DIR="$(
   pwd -P
 )"
 readonly SOURCE_SCRIPT="${SCRIPT_DIR}/backup-production-db.sh"
+readonly PRODUCTION_BACKUP_DIR=/Users/homeserver/Server/backups/guess-pokemon/data
 readonly ZERO_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 readonly APPLICATION_SHA=1111111111111111111111111111111111111111
 readonly PREVIOUS_SHA=2222222222222222222222222222222222222222
@@ -52,11 +53,25 @@ prepare_script() {
   local backup_dir="$2"
   local target_script="$3"
 
+  if ! /usr/bin/grep -Fqx \
+    "readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}" \
+    "${SOURCE_SCRIPT}"
+  then
+    printf 'Production backup path contract is missing: %s\n' \
+      "${PRODUCTION_BACKUP_DIR}" \
+      >&2
+    exit 1
+  fi
+
   /usr/bin/sed \
     -e "s#readonly DOCKER_BIN=/usr/local/bin/docker#readonly DOCKER_BIN=${mock_docker}#" \
     -e "s#readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon#readonly APP_DIR=${app_dir}#" \
-    -e "s#readonly BACKUP_DIR=/Users/homeserver/Server/backups/guess-pokemon#readonly BACKUP_DIR=${backup_dir}#" \
+    -e "s#readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}#readonly BACKUP_DIR=${backup_dir}#" \
     "${SOURCE_SCRIPT}" >"${target_script}"
+  if ! /usr/bin/grep -Fqx "readonly BACKUP_DIR=${backup_dir}" "${target_script}"; then
+    printf 'Test backup path substitution failed: %s\n' "${backup_dir}" >&2
+    exit 1
+  fi
   /bin/chmod 700 "${target_script}"
 }
 

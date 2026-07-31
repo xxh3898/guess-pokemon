@@ -532,6 +532,12 @@ Stable bootstrap 설치만으로 macOS LaunchAgent가 등록되지는 않는다.
 예약 실행을 사용할 때는 별도 승인된 LaunchAgent가 위 stable 경로만
 호출하는지 확인한다.
 
+검증된 운영 DB archive와 backup 중 생성되는 임시 파일의 저장 위치는
+`/Users/homeserver/Server/backups/guess-pokemon/data/`다. 프로젝트 backup
+root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host bootstrap
+설치본을 위한 별도 범주이며 DB retention 대상에 포함하지 않는다. 기존
+`migration/` 자료도 자동 이동하거나 정리하지 않는다.
+
 - 실행 중인 production DB만 대상으로 한다.
 - runtime config v2 state가 있으면 state의 content hash와 `current` pointer가
   함께 가리키는 immutable release Compose만 사용한다. v2 state가 아직 없는
