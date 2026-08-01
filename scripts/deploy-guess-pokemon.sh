@@ -1140,14 +1140,23 @@ running_service_set_is_complete() {
 }
 
 run_one_shot_migration() {
-  compose run \
-    --rm \
-    --no-deps \
-    --entrypoint java \
-    api \
-    "-Dloader.main=${MIGRATION_MAIN_CLASS}" \
-    -cp "${MIGRATION_JAR}" \
-    org.springframework.boot.loader.launch.PropertiesLauncher
+  local candidate_api_image="$1"
+  local candidate_web_image="$2"
+
+  (
+    export API_IMAGE="${candidate_api_image}"
+    export WEB_IMAGE="${candidate_web_image}"
+
+    compose run \
+      --rm \
+      --no-deps \
+      --pull never \
+      --entrypoint java \
+      api \
+      "-Dloader.main=${MIGRATION_MAIN_CLASS}" \
+      -cp "${MIGRATION_JAR}" \
+      org.springframework.boot.loader.launch.PropertiesLauncher
+  )
 }
 
 public_get() {
@@ -1524,7 +1533,7 @@ if [[ "${legacy_mode}" == false ]]; then
 fi
 
 active_compose_file="${candidate_compose_file}"
-if ! run_one_shot_migration; then
+if ! run_one_shot_migration "${new_api_image}" "${new_web_image}"; then
   printf 'Guess Pokémon one-shot migration failed; existing application remains active\n' >&2
   printf 'Database migration is not rolled back automatically\n' >&2
   exit 1

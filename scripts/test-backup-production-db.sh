@@ -44,6 +44,14 @@ heartbeat_log="${test_root}/heartbeat.log"
     '  printf "db\n"' \
     'elif [[ " $* " == *" pg_restore --list "* ]]; then' \
     '  /bin/cat >/dev/null' \
+    '  printf "%s\n" "1; 0 0 TABLE DATA public app_user owner" "2; 0 0 TABLE DATA public pokemon_species owner"' \
+    'elif [[ " $* " == *" pg_restore --data-only "* ]]; then' \
+    '  /bin/cat >/dev/null' \
+    '  if [[ -n "${MOCK_PG_RESTORE_DATA_FILE:-}" ]]; then' \
+    '    /bin/cat "${MOCK_PG_RESTORE_DATA_FILE}"' \
+    '  else' \
+    '    printf "%s\n" "COPY public.app_user (id) FROM stdin;" "1" "2" "\\." "COPY public.pokemon_species (id) FROM stdin;" "1" "2" "3" "\\."' \
+    '  fi' \
     'elif [[ "$*" == *"BACKUP_QUERY=dump"* ]]; then' \
     '  printf "mock PostgreSQL custom archive\n"' \
     'elif [[ "$*" == *"BACKUP_QUERY=version"* ]]; then' \
@@ -153,9 +161,14 @@ def write_valid(timestamp):
         "project": "guess-pokemon",
         "environment": "production",
         "database": {
+            "engine": "postgresql",
+            "version": "18.4",
             "dumpFile": "database/dump",
             "bytes": len(dump),
             "sha256": hashlib.sha256(dump).hexdigest(),
+            "validator": "pg_restore --list",
+            "recordCounts": {"app_user": 0, "pokemon_species": 0},
+            "recordCountsSource": "database/dump",
         },
         "files": {
             "enabled": False,
@@ -202,6 +215,19 @@ symlink_time = dt.datetime.combine(
 symlink_name = name_for(symlink_time)
 os.symlink(recent_seed[0], root / symlink_name)
 
+drift_source_time = dt.datetime.combine(
+    today - dt.timedelta(days=11), dt.time(6, 5), tzinfo=kst
+)
+drift_source_name = write_valid(drift_source_time)
+drift_source_manifest_path = root / drift_source_name / "manifest.json"
+drift_source_manifest = json.loads(
+    drift_source_manifest_path.read_text(encoding="utf-8")
+)
+drift_source_manifest["database"]["recordCountsSource"] = "live-post-dump"
+drift_source_manifest_path.write_text(
+    json.dumps(drift_source_manifest) + "\n", encoding="utf-8"
+)
+
 expected_path.write_text(
     json.dumps(
         {
@@ -209,6 +235,7 @@ expected_path.write_text(
             "dailyKeep": daily_keep,
             "pruneExpected": prune_expected,
             "invalidName": invalid_name,
+            "driftSourceName": drift_source_name,
             "symlinkName": symlink_name,
         }
     )
@@ -241,6 +268,7 @@ assert set(expected["recentSeed"]) <= keep
 assert set(expected["dailyKeep"]) <= keep
 assert set(expected["pruneExpected"]) <= prune
 assert expected["invalidName"] in invalid
+assert expected["driftSourceName"] in invalid
 assert expected["symlinkName"] not in keep | prune | invalid
 assert keep.isdisjoint(prune)
 assert len(keep) == 11
@@ -270,6 +298,7 @@ assert_snapshot_contract() {
   test -f "${snapshot}/SUCCESS"
   test -f "${snapshot}/manifest.json"
   test -f "${snapshot}/database/dump"
+  test -f "${snapshot}/database/record-counts.tsv"
   test -f "${snapshot}/files/sha256.txt"
   test -f "${backup_dir}/retention-plan.json"
   /usr/bin/python3 - \
@@ -298,9 +327,10 @@ assert manifest["source"]["runtimeConfigDigest"] == config_digest
 assert manifest["database"]["engine"] == "postgresql"
 assert manifest["database"]["version"] == "18.4"
 assert manifest["database"]["recordCounts"] == {
-    "app_user": 31,
-    "pokemon_species": 1025,
+    "app_user": 2,
+    "pokemon_species": 3,
 }
+assert manifest["database"]["recordCountsSource"] == "database/dump"
 assert manifest["database"]["bytes"] == dump.stat().st_size
 assert manifest["database"]["sha256"] == hashlib.sha256(dump.read_bytes()).hexdigest()
 assert manifest["files"] == {
@@ -420,12 +450,41 @@ expected_release="${v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 /usr/bin/grep -Fq -- "--project-name guess-pokemon" "${docker_log}"
 /usr/bin/grep -Fq -- "--project-directory ${expected_release}" "${docker_log}"
 /usr/bin/grep -Fq -- "--file ${expected_release}/compose.yaml" "${docker_log}"
+if /usr/bin/grep -q 'BACKUP_QUERY=record-counts' "${docker_log}"; then
+  printf 'Snapshot row counts must not be queried from the live database after dump\n' >&2
+  exit 1
+fi
 test "$(find "${v2_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" -ge 1
 assert_snapshot_contract "${v2_backups}" scheduled
 assert_retention_matrix "${v2_backups}" "${v2_retention_expected}"
 test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 2
 /usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
 /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"
+
+malformed_archive_app="${test_root}/malformed-archive-app"
+malformed_archive_backups="${test_root}/malformed-archive-backups"
+malformed_archive_script="${test_root}/malformed-archive-backup.sh"
+malformed_archive_data="${test_root}/malformed-archive-data.sql"
+printf '%s\n' \
+  'COPY public.app_user (id) FROM stdin;' \
+  '1' \
+  >"${malformed_archive_data}"
+/bin/mkdir -p "${malformed_archive_app}" "${malformed_archive_backups}"
+prepare_app "${malformed_archive_app}"
+prepare_runtime_state "${malformed_archive_app}"
+prepare_script \
+  "${malformed_archive_app}" \
+  "${malformed_archive_backups}" \
+  "${malformed_archive_script}"
+
+if MOCK_PG_RESTORE_DATA_FILE="${malformed_archive_data}" \
+  DOCKER_LOG="${docker_log}" \
+  "${malformed_archive_script}" >/dev/null 2>&1
+then
+  printf 'backup accepted a malformed archive data stream\n' >&2
+  exit 1
+fi
+test "$(find "${malformed_archive_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" = 0
 
 legacy_v2_app="${test_root}/legacy-v2-app"
 legacy_v2_backups="${test_root}/legacy-v2-backups"

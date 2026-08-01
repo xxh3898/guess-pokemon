@@ -675,6 +675,7 @@ test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
 
 test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () => {
   const restoreList = productionBackupScript.indexOf("pg_restore --list");
+  const snapshotInventory = productionBackupScript.indexOf("--data-only");
   const successMarker = productionBackupScript.indexOf(
     'printf \'snapshot complete\\n\' >"${work_dir}/SUCCESS"',
   );
@@ -685,6 +686,8 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
   const offsite = productionBackupScript.indexOf("stage_offsite_snapshot() {");
 
   assert.ok(restoreList >= 0);
+  assert.ok(snapshotInventory > restoreList);
+  assert.ok(successMarker > snapshotInventory);
   assert.ok(successMarker > restoreList);
   assert.ok(finalMove > successMarker);
   assert.ok(retention > finalMove);
@@ -700,6 +703,13 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
     productionBackupScript,
     /"recordCounts": dict\(sorted\(record_counts\.items\(\)\)\)/,
   );
+  assert.match(
+    productionBackupScript,
+    /"recordCountsSource": "database\/dump"/,
+  );
+  assert.match(productionBackupScript, /--schema=public/);
+  assert.match(productionBackupScript, /--strict-names/);
+  assert.doesNotMatch(productionBackupScript, /BACKUP_QUERY=record-counts/);
   assert.match(
     productionBackupScript,
     /"policy": \{"recent": 4, "dailyAtOrAfterKst": "06:00", "dailyDays": 7\}/,
@@ -732,8 +742,13 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
 });
 
 test("should_runOneShotFlywayBeforeCutoverAndGateSuccessOnPublicSmoke", () => {
+  const migrationFunction = deployScript.match(
+    /run_one_shot_migration\(\) \{[\s\S]*?\n\}/,
+  )?.[0];
   const pending = deployScript.lastIndexOf("write_pending_state \\");
-  const migration = deployScript.lastIndexOf("if ! run_one_shot_migration; then");
+  const migration = deployScript.lastIndexOf(
+    'if ! run_one_shot_migration "${new_api_image}" "${new_web_image}"; then',
+  );
   const imageWrite = deployScript.lastIndexOf(
     'write_image_env "${new_api_image}" "${new_web_image}"',
   );
@@ -741,10 +756,16 @@ test("should_runOneShotFlywayBeforeCutoverAndGateSuccessOnPublicSmoke", () => {
   const successState = deployScript.lastIndexOf("write_success_state \\");
 
   assert.match(productionCompose, /SPRING_FLYWAY_ENABLED: "false"/);
+  assert.ok(migrationFunction);
   assert.match(
-    deployScript,
+    migrationFunction,
     /-Dloader\.main=\$\{MIGRATION_MAIN_CLASS\}[\s\S]*PropertiesLauncher/,
   );
+  assert.match(migrationFunction, /local candidate_api_image="\$1"/);
+  assert.match(migrationFunction, /local candidate_web_image="\$2"/);
+  assert.match(migrationFunction, /export API_IMAGE="\$\{candidate_api_image\}"/);
+  assert.match(migrationFunction, /export WEB_IMAGE="\$\{candidate_web_image\}"/);
+  assert.match(migrationFunction, /compose run \\\n[\s\S]*--pull never/);
   assert.ok(pending >= 0);
   assert.ok(migration > pending);
   assert.ok(imageWrite > migration);

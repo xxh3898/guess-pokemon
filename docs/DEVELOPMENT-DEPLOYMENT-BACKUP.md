@@ -95,6 +95,10 @@ API readiness, 대표 Pokémon read endpoint와 현재 HTML이 가리키는
 - 일반 API container는 `SPRING_FLYWAY_ENABLED=false`로 시작한다.
 - 배포 worker는 exact candidate API image에서
   `com.guesspokemon.ops.MigrationMain`만 one-shot으로 실행한다.
+- one-shot subprocess에 candidate API/Web image pair를 함께 주입하고
+  `--pull never`로 이미 revision label을 검증한 local image만 사용한다. 이
+  임시 값은 Compose interpolation에만 적용하며 production `.env`는 migration
+  성공 전까지 현재 image pair를 유지한다.
 - runner는 game recovery나 catalog importer 같은 `ApplicationRunner`를
   시작하지 않고 Flyway migration과 Flyway validate만 수행한다.
 - candidate API startup은 `ddl-auto=validate`로 JPA mapping과 실제 schema를
@@ -116,7 +120,9 @@ guess-pokemon-production-<UTC timestamp>/
 ├── SUCCESS
 ├── manifest.json
 ├── database/
-│   └── dump
+│   ├── dump
+│   ├── record-counts.tsv
+│   └── version.txt
 └── files/
     └── sha256.txt
 ```
@@ -126,12 +132,14 @@ guess-pokemon-production-<UTC timestamp>/
 1. verified runtime release와 production `db` 확인
 2. PostgreSQL custom-format `pg_dump`
 3. `pg_restore --list` 구조 검증
-4. DB engine/version과 중요 table별 row count 기록
-5. file data 미사용을 나타내는 빈 checksum manifest 기록
-6. application SHA와 runtime config digest 기록
-7. `manifest.json` 생성
-8. `SUCCESS` 마지막 생성
-9. 같은 filesystem 안에서 최종 directory로 atomic rename
+4. DB에 연결하지 않은 `pg_restore --data-only --schema=public` COPY stream으로
+   custom archive와 같은 snapshot의 public table row count 계산
+5. DB engine/version, row-count source와 중요 table별 count 기록
+6. file data 미사용을 나타내는 빈 checksum manifest 기록
+7. application SHA와 runtime config digest 기록
+8. `manifest.json` 생성
+9. `SUCCESS` 마지막 생성
+10. 같은 filesystem 안에서 최종 directory로 atomic rename
 
 Manifest에는 password, token, DB URL, email을 넣지 않는다. Memory에 있는
 진행 중 room과 timer는 backup 대상이 아니며, persisted `IN_PROGRESS` game은
@@ -150,7 +158,8 @@ lock을 사용한다.
 - recent: 최신 정상 snapshot 4개
 - daily: 지난 7 calendar day마다 06:00 이후 첫 정상 snapshot 1개
 - recent/daily 중복 제거
-- `SUCCESS`, manifest와 dump checksum을 다시 통과한 snapshot만 정상본
+- `SUCCESS`, manifest, dump checksum과 dump-derived row-count provenance를
+  다시 통과한 snapshot만 정상본
 - symlink, 예상 밖 이름, 불완전 snapshot은 삭제 후보에서 제외
 - 결과: `<backup-root>/retention-plan.json`
 

@@ -504,6 +504,10 @@ schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다
 migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
 사용한다.
 
+One-shot migration은 candidate API/Web image pair를 subprocess의 Compose
+interpolation에만 주입하고 `--pull never`로 이미 검증한 local image를 사용한다.
+성공 전에는 production `.env`, state/current와 실행 중 API/Web을 바꾸지 않는다.
+
 ### 중단된 runtime config transaction 복구
 
 v2 배포가 강제 종료되거나 host가 재시작되어
@@ -560,8 +564,10 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
   함께 가리키는 immutable release Compose만 사용한다. v2 state가 아직 없는
   기존 설치에서만 app directory의 legacy Compose를 사용한다.
 - mode `700`의 temporary directory 안에 custom-format dump를 기록한다.
-- `pg_restore --list`, engine/version, 중요 table row count와 dump SHA-256을
-  검증한다.
+- `pg_restore --list`로 archive를 검증하고, DB에 연결하지 않은
+  `pg_restore --data-only --schema=public` COPY stream에서 같은 archive
+  snapshot의 public table row count를 계산한다. Engine/version과 dump
+  SHA-256도 함께 기록한다.
 - `manifest.json`을 만든 뒤 `SUCCESS`를 마지막으로 생성하고 같은 filesystem의
   `guess-pokemon-production-YYYYMMDDTHHMMSSZ/` directory로 원자 이동한다.
 - 최근 정상 snapshot 4개와 지난 7 calendar day마다 KST 06:00 이후 첫 정상

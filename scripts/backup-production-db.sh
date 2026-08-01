@@ -426,6 +426,7 @@ final_dir="${BACKUP_DIR}/guess-pokemon-production-${timestamp}"
 db_dump_file="${work_dir}/database/dump"
 db_version_file="${work_dir}/database/version.txt"
 record_counts_file="${work_dir}/database/record-counts.tsv"
+archive_list_file="${work_dir}/database/.archive.list"
 
 if [[ -e "${final_dir}" ]]; then
   fail "backup with the same timestamp already exists"
@@ -449,7 +450,9 @@ if [[ ! -s "${db_dump_file}" ]]; then
   fail "generated archive is empty"
 fi
 
-compose exec -T db pg_restore --list <"${db_dump_file}" >/dev/null
+compose exec -T db pg_restore --list \
+  <"${db_dump_file}" \
+  >"${archive_list_file}"
 
 # Variables expand inside the database container, not in this host shell.
 # shellcheck disable=SC2016
@@ -463,34 +466,81 @@ compose exec -T db /bin/sh -ceu '
     --command "SHOW server_version"
 ' >"${db_version_file}"
 
-# Variables expand inside the database container, not in this host shell.
-# shellcheck disable=SC2016
-compose exec -T db /bin/sh -ceu '
-  # BACKUP_QUERY=record-counts
-  psql \
-    --username "${POSTGRES_USER}" \
-    --dbname "${POSTGRES_DB}" \
-    --no-align \
-    --tuples-only \
-    --command "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = '\''public'\'' ORDER BY tablename" \
-    | while IFS= read -r table_name; do
-        case "${table_name}" in
-          ""|*[!A-Za-z0-9_]*)
-            printf "unsupported table name in backup inventory\n" >&2
-            exit 1
-            ;;
-        esac
-        row_count="$(
-          psql \
-            --username "${POSTGRES_USER}" \
-            --dbname "${POSTGRES_DB}" \
-            --no-align \
-            --tuples-only \
-            --command "SELECT COUNT(*) FROM public.\"${table_name}\""
-        )"
-        printf "%s\t%s\n" "${table_name}" "${row_count}"
-      done
-' >"${record_counts_file}"
+# pg_restore emits the data saved in the custom archive without connecting to
+# a database. Counting its COPY stream keeps recordCounts on the pg_dump
+# snapshot instead of observing a newer live database state.
+compose exec -T db pg_restore \
+  --data-only \
+  --schema=public \
+  --strict-names \
+  --no-owner \
+  --no-privileges \
+  <"${db_dump_file}" \
+  | "${PYTHON_BIN}" -c '
+import pathlib
+import re
+import sys
+
+archive_list_path = pathlib.Path(sys.argv[1])
+safe_name = r"[A-Za-z0-9_]+"
+copy_header = re.compile(
+    rf"^COPY public\.({safe_name}) \([^)]*\) FROM stdin;$"
+)
+
+record_counts = {}
+for line_number, raw_line in enumerate(
+    archive_list_path.read_text(encoding="utf-8").splitlines(), start=1
+):
+    fields = raw_line.split()
+    if (
+        len(fields) >= 8
+        and fields[0][:-1].isdigit()
+        and fields[0].endswith(";")
+        and fields[3:6] == ["TABLE", "DATA", "public"]
+    ):
+        table_name = fields[6]
+        if not re.fullmatch(safe_name, table_name):
+            raise SystemExit(f"unsupported TABLE DATA entry at TOC line {line_number}")
+        if table_name in record_counts:
+            raise SystemExit(f"duplicate TABLE DATA entry at TOC line {line_number}")
+        record_counts[table_name] = 0
+    elif " TABLE DATA public " in raw_line:
+        raise SystemExit(f"unsupported TABLE DATA entry at TOC line {line_number}")
+
+if not record_counts:
+    raise SystemExit("archive public table inventory is empty")
+
+current_table = None
+seen_copy = set()
+for line_number, raw_line in enumerate(sys.stdin, start=1):
+    line = raw_line.rstrip("\r\n")
+    if current_table is not None:
+        if line == r"\.":
+            current_table = None
+        else:
+            record_counts[current_table] += 1
+        continue
+
+    if line.startswith("COPY "):
+        match = copy_header.fullmatch(line)
+        if not match:
+            raise SystemExit(f"unsupported COPY header at data line {line_number}")
+        table_name = match.group(1)
+        if table_name not in record_counts or table_name in seen_copy:
+            raise SystemExit(f"unexpected COPY table at data line {line_number}")
+        seen_copy.add(table_name)
+        current_table = table_name
+
+if current_table is not None:
+    raise SystemExit("archive COPY stream is truncated")
+if seen_copy != set(record_counts):
+    raise SystemExit("archive COPY stream does not cover every public table")
+
+for table_name in sorted(record_counts):
+    print(f"{table_name}\t{record_counts[table_name]}")
+' "${archive_list_file}" >"${record_counts_file}"
+
+/bin/unlink "${archive_list_file}"
 
 application_sha=unknown
 runtime_config_digest=unknown
@@ -547,7 +597,15 @@ for raw_line in pathlib.Path(record_counts_file_value).read_text(encoding="utf-8
 if not record_counts:
     raise SystemExit("database record count inventory is empty")
 
-digest = hashlib.sha256(dump_file.read_bytes()).hexdigest()
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 manifest = {
     "schemaVersion": 1,
     "status": "success",
@@ -565,9 +623,10 @@ manifest = {
         "version": pathlib.Path(version_file_value).read_text(encoding="utf-8").strip(),
         "dumpFile": "database/dump",
         "bytes": dump_file.stat().st_size,
-        "sha256": digest,
+        "sha256": sha256(dump_file),
         "validator": "pg_restore --list",
         "recordCounts": dict(sorted(record_counts.items())),
+        "recordCountsSource": "database/dump",
     },
     "files": {
         "enabled": False,
@@ -634,19 +693,51 @@ for candidate in sorted(root.iterdir()):
             or manifest.get("environment") != "production"
         ):
             raise ValueError("manifest identity mismatch")
-        dump = candidate / manifest["database"]["dumpFile"]
+        database = manifest.get("database")
+        if not isinstance(database, dict):
+            raise ValueError("database contract missing")
+        if (
+            database.get("engine") != "postgresql"
+            or not isinstance(database.get("version"), str)
+            or not database["version"]
+            or database.get("validator") != "pg_restore --list"
+            or database.get("dumpFile") != "database/dump"
+            or type(database.get("bytes")) is not int
+            or database["bytes"] < 1
+        ):
+            raise ValueError("database contract mismatch")
+        if database.get("recordCountsSource") != "database/dump":
+            raise ValueError("record count source mismatch")
+        record_counts = database.get("recordCounts")
+        if not isinstance(record_counts, dict) or not record_counts:
+            raise ValueError("record count inventory missing")
+        for table_name, row_count in record_counts.items():
+            if (
+                not re.fullmatch(r"[A-Za-z0-9_]+", table_name)
+                or type(row_count) is not int
+                or row_count < 0
+            ):
+                raise ValueError("record count inventory invalid")
+
+        dump = candidate / database["dumpFile"]
         if not dump.is_file() or dump.is_symlink():
             raise ValueError("dump missing")
-        if dump.stat().st_size != manifest["database"]["bytes"]:
+        if dump.stat().st_size != database["bytes"]:
             raise ValueError("dump size mismatch")
-        if sha256(dump) != manifest["database"]["sha256"]:
+        if sha256(dump) != database["sha256"]:
             raise ValueError("dump checksum mismatch")
-        files = manifest["files"]
+        files = manifest.get("files")
+        if not isinstance(files, dict):
+            raise ValueError("file contract missing")
         checksum_file = candidate / files["manifest"]
         if (
             files.get("enabled") is not False
-            or files.get("count") != 0
-            or files.get("bytes") != 0
+            or files.get("directory") is not None
+            or files.get("manifest") != "files/sha256.txt"
+            or type(files.get("count")) is not int
+            or files["count"] != 0
+            or type(files.get("bytes")) is not int
+            or files["bytes"] != 0
             or not checksum_file.is_file()
             or checksum_file.is_symlink()
             or checksum_file.stat().st_size != 0

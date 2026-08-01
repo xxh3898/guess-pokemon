@@ -91,6 +91,15 @@ case "${command_name}" in
     arguments=" $* "
     if [[ "${arguments}" == *" run "* ]] \
       && [[ "${arguments}" == *"com.guesspokemon.ops.MigrationMain"* ]] \
+      && [[ -n "${FAKE_DOCKER_LOG:-}" ]]
+    then
+      printf 'migration-images API_IMAGE=%s WEB_IMAGE=%s\n' \
+        "${API_IMAGE:-unset}" \
+        "${WEB_IMAGE:-unset}" \
+        >>"${FAKE_DOCKER_LOG}"
+    fi
+    if [[ "${arguments}" == *" run "* ]] \
+      && [[ "${arguments}" == *"com.guesspokemon.ops.MigrationMain"* ]] \
       && [[ "${FAKE_MIGRATION_FAIL:-false}" == true ]]
     then
       exit 1
