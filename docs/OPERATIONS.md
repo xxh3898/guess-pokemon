@@ -375,8 +375,10 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 - workflow, `.dockerignore`, `compose.test.yaml`, 변경 감지 script 변경은
   분류 안전성을 위해 전체 검증을 실행한다.
 - 분류되지 않은 새 build/runtime path도 누락을 막기 위해 전체 검증으로
-  fail-safe fallback한다. `AGENTS.md` 같은 명시적 metadata만 heavy step을
-  모두 safe skip한다.
+  fail-safe fallback한다. `AGENTS.md`, `.editorconfig`, `.gitignore`처럼
+  build·checkout에 영향을 주지 않는 명시적 metadata만 heavy step을 모두
+  safe skip한다. text·line-ending·filter checkout 정책을 제어하는
+  `.gitattributes` 변경은 전체 검증을 실행한다.
 - backend 검증은 runner의 Gradle wrapper·dependency cache를 test
   container에 연결한다. Gradle test task 결과 cache는 사용하지 않아
   각 validation에서 test를 다시 실행한다.

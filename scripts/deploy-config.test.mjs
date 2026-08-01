@@ -208,6 +208,16 @@ test("should_skipExpensiveChecks_when_unrelatedMetadataChanges", () => {
   });
 });
 
+test("should_runEveryCheck_when_gitAttributesChangeCheckoutPolicy", () => {
+  assert.deepEqual(classifyPaths([".gitattributes"]), {
+    backend: "true",
+    frontend: "true",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "true",
+  });
+});
+
 test("should_runEveryCheck_when_unclassifiedRuntimePathChanges", () => {
   assert.deepEqual(classifyPaths(["new-runtime/tool.toml"]), {
     backend: "true",

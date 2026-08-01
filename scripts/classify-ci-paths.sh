@@ -41,7 +41,7 @@ for changed_path in "$@"; do
     infra/* | scripts/* | compose*.yaml | runtime-config.Dockerfile | .env.example | .env.production.example | README.md | docs/*)
       infrastructure=true
       ;;
-    AGENTS.md | .editorconfig | .gitattributes | .gitignore)
+    AGENTS.md | .editorconfig | .gitignore)
       ;;
     *)
       matched=false
