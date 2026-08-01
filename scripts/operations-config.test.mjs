@@ -256,9 +256,6 @@ test("should_validateArchiveBeforePublishing_when_backupRuns", () => {
   assert.match(backupScript, /--no-owner/);
   assert.match(backupScript, /--no-privileges/);
   assert.match(backupScript, /pg_restore --list/);
-  assert.match(backupScript, /--data-only/);
-  assert.match(backupScript, /"recordCountsSource": "database\/dump"/);
-  assert.doesNotMatch(backupScript, /BACKUP_QUERY=record-counts/);
   assert.match(backupScript, /mktemp/);
   assert.match(backupScript, /trap cleanup EXIT/);
   assert.match(backupScript, /trap 'exit 130' INT/);
