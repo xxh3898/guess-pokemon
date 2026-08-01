@@ -87,10 +87,6 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   assert.match(validateWorkflow, /changes:\n    name: Detect changes/);
   assert.match(
     validateWorkflow,
-    /mapfile -d '' -t changed_paths < <\([\s\S]*git diff[\s\S]*--no-renames[\s\S]*--name-only[\s\S]*-z/,
-  );
-  assert.match(
-    validateWorkflow,
     /\.\/scripts\/classify-ci-paths\.sh "\$\{changed_paths\[@\]\}"/,
   );
   assert.match(
@@ -102,6 +98,48 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   assert.doesNotMatch(
     validateWorkflow,
     /backend_image|frontend_image|backend-image|frontend-image/,
+  );
+});
+
+test("should_failClosed_when_changedPathDiffFails", () => {
+  const tempFileOffset = validateWorkflow.indexOf(
+    'changed_paths_file="$(mktemp "${RUNNER_TEMP}/ci-changed-paths.XXXXXX")"',
+  );
+  const diffGuardOffset = validateWorkflow.indexOf(
+    "if ! git diff",
+    tempFileOffset,
+  );
+  const mapfileOffset = validateWorkflow.indexOf(
+    "mapfile -d '' -t changed_paths",
+    diffGuardOffset,
+  );
+  const classifierOffset = validateWorkflow.indexOf(
+    './scripts/classify-ci-paths.sh "${changed_paths[@]}"',
+    mapfileOffset,
+  );
+
+  assert.doesNotMatch(
+    validateWorkflow,
+    /mapfile -d '' -t changed_paths < <\([\s\S]*git diff/,
+  );
+  assert.ok(tempFileOffset >= 0, "Missing exact changed-path temp file");
+  assert.ok(diffGuardOffset > tempFileOffset, "Diff must follow temp file setup");
+  assert.ok(mapfileOffset > diffGuardOffset, "Mapfile must follow checked diff");
+  assert.ok(
+    classifierOffset > mapfileOffset,
+    "Classifier must run only after the checked diff is loaded",
+  );
+  assert.match(
+    validateWorkflow,
+    /trap 'rm -f -- "\$\{changed_paths_file\}"' EXIT/,
+  );
+  assert.match(
+    validateWorkflow.slice(diffGuardOffset, mapfileOffset),
+    /if ! git diff \\\n+\s+--no-renames \\\n+\s+--name-only \\\n+\s+-z \\\n+\s+"\$\{base_sha\}" \\\n+\s+"\$\{GITHUB_SHA\}" \\\n+\s+>"\$\{changed_paths_file\}"; then[\s\S]*printf '%s\\n' 'Failed to detect changed paths\.' >&2[\s\S]*exit 1[\s\S]*fi/,
+  );
+  assert.match(
+    validateWorkflow.slice(mapfileOffset, classifierOffset),
+    /mapfile -d '' -t changed_paths \\\n+\s+<"\$\{changed_paths_file\}"/,
   );
 });
 

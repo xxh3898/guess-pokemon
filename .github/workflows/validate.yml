@@ -63,14 +63,22 @@ jobs:
             exit 0
           fi
 
-          mapfile -d '' -t changed_paths < <(
-            git diff \
+          changed_paths_file="$(mktemp "${RUNNER_TEMP}/ci-changed-paths.XXXXXX")"
+          trap 'rm -f -- "${changed_paths_file}"' EXIT
+
+          if ! git diff \
               --no-renames \
               --name-only \
               -z \
               "${base_sha}" \
-              "${GITHUB_SHA}"
-          )
+              "${GITHUB_SHA}" \
+              >"${changed_paths_file}"; then
+            printf '%s\n' 'Failed to detect changed paths.' >&2
+            exit 1
+          fi
+
+          mapfile -d '' -t changed_paths \
+            <"${changed_paths_file}"
           ./scripts/classify-ci-paths.sh "${changed_paths[@]}"
 
   infrastructure:
