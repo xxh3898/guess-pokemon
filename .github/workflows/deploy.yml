@@ -1,4 +1,4 @@
-name: Publish
+name: Publish and Deploy
 
 on:
   push:
@@ -25,9 +25,18 @@ env:
   RUNTIME_CONFIG_IMAGE_NAME: ghcr.io/xxh3898/guess-pokemon-runtime-config
 
 jobs:
+  validate:
+    name: Validate release
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
   publish:
     name: Publish ARM64 images
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.MAC_MINI_DEPLOY_ENABLED == 'true'
+    needs:
+      - validate
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     permissions:
@@ -115,9 +124,7 @@ jobs:
           file: backend/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ env.API_IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.API_IMAGE_NAME }}:main
+          tags: ${{ env.API_IMAGE_NAME }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -133,9 +140,7 @@ jobs:
           file: frontend/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.WEB_IMAGE_NAME }}:main
+          tags: ${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -185,7 +190,7 @@ jobs:
 
   deploy:
     name: Deploy to home-mini
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.MAC_MINI_DEPLOY_ENABLED == 'true'
     needs:
       - publish
     runs-on: ubuntu-24.04

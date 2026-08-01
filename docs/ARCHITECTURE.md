@@ -525,7 +525,10 @@ API 시작 시 DB의 `IN_PROGRESS` game을 한 transaction에서 `ABORTED/SERVER
 - Cloudflare가 외부 TLS를 종료하고 Tunnel이 outbound connection을 만든다. router inbound port는 열지 않는다.
 - Spring은 신뢰하는 proxy header만 처리하도록 설정한다.
 - Mac mini 운영 DB는 MacBook 개발 DB와 다른 DB 이름·계정·secret·named volume을 사용한다.
-- 운영 migration은 Testcontainers 검증을 통과한 동일한 Flyway 파일을 backup 뒤 적용한다.
+- 운영 migration은 Testcontainers 검증을 통과한 동일한 Flyway 파일을 local
+  snapshot 뒤 candidate API image의 isolated `MigrationMain` one-shot으로
+  적용하고 validate한다. 일반 API container의 Flyway는 끄며 startup의 JPA
+  validate로 schema와 mapping을 다시 확인한다.
 
 Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유하지 않는다. schema source는 하나의 Flyway migration 집합으로 유지한다.
 
@@ -562,8 +565,13 @@ Testcontainers, MacBook 개발, Mac mini 운영 환경은 DB와 volume을 공유
   - reconnect start/success/timeout
 - password, CSRF token, session ID, question 본문, 실제 정답은 debug log에도 남기지 않는다.
 - `docs/OPERATIONS.md`는 start, stop, update, backup, restore rehearsal, tunnel 전환, rollback을 관리한다.
-- `scripts/backup-db.sh`는 custom-format dump를 private temporary file에 만든 뒤 `pg_restore --list`를 통과한 archive만 최종 이름으로 공개한다.
-- backup 자동 삭제와 운영 restore는 자동화하지 않는다.
+- 개발용 `scripts/backup-db.sh`는 custom-format dump를 private temporary
+  file에 만든 뒤 `pg_restore --list`를 통과한 archive만 최종 이름으로
+  공개한다.
+- 운영 worker는 DB dump, engine/version, row count, manifest와 `SUCCESS`를
+  가진 project snapshot만 원자 공개하고 recent 4 + daily 7 retention을
+  dry-run plan으로만 계산한다.
+- 운영 snapshot 자동 삭제와 운영 restore는 자동화하지 않는다.
 
 ## 16. 확장 경계
 

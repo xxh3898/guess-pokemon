@@ -89,7 +89,12 @@ case "${command_name}" in
     ;;
   compose)
     arguments=" $* "
-    if [[ "${arguments}" == *" up "* ]] \
+    if [[ "${arguments}" == *" run "* ]] \
+      && [[ "${arguments}" == *"com.guesspokemon.ops.MigrationMain"* ]] \
+      && [[ "${FAKE_MIGRATION_FAIL:-false}" == true ]]
+    then
+      exit 1
+    elif [[ "${arguments}" == *" up "* ]] \
       && [[ -n "${FAKE_FAIL_APP_UP_ONCE_FILE:-}" ]] \
       && [[ ! -e "${FAKE_FAIL_APP_UP_ONCE_FILE}" ]]
     then
@@ -149,6 +154,7 @@ case "${command_name}" in
       db_tmpfs_json='[]'
       db_service_extra="${FAKE_RENDER_DB_SERVICE_EXTRA:-}"
       api_environment_extra="${FAKE_RENDER_API_EXTRA_ENVIRONMENT:-}"
+      flyway_enabled=false
       api_healthcheck='{"test":["CMD-SHELL","wget -qO- http://127.0.0.1:8080/actuator/health/readiness | grep -q '\''\"status\":\"UP\"'\''"],"interval":"10s"}'
       api_healthcheck="${FAKE_RENDER_API_HEALTHCHECK_JSON:-${api_healthcheck}}"
       api_command_json="${FAKE_RENDER_API_COMMAND_JSON:-null}"
@@ -165,6 +171,7 @@ case "${command_name}" in
         db_command_json="${FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON:-${db_command_json}}"
         db_entrypoint_json="${FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON:-${db_entrypoint_json}}"
         api_environment_extra="${api_environment_extra}${FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT:-}"
+        flyway_enabled="${FAKE_RENDER_CANDIDATE_FLYWAY_ENABLED:-${flyway_enabled}}"
         api_healthcheck="${FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON:-${api_healthcheck}}"
         api_user_json="${FAKE_RENDER_CANDIDATE_API_USER_JSON:-${api_user_json}}"
         api_tmpfs_json="${FAKE_RENDER_CANDIDATE_API_TMPFS_JSON:-${api_tmpfs_json}}"
@@ -191,7 +198,7 @@ case "${command_name}" in
       extra_service_json="${FAKE_RENDER_EXTRA_SERVICE_JSON:-}"
 
       printf \
-        '{"name":"guess-pokemon","services":{"db":{"image":"%s","environment":{"POSTGRES_DB":"guess_pokemon","POSTGRES_USER":"guess_pokemon","POSTGRES_PASSWORD":"test-password"%s},"command":%s,"entrypoint":%s,"user":%s,"tmpfs":%s,"healthcheck":{"test":["CMD-SHELL","pg_isready"]},"networks":%s,"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql","volume":{%s}}],"logging":%s%s},"api":{"image":"%s","command":%s,"entrypoint":%s,"user":%s,"tmpfs":%s,"environment":{"SPRING_DATASOURCE_URL":"jdbc:postgresql://db:5432/guess_pokemon","SPRING_DATASOURCE_USERNAME":"guess_pokemon","SPRING_DATASOURCE_PASSWORD":"test-password","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":%s,"networks":%s,"ports":%s,"privileged":%s,"cap_add":%s,"devices":%s,"use_api_socket":%s,"pid":%s,"volumes":%s,"volumes_from":%s,"configs":%s,"secrets":%s,"env_file":%s,"extra_hosts":%s,"external_links":%s,"links":%s,"logging":%s%s},"%s":{"image":"%s","user":%s,"tmpfs":%s,"healthcheck":{"test":["CMD","wget","-q","-O","/dev/null","http://127.0.0.1/actuator/health/readiness"]},"networks":%s,"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}],"logging":%s%s}%s},"networks":{"application":%s,"egress":%s,"edge":%s},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"%s}}}\n' \
+        '{"name":"guess-pokemon","services":{"db":{"image":"%s","environment":{"POSTGRES_DB":"guess_pokemon","POSTGRES_USER":"guess_pokemon","POSTGRES_PASSWORD":"test-password"%s},"command":%s,"entrypoint":%s,"user":%s,"tmpfs":%s,"healthcheck":{"test":["CMD-SHELL","pg_isready"]},"networks":%s,"volumes":[{"type":"volume","source":"postgres-data","target":"/var/lib/postgresql","volume":{%s}}],"logging":%s%s},"api":{"image":"%s","command":%s,"entrypoint":%s,"user":%s,"tmpfs":%s,"environment":{"SPRING_DATASOURCE_URL":"jdbc:postgresql://db:5432/guess_pokemon","SPRING_DATASOURCE_USERNAME":"guess_pokemon","SPRING_DATASOURCE_PASSWORD":"test-password","SPRING_FLYWAY_ENABLED":"%s","POKEMON_ARTWORK_ENABLED":"true"%s},"healthcheck":%s,"networks":%s,"ports":%s,"privileged":%s,"cap_add":%s,"devices":%s,"use_api_socket":%s,"pid":%s,"volumes":%s,"volumes_from":%s,"configs":%s,"secrets":%s,"env_file":%s,"extra_hosts":%s,"external_links":%s,"links":%s,"logging":%s%s},"%s":{"image":"%s","user":%s,"tmpfs":%s,"healthcheck":{"test":["CMD","wget","-q","-O","/dev/null","http://127.0.0.1/actuator/health/readiness"]},"networks":%s,"volumes":[{"type":"bind","source":"%s","target":"/etc/nginx/conf.d/00-cloudflare-real-ip.conf","read_only":true}],"logging":%s%s}%s},"networks":{"application":%s,"egress":%s,"edge":%s},"volumes":{"postgres-data":{"name":"guess-pokemon_postgres-data"%s}}}\n' \
         "${db_image}" \
         "${db_environment_extra}" \
         "${db_command_json}" \
@@ -207,6 +214,7 @@ case "${command_name}" in
         "${api_entrypoint_json}" \
         "${api_user_json}" \
         "${api_tmpfs_json}" \
+        "${flyway_enabled}" \
         "${api_environment_extra}" \
         "${api_healthcheck}" \
         "${api_networks_json}" \

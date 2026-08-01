@@ -69,6 +69,7 @@ services:
       - ./docs:/workspace/docs:ro
       - ./frontend/Dockerfile:/workspace/frontend/Dockerfile:ro
       - ./infra:/workspace/infra:ro
+      - ./launchd:/workspace/launchd:ro
       - ./scripts:/workspace/scripts:ro
 
   nginx-config-test:

@@ -6,6 +6,7 @@ import test from "node:test";
 const [
   validateWorkflow,
   deployWorkflow,
+  productionCompose,
   deployScript,
   restrictedWrapper,
   productionBackupBootstrap,
@@ -17,6 +18,7 @@ const [
 ] = await Promise.all([
   read("../.github/workflows/validate.yml"),
   read("../.github/workflows/deploy.yml"),
+  read("../compose.production.yaml"),
   read("./deploy-guess-pokemon.sh"),
   read("./deploy-guess-pokemon-ci.sh"),
   read("./backup-production-db-bootstrap.sh"),
@@ -143,6 +145,26 @@ test("should_failClosed_when_changedPathDiffFails", () => {
   );
 });
 
+test("should_forceFullValidationForMainRelease", () => {
+  const fullReleaseGuard =
+    'if [[ "${REF_NAME}" == "refs/heads/main" ]]; then';
+  const guardOffset = validateWorkflow.indexOf(fullReleaseGuard);
+  const eventCaseOffset = validateWorkflow.indexOf(
+    'case "${EVENT_NAME}" in',
+  );
+
+  assert.match(validateWorkflow, /REF_NAME: \$\{\{ github\.ref \}\}/);
+  assert.ok(guardOffset >= 0, "Missing main release full-validation guard");
+  assert.ok(
+    guardOffset < eventCaseOffset,
+    "Main release guard must run before path-aware event classification",
+  );
+  assert.match(
+    validateWorkflow.slice(guardOffset, eventCaseOffset),
+    /\.\/scripts\/classify-ci-paths\.sh \\\n\s+"\.github\/workflows\/validate\.yml"[\s\S]*exit 0/,
+  );
+});
+
 test("should_gateEachRequiredJobWithItsMatchingChangeOutput", () => {
   const outputByJob = new Map([
     ["infrastructure", "infrastructure"],
@@ -261,6 +283,21 @@ test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
   });
 });
 
+test("should_runOnlyInfrastructureChecks_when_launchAgentChanges", () => {
+  assert.deepEqual(
+    classifyPaths([
+      "launchd/com.homeserver.guess-pokemon-backup.plist.example",
+    ]),
+    {
+      backend: "false",
+      frontend: "false",
+      infrastructure: "true",
+      api_image: "false",
+      web_image: "false",
+    },
+  );
+});
+
 test("should_runOnlyInfrastructureChecks_when_runtimeConfigImageChanges", () => {
   assert.deepEqual(classifyPaths(["runtime-config.Dockerfile"]), {
     backend: "false",
@@ -370,7 +407,7 @@ test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
   );
 });
 
-test("should_publishBothShaImagesOnlyFromMain", () => {
+test("should_validateThenPublishBothShaImagesOnlyFromMain", () => {
   assert.match(
     deployWorkflow,
     /push:\n    branches:\n      - main/,
@@ -395,16 +432,22 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
     deployWorkflow,
     /publish:\n    name: Publish ARM64 images[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
-  assert.doesNotMatch(deployWorkflow, /\n  validate:\n/);
-  assert.doesNotMatch(
-    workflowJob(deployWorkflow, "publish"),
-    /^    needs:/m,
-  );
-  assert.doesNotMatch(
+  assert.match(
     deployWorkflow,
-    /uses: \.\/\.github\/workflows\/validate\.yml/,
+    /validate:\n    name: Validate release[\s\S]*uses: \.\/\.github\/workflows\/validate\.yml/,
+  );
+  assert.match(
+    workflowJob(deployWorkflow, "publish"),
+    /^    needs:\n      - validate/m,
   );
   assert.doesNotMatch(deployWorkflow, /docker\/setup-qemu-action/);
+  assert.doesNotMatch(deployWorkflow, /:latest|:main/);
+  assert.equal(
+    deployWorkflow.match(
+      /if: github\.ref == 'refs\/heads\/main' && vars\.MAC_MINI_DEPLOY_ENABLED == 'true'/g,
+    )?.length,
+    2,
+  );
   assert.match(
     deployWorkflow,
     /needs:\n      - publish[\s\S]*packages: read[\s\S]*id-token: write/,
@@ -630,30 +673,83 @@ test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
   );
 });
 
-test("should_validateArchiveBeforePruningExpiredProjectBackups", () => {
+test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () => {
   const restoreList = productionBackupScript.indexOf("pg_restore --list");
-  const finalLink = productionBackupScript.indexOf(
-    '/bin/ln "${temporary_file}" "${final_file}"',
+  const successMarker = productionBackupScript.indexOf(
+    'printf \'snapshot complete\\n\' >"${work_dir}/SUCCESS"',
   );
-  const retentionLoop = productionBackupScript.indexOf(
-    'for candidate in "${BACKUP_DIR}"/guess-pokemon-production-*.dump',
+  const finalMove = productionBackupScript.indexOf(
+    '/bin/mv "${work_dir}" "${final_dir}"',
   );
+  const retention = productionBackupScript.indexOf('"mode": "dry-run"');
+  const offsite = productionBackupScript.indexOf("stage_offsite_snapshot() {");
 
   assert.ok(restoreList >= 0);
-  assert.ok(finalLink > restoreList);
-  assert.ok(retentionLoop > finalLink);
+  assert.ok(successMarker > restoreList);
+  assert.ok(finalMove > successMarker);
+  assert.ok(retention > finalMove);
+  assert.ok(offsite > retention);
   assert.match(
     productionBackupScript,
-    /RETENTION_SECONDS=\$\(\(3 \* 24 \* 60 \* 60\)\)/,
+    /Usage: backup-guess-pokemon\.sh \[--trigger scheduled\|predeploy\]/,
+  );
+  assert.match(productionBackupScript, /"schemaVersion": 1/);
+  assert.match(productionBackupScript, /"status": "success"/);
+  assert.match(productionBackupScript, /"engine": "postgresql"/);
+  assert.match(
+    productionBackupScript,
+    /"recordCounts": dict\(sorted\(record_counts\.items\(\)\)\)/,
   );
   assert.match(
     productionBackupScript,
-    /\^guess-pokemon-production-\[0-9\]\{8\}T\[0-9\]\{6\}Z\\\.dump\$/,
+    /"policy": \{"recent": 4, "dailyAtOrAfterKst": "06:00", "dailyDays": 7\}/,
   );
+  assert.match(productionBackupScript, /"\$\{AGE_BIN\}" -R "\$\{AGE_RECIPIENT_FILE\}"/);
+  assert.match(productionBackupScript, /\.XXXXXX\.partial/);
+  assert.match(productionBackupScript, /iCloud handoff checksum mismatch/);
+  assert.match(productionBackupScript, /age recipient file mode must be 600/);
+  assert.match(
+    productionBackupScript,
+    /prepare_private_directory "\$\{BACKUP_DIR\}"/,
+  );
+  assert.match(
+    productionBackupScript,
+    /readonly HEARTBEAT_CONFIG_FILE="\$\{APP_DIR\}\/backup-heartbeats\.conf"/,
+  );
+  assert.match(
+    productionBackupScript,
+    /backup heartbeat configuration mode must be 600/,
+  );
+  assert.match(
+    productionBackupScript,
+    /backup heartbeat configuration contains unexpected content/,
+  );
+  assert.match(productionBackupScript, /Backup heartbeat delivery failed: %s/);
   assert.doesNotMatch(
     productionBackupScript,
     /rm -rf|find[^\n]*-delete|down[^\n]*(?:--volumes|-v)/,
   );
+});
+
+test("should_runOneShotFlywayBeforeCutoverAndGateSuccessOnPublicSmoke", () => {
+  const pending = deployScript.lastIndexOf("write_pending_state \\");
+  const migration = deployScript.lastIndexOf("if ! run_one_shot_migration; then");
+  const imageWrite = deployScript.lastIndexOf(
+    'write_image_env "${new_api_image}" "${new_web_image}"',
+  );
+  const publicSmoke = deployScript.lastIndexOf("if public_smoke; then");
+  const successState = deployScript.lastIndexOf("write_success_state \\");
+
+  assert.match(productionCompose, /SPRING_FLYWAY_ENABLED: "false"/);
+  assert.match(
+    deployScript,
+    /-Dloader\.main=\$\{MIGRATION_MAIN_CLASS\}[\s\S]*PropertiesLauncher/,
+  );
+  assert.ok(pending >= 0);
+  assert.ok(migration > pending);
+  assert.ok(imageWrite > migration);
+  assert.ok(publicSmoke > imageWrite);
+  assert.ok(successState > publicSmoke);
 });
 
 test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
@@ -667,7 +763,19 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
     operations,
     /15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다/,
   );
-  assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
+  assert.match(
+    operations,
+    /최근 정상 snapshot 4개와 지난 7 calendar day마다 KST 06:00 이후 첫 정상/,
+  );
+  assert.match(operations, /현재 worker는 실제 삭제 없이\s+dry-run만 수행한다/);
+  assert.match(
+    operations,
+    /candidate API image의 `MigrationMain`을 one-shot으로 실행해 Flyway/,
+  );
+  assert.match(
+    operations,
+    /public Web `\/`, deep link `\/history`, API readiness/,
+  );
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
   assert.match(deployScript, /readonly PYTHON_BIN=\/usr\/bin\/python3/);
   assert.match(productionBackupScript, /readonly PROJECT_NAME=guess-pokemon/);
@@ -681,7 +789,10 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
     operations,
     /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,
   );
-  assert.match(operations, /이전 API·Web SHA와 runtime config를 함께 복구한다/);
+  assert.match(
+    operations,
+    /이전 API·Web SHA와 runtime\s+config를 함께 복구하고 public smoke를 다시 확인한다/,
+  );
 });
 
 test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {

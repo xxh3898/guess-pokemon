@@ -56,7 +56,7 @@ docker compose --env-file .env up --build
 
 처음 접속했다면 회원가입 후 로그인하세요. 로비에서 새 방을 만들거나 참가 가능한 방을 선택할 수 있으며, 다른 사용자에게 6자리 방 코드를 전달해 입장시킬 수도 있습니다.
 
-개발 환경, 데이터베이스 관리, 외부 공개, 백업과 복구 방법은 [운영 가이드](docs/OPERATIONS.md)를 참고하세요.
+개발·CI/CD·백업의 공통 흐름은 [개발·배포·백업 운영 플레이북](docs/DEVELOPMENT-DEPLOYMENT-BACKUP.md), 세부 운영 명령은 [운영 가이드](docs/OPERATIONS.md)를 참고하세요.
 
 ## 프로젝트 구조
 
@@ -65,6 +65,7 @@ guess-pokemon/
 ├── frontend/          # React SPA
 ├── backend/           # Spring Boot API·실시간 게임 서버
 ├── infra/             # Nginx와 외부 공개 설정
+├── launchd/           # Mac mini 예약 백업 LaunchAgent 예제
 ├── scripts/           # 전국도감·백업·구성 검증 도구
 ├── docs/              # 요구사항과 기술 명세
 ├── compose.yaml       # 기본 실행 환경

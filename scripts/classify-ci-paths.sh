@@ -38,7 +38,7 @@ for changed_path in "$@"; do
       infrastructure=true
       web_image=true
       ;;
-    infra/* | scripts/* | compose*.yaml | runtime-config.Dockerfile | .env.example | .env.production.example | README.md | docs/*)
+    infra/* | launchd/* | scripts/* | compose*.yaml | runtime-config.Dockerfile | .env.example | .env.production.example | README.md | docs/*)
       infrastructure=true
       ;;
     AGENTS.md | .editorconfig | .gitignore)
