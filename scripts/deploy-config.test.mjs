@@ -105,6 +105,64 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   );
 });
 
+test("should_gateEachRequiredJobWithItsMatchingChangeOutput", () => {
+  const outputByJob = new Map([
+    ["infrastructure", "infrastructure"],
+    ["backend", "backend"],
+    ["frontend", "frontend"],
+    ["api-image", "api_image"],
+    ["web-image", "web_image"],
+  ]);
+
+  for (const [jobId, expectedOutput] of outputByJob) {
+    const job = workflowJob(validateWorkflow, jobId);
+    const outputReferences = [
+      ...job.matchAll(/needs\.changes\.outputs\.([a-z_]+)/g),
+    ].map((match) => match[1]);
+
+    assert.match(
+      job,
+      new RegExp(
+        `needs\\.changes\\.outputs\\.${expectedOutput} != 'true'`,
+      ),
+    );
+    assert.match(
+      job,
+      new RegExp(
+        `needs\\.changes\\.outputs\\.${expectedOutput} == 'true'`,
+      ),
+    );
+    assert.deepEqual(
+      [...new Set(outputReferences)],
+      [expectedOutput],
+      `${jobId} must not reference another change output`,
+    );
+
+    const gatedSteps = job
+      .split(/^      - name: /m)
+      .slice(1)
+      .filter(
+        (step) =>
+          !step.startsWith("Fail when change detection fails\n") &&
+          !step.startsWith("Skip unrelated"),
+      );
+
+    assert.ok(gatedSteps.length > 0, `${jobId} must have gated work`);
+    for (const step of gatedSteps) {
+      const stepName = step.slice(0, step.indexOf("\n"));
+
+      assert.match(
+        step,
+        new RegExp(
+          `^        if: .*needs\\.changes\\.outputs\\.${expectedOutput} == 'true'`,
+          "m",
+        ),
+        `${jobId}/${stepName} must use ${expectedOutput}`,
+      );
+    }
+  }
+});
+
 test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
   assert.deepEqual(classifyPaths(["frontend/src/App.tsx"]), {
     backend: "false",
