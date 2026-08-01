@@ -49,19 +49,19 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
     /infrastructure:\n    name: Infrastructure checks/,
   );
   assert.match(
-    workflowJob(validateWorkflow, "backend-image"),
-    /name: Backend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "api-image"),
+    /name: API ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   assert.match(
-    workflowJob(validateWorkflow, "frontend-image"),
-    /name: Frontend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "web-image"),
+    /name: Web ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   for (const jobId of [
     "infrastructure",
     "frontend",
     "backend",
-    "backend-image",
-    "frontend-image",
+    "api-image",
+    "web-image",
   ]) {
     assert.match(
       workflowJob(validateWorkflow, jobId),
@@ -99,6 +99,10 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   );
   assert.match(validateWorkflow, /platforms: linux\/arm64/g);
   assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
+  assert.doesNotMatch(
+    validateWorkflow,
+    /backend_image|frontend_image|backend-image|frontend-image/,
+  );
 });
 
 test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
@@ -106,8 +110,8 @@ test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
     backend: "false",
     frontend: "true",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -116,8 +120,8 @@ test("should_runInfrastructureAndFrontendChecks_when_frontendDockerfileChanges",
     backend: "false",
     frontend: "true",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -126,8 +130,18 @@ test("should_runOnlyBackendChecks_when_backendSourceChanges", () => {
     backend: "true",
     frontend: "false",
     infrastructure: "false",
-    backend_image: "true",
-    frontend_image: "false",
+    api_image: "true",
+    web_image: "false",
+  });
+});
+
+test("should_runInfrastructureBackendAndApiImage_when_backendDockerfileChanges", () => {
+  assert.deepEqual(classifyPaths(["backend/Dockerfile"]), {
+    backend: "true",
+    frontend: "false",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "false",
   });
 });
 
@@ -136,8 +150,8 @@ test("should_runInfraAndFrontendImage_when_nginxChanges", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -146,8 +160,8 @@ test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
   });
 });
 
@@ -156,8 +170,8 @@ test("should_runOnlyInfrastructureChecks_when_runtimeConfigImageChanges", () => 
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
   });
 });
 
@@ -168,8 +182,8 @@ test("should_runBothScopes_when_fileMovesFromFrontendToBackend", () => {
       backend: "true",
       frontend: "true",
       infrastructure: "false",
-      backend_image: "true",
-      frontend_image: "true",
+      api_image: "true",
+      web_image: "true",
     },
   );
 });
@@ -179,8 +193,8 @@ test("should_preserveNonAsciiPath_when_frontendFileChanges", () => {
     backend: "false",
     frontend: "true",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -189,8 +203,18 @@ test("should_skipExpensiveChecks_when_unrelatedMetadataChanges", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
+  });
+});
+
+test("should_runEveryCheck_when_unclassifiedRuntimePathChanges", () => {
+  assert.deepEqual(classifyPaths(["new-runtime/tool.toml"]), {
+    backend: "true",
+    frontend: "true",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "true",
   });
 });
 
@@ -203,8 +227,8 @@ test("should_runEveryCheck_when_classifierOrWorkflowChanges", () => {
       backend: "true",
       frontend: "true",
       infrastructure: "true",
-      backend_image: "true",
-      frontend_image: "true",
+      api_image: "true",
+      web_image: "true",
     });
   }
 });

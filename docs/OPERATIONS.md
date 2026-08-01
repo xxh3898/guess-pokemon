@@ -362,7 +362,7 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 ## 13. GitHub Actions 자동 배포
 
 - `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
-  frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
+  frontend, backend, infra, Nginx 검증과 API·Web ARM64 image build를 실행한다.
 - frontend, backend, infra, API image, Web image 검증은 독립 job으로
   실행해 서로 기다리지 않는다.
 - `Detect changes`가 push 이전 SHA 또는 PR base SHA와 현재 SHA를 비교한다.
@@ -374,11 +374,18 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
   infrastructure 검사와 frontend runtime image를 함께 검증한다.
 - workflow, `.dockerignore`, `compose.test.yaml`, 변경 감지 script 변경은
   분류 안전성을 위해 전체 검증을 실행한다.
+- 분류되지 않은 새 build/runtime path도 누락을 막기 위해 전체 검증으로
+  fail-safe fallback한다. `AGENTS.md` 같은 명시적 metadata만 heavy step을
+  모두 safe skip한다.
 - backend 검증은 runner의 Gradle wrapper·dependency cache를 test
   container에 연결한다. Gradle test task 결과 cache는 사용하지 않아
   각 validation에서 test를 다시 실행한다.
 - 두 ARM64 image 검증과 `main` publish는 `ubuntu-24.04-arm`에서
   실행하며 QEMU emulation을 사용하지 않는다.
+- required image context 이름은 `API ARM64 image`, `Web ARM64 image`로
+  Cubing Hub와 통일한다. 기존 `Backend ARM64 image`,
+  `Frontend ARM64 image` protection context는 새 context가 exact PR head에서
+  성공한 뒤 별도 설정 승인으로 전환한다.
 - `main` branch protection이 PR의 다섯 validation check를 요구하므로
   `main` push에서는 같은 전체 검증을 다시 실행하지 않는다.
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.

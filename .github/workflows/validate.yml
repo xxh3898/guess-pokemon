@@ -25,8 +25,8 @@ jobs:
       backend: ${{ steps.classify.outputs.backend }}
       frontend: ${{ steps.classify.outputs.frontend }}
       infrastructure: ${{ steps.classify.outputs.infrastructure }}
-      backend_image: ${{ steps.classify.outputs.backend_image }}
-      frontend_image: ${{ steps.classify.outputs.frontend_image }}
+      api_image: ${{ steps.classify.outputs.api_image }}
+      web_image: ${{ steps.classify.outputs.web_image }}
 
     steps:
       - name: Check out repository history
@@ -276,8 +276,8 @@ jobs:
           run --rm
           backend-test
 
-  backend-image:
-    name: Backend ARM64 image
+  api-image:
+    name: API ARM64 image
     needs:
       - changes
     if: ${{ always() }}
@@ -289,20 +289,20 @@ jobs:
         if: needs.changes.result != 'success'
         run: exit 1
 
-      - name: Skip unrelated backend image build
-        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image != 'true'
-        run: echo "No backend image-related changes."
+      - name: Skip unrelated API image build
+        if: needs.changes.result == 'success' && needs.changes.outputs.api_image != 'true'
+        run: echo "No API image-related changes."
 
       - name: Check out repository
-        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.api_image == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.api_image == 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Build backend ARM64 verification image
-        if: needs.changes.result == 'success' && needs.changes.outputs.backend_image == 'true'
+      - name: Build API ARM64 verification image
+        if: needs.changes.result == 'success' && needs.changes.outputs.api_image == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -313,8 +313,8 @@ jobs:
           cache-from: type=gha,scope=guess-pokemon-api-arm64
           cache-to: type=gha,mode=max,scope=guess-pokemon-api-arm64
 
-  frontend-image:
-    name: Frontend ARM64 image
+  web-image:
+    name: Web ARM64 image
     needs:
       - changes
     if: ${{ always() }}
@@ -326,20 +326,20 @@ jobs:
         if: needs.changes.result != 'success'
         run: exit 1
 
-      - name: Skip unrelated frontend image build
-        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image != 'true'
-        run: echo "No frontend image-related changes."
+      - name: Skip unrelated Web image build
+        if: needs.changes.result == 'success' && needs.changes.outputs.web_image != 'true'
+        run: echo "No Web image-related changes."
 
       - name: Check out repository
-        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.web_image == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
+        if: needs.changes.result == 'success' && needs.changes.outputs.web_image == 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Build frontend ARM64 verification image
-        if: needs.changes.result == 'success' && needs.changes.outputs.frontend_image == 'true'
+      - name: Build Web ARM64 verification image
+        if: needs.changes.result == 'success' && needs.changes.outputs.web_image == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
