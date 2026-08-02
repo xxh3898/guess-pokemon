@@ -46,6 +46,14 @@ heartbeat_log="${test_root}/heartbeat.log"
     '  /bin/cat >/dev/null' \
     '  printf "%s\n" "1; 0 0 TABLE DATA public app_user owner" "2; 0 0 TABLE DATA public pokemon_species owner"' \
     'elif [[ " $* " == *" pg_restore --data-only "* ]]; then' \
+    '  if [[ " $* " != *" --file=- "* ]]; then' \
+    '    printf "pg_restore data-only output must be pinned to stdout with --file=-\n" >&2' \
+    '    exit 64' \
+    '  fi' \
+    '  if [[ " $* " == *" --dbname "* || " $* " == *" --dbname="* || " $* " == *" -d "* ]]; then' \
+    '    printf "pg_restore data-only inventory must not connect to a database\n" >&2' \
+    '    exit 64' \
+    '  fi' \
     '  /bin/cat >/dev/null' \
     '  if [[ -n "${MOCK_PG_RESTORE_DATA_FILE:-}" ]]; then' \
     '    /bin/cat "${MOCK_PG_RESTORE_DATA_FILE}"' \
@@ -450,6 +458,16 @@ expected_release="${v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 /usr/bin/grep -Fq -- "--project-name guess-pokemon" "${docker_log}"
 /usr/bin/grep -Fq -- "--project-directory ${expected_release}" "${docker_log}"
 /usr/bin/grep -Fq -- "--file ${expected_release}/compose.yaml" "${docker_log}"
+/usr/bin/grep -Fq -- \
+  "pg_restore --data-only --schema=public --strict-names --no-owner --no-privileges --file=-" \
+  "${docker_log}"
+if /usr/bin/grep -Eq \
+  'pg_restore --data-only .* (--dbname([= ]|$)|-d([ =]|$))' \
+  "${docker_log}"
+then
+  printf 'Archive-derived row counts must not connect pg_restore to a database\n' >&2
+  exit 1
+fi
 if /usr/bin/grep -q 'BACKUP_QUERY=record-counts' "${docker_log}"; then
   printf 'Snapshot row counts must not be queried from the live database after dump\n' >&2
   exit 1

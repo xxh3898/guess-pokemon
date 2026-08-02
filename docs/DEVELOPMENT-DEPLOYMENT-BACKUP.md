@@ -132,8 +132,8 @@ guess-pokemon-production-<UTC timestamp>/
 1. verified runtime release와 production `db` 확인
 2. PostgreSQL custom-format `pg_dump`
 3. `pg_restore --list` 구조 검증
-4. DB에 연결하지 않은 `pg_restore --data-only --schema=public` COPY stream으로
-   custom archive와 같은 snapshot의 public table row count 계산
+4. DB에 연결하지 않은 `pg_restore --data-only --schema=public --file=-`가 stdout에
+   생성한 COPY SQL stream으로 custom archive와 같은 snapshot의 public table row count 계산
 5. DB engine/version, row-count source와 중요 table별 count 기록
 6. file data 미사용을 나타내는 빈 checksum manifest 기록
 7. application SHA와 runtime config digest 기록
@@ -144,6 +144,8 @@ guess-pokemon-production-<UTC timestamp>/
 Manifest에는 password, token, DB URL, email을 넣지 않는다. Memory에 있는
 진행 중 room과 timer는 backup 대상이 아니며, persisted `IN_PROGRESS` game은
 복구 후 startup recovery 정책으로 `ABORTED` 처리한다.
+`--file=-`는 generated SQL의 output target을 stdout으로 명시한다. 이 계약이나 COPY
+coverage 검증이 실패하면 `SUCCESS`와 manifest를 만들기 전에 backup을 중단한다.
 
 ## 7. schedule과 retention
 

@@ -468,13 +468,15 @@ compose exec -T db /bin/sh -ceu '
 
 # pg_restore emits the data saved in the custom archive without connecting to
 # a database. Counting its COPY stream keeps recordCounts on the pg_dump
-# snapshot instead of observing a newer live database state.
+# snapshot instead of observing a newer live database state. Explicit stdout
+# keeps this in script-output mode without a database target.
 compose exec -T db pg_restore \
   --data-only \
   --schema=public \
   --strict-names \
   --no-owner \
   --no-privileges \
+  --file=- \
   <"${db_dump_file}" \
   | "${PYTHON_BIN}" -c '
 import pathlib

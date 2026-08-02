@@ -676,6 +676,14 @@ test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
 test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () => {
   const restoreList = productionBackupScript.indexOf("pg_restore --list");
   const snapshotInventory = productionBackupScript.indexOf("--data-only");
+  const snapshotInventoryCommandStart = productionBackupScript.lastIndexOf(
+    "compose exec -T db pg_restore",
+    snapshotInventory,
+  );
+  const snapshotInventoryCommandEnd = productionBackupScript.indexOf(
+    '| "${PYTHON_BIN}" -c',
+    snapshotInventory,
+  );
   const successMarker = productionBackupScript.indexOf(
     'printf \'snapshot complete\\n\' >"${work_dir}/SUCCESS"',
   );
@@ -687,6 +695,18 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
 
   assert.ok(restoreList >= 0);
   assert.ok(snapshotInventory > restoreList);
+  assert.ok(snapshotInventoryCommandStart >= 0);
+  assert.ok(snapshotInventoryCommandEnd > snapshotInventory);
+  const snapshotInventoryCommand = productionBackupScript.slice(
+    snapshotInventoryCommandStart,
+    snapshotInventoryCommandEnd,
+  );
+  assert.match(snapshotInventoryCommand, /--file=-/);
+  assert.match(snapshotInventoryCommand, /<"\$\{db_dump_file\}"/);
+  assert.doesNotMatch(
+    snapshotInventoryCommand,
+    /(?:^|\s)(?:-d(?:\s|=)|--dbname(?:\s|=))/m,
+  );
   assert.ok(successMarker > snapshotInventory);
   assert.ok(successMarker > restoreList);
   assert.ok(finalMove > successMarker);

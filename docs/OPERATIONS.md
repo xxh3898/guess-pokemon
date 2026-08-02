@@ -565,9 +565,12 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
   기존 설치에서만 app directory의 legacy Compose를 사용한다.
 - mode `700`의 temporary directory 안에 custom-format dump를 기록한다.
 - `pg_restore --list`로 archive를 검증하고, DB에 연결하지 않은
-  `pg_restore --data-only --schema=public` COPY stream에서 같은 archive
+  `pg_restore --data-only --schema=public --file=-`가 stdout에 생성한 COPY SQL
+  stream에서 같은 archive
   snapshot의 public table row count를 계산한다. Engine/version과 dump
   SHA-256도 함께 기록한다.
+- `--file=-` output contract나 COPY table coverage가 실패하면 `SUCCESS`와 manifest
+  게시 전에 hard failure로 종료한다. Row count를 얻기 위해 live DB에 다시 연결하지 않는다.
 - `manifest.json`을 만든 뒤 `SUCCESS`를 마지막으로 생성하고 같은 filesystem의
   `guess-pokemon-production-YYYYMMDDTHHMMSSZ/` directory로 원자 이동한다.
 - 최근 정상 snapshot 4개와 지난 7 calendar day마다 KST 06:00 이후 첫 정상
