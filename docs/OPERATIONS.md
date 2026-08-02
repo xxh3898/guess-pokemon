@@ -579,6 +579,12 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
   dry-run만 수행한다.
 - symlink, 불완전 snapshot, 예상 밖 이름과 다른 프로젝트 backup은 삭제
   후보에도 넣지 않는다.
+- 이름이 일치하는 개별 snapshot의 metadata·dump·checksum을 권한 문제나 동시
+  disappearance로 읽지 못하면 `invalidIgnored`에만 기록하고 `keep`과
+  `pruneCandidates`에서 제외한다. Worker는 해당 snapshot을 수정하거나 삭제하지
+  않는다.
+- Backup root 열거와 retention plan 임시 파일 생성·flush·원자 교체 실패는
+  fail-closed로 전체 backup을 실패시킨다.
 
 같은 Mac mini SSD의 backup은 장비 전체 장애를 복구하지 못한다.
 검증된 snapshot만 age public recipient로 암호화해 local offsite staging에

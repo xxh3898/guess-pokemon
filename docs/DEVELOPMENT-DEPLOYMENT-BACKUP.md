@@ -163,7 +163,13 @@ lock을 사용한다.
 - `SUCCESS`, manifest, dump checksum과 dump-derived row-count provenance를
   다시 통과한 snapshot만 정상본
 - symlink, 예상 밖 이름, 불완전 snapshot은 삭제 후보에서 제외
+- 이름이 일치하는 개별 snapshot의 metadata·dump·checksum을 권한 문제나 동시
+  disappearance로 읽지 못하면 `invalidIgnored`에만 기록하고 `keep`과
+  `pruneCandidates`에서 제외하며 원본을 수정하거나 삭제하지 않음
 - 결과: `<backup-root>/retention-plan.json`
+
+Backup root 열거와 `retention-plan.json` 임시 파일 생성·flush·원자 교체 실패는
+개별 snapshot 오류가 아니므로 worker 전체를 실패시킨다.
 
 최초 7일 관찰, remote decrypt/restore drill과 별도 backup 삭제 승인 전에는
 `pruneCandidates`를 실제 삭제하지 않는다.

@@ -675,9 +675,11 @@ def sha256(path):
 
 for candidate in sorted(root.iterdir()):
     match = pattern.fullmatch(candidate.name)
-    if not match or candidate.is_symlink() or not candidate.is_dir():
+    if not match:
         continue
     try:
+        if candidate.is_symlink() or not candidate.is_dir():
+            continue
         success = candidate / "SUCCESS"
         manifest_path = candidate / "manifest.json"
         if (
@@ -749,7 +751,7 @@ for candidate in sorted(root.iterdir()):
             tzinfo=dt.timezone.utc
         )
         valid.append((timestamp, candidate.name))
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
         invalid.append(candidate.name)
 
 valid.sort(reverse=True)
