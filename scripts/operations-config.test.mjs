@@ -16,6 +16,7 @@ const [
   readme,
   architecture,
   operations,
+  launchAgent,
 ] = await Promise.all([
   read("../compose.yaml"),
   read("../compose.dev.yaml"),
@@ -30,7 +31,37 @@ const [
   read("../README.md"),
   read("../docs/ARCHITECTURE.md"),
   read("../docs/OPERATIONS.md"),
+  read("../launchd/com.homeserver.guess-pokemon-backup.plist.example"),
 ]);
+
+test("should_runFourDailyBackupsFromRepositoryIndependentPath", () => {
+  assert.match(
+    launchAgent,
+    /<string>com\.homeserver\.guess-pokemon\.backup<\/string>/,
+  );
+  assert.match(
+    launchAgent,
+    /\/Users\/homeserver\/Server\/scripts\/backup\/backup-guess-pokemon-bootstrap\.sh/,
+  );
+  assert.equal(launchAgent.match(/<key>Hour<\/key>/g)?.length, 4);
+  assert.equal(launchAgent.match(/<key>Minute<\/key>/g)?.length, 4);
+  for (const hour of [0, 6, 12, 18]) {
+    assert.match(
+      launchAgent,
+      new RegExp(`<key>Hour</key>\\s*<integer>${hour}</integer>`),
+    );
+  }
+  assert.equal(
+    launchAgent.match(/<key>Minute<\/key>\s*<integer>20<\/integer>/g)?.length,
+    4,
+  );
+  assert.doesNotMatch(launchAgent, /<key>KeepAlive<\/key>/);
+  assert.doesNotMatch(launchAgent, /__REPO_DIR__|cd /);
+  assert.match(
+    serviceBlock(testCompose, "infra-test"),
+    /\.\/launchd:\/workspace\/launchd:ro/,
+  );
+});
 
 const cloudflaredImage =
   "cloudflare/cloudflared:2026.7.3@" +

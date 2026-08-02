@@ -299,7 +299,7 @@ named tunnel은 실행할 때와 같은 `compose.tunnel.yaml`과 profile을 지�
 - [ ] 운영 session cookie가 `Secure=true`다.
 - [ ] named token file 권한과 revoke 절차를 확인했다.
 - [ ] DB backup과 격리 restore rehearsal을 통과했다.
-- [ ] off-site backup 위치와 수동 보존 기준을 정했다.
+- [ ] age/iCloud remote decrypt와 격리 restore drill을 통과했다.
 - [ ] 실제 도메인과 Pokémon 관련 권리 범위를 검토했다.
 - [ ] HTTPS, REST, WSS, PC·모바일 핵심 흐름을 확인했다.
 
@@ -362,7 +362,7 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 ## 13. GitHub Actions 자동 배포
 
 - `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
-  frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
+  frontend, backend, infra, Nginx 검증과 API·Web ARM64 image build를 실행한다.
 - frontend, backend, infra, API image, Web image 검증은 독립 job으로
   실행해 서로 기다리지 않는다.
 - `Detect changes`가 push 이전 SHA 또는 PR base SHA와 현재 SHA를 비교한다.
@@ -374,11 +374,20 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
   infrastructure 검사와 frontend runtime image를 함께 검증한다.
 - workflow, `.dockerignore`, `compose.test.yaml`, 변경 감지 script 변경은
   분류 안전성을 위해 전체 검증을 실행한다.
+- 분류되지 않은 새 build/runtime path도 누락을 막기 위해 전체 검증으로
+  fail-safe fallback한다. `AGENTS.md`, `.editorconfig`, `.gitignore`처럼
+  build·checkout에 영향을 주지 않는 명시적 metadata만 heavy step을 모두
+  safe skip한다. text·line-ending·filter checkout 정책을 제어하는
+  `.gitattributes` 변경은 전체 검증을 실행한다.
 - backend 검증은 runner의 Gradle wrapper·dependency cache를 test
   container에 연결한다. Gradle test task 결과 cache는 사용하지 않아
   각 validation에서 test를 다시 실행한다.
 - 두 ARM64 image 검증과 `main` publish는 `ubuntu-24.04-arm`에서
   실행하며 QEMU emulation을 사용하지 않는다.
+- required image context 이름은 `API ARM64 image`, `Web ARM64 image`로
+  Cubing Hub와 통일한다. 기존 `Backend ARM64 image`,
+  `Frontend ARM64 image` protection context는 새 context가 exact PR head에서
+  성공한 뒤 별도 설정 승인으로 전환한다.
 - `main` branch protection이 PR의 다섯 validation check를 요구하므로
   `main` push에서는 같은 전체 검증을 다시 실행하지 않는다.
 - `main` push에서만 두 ARM64 image를 GHCR에 같은 commit SHA로 발행한다.
@@ -472,11 +481,17 @@ release만 실행한다. 첫 성공 전에는 기존 host deploy·backup worker�
    기다린다.
 6. 15분 안에 진행 중 game이 0건이 되면 배포를 자동으로 이어가고,
    15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다.
-7. custom-format DB backup과 archive 검증을 완료한다.
-8. API·Web image와 runtime config를 한 transaction으로 적용한다.
-9. 전체 service health를 제한 시간 동안 기다리고 `db`·`api`·`web`이 모두
-   실행 중인 경우에만 성공 state를 기록한다.
-10. 실패하면 이전 API·Web SHA와 runtime config를 함께 복구한다.
+7. custom-format DB snapshot, manifest와 archive 검증을 완료한다.
+8. runtime transaction의 `pending`을 기록한다.
+9. candidate API image의 `MigrationMain`을 one-shot으로 실행해 Flyway
+   migration과 validate를 완료한다. 일반 API container의 Flyway는 꺼 둔다.
+10. API·Web image와 runtime config를 같은 transaction으로 적용한다.
+11. 전체 service readiness와 API startup의 JPA schema validate를 확인한다.
+12. public Web `/`, deep link `/history`, API readiness, 대표 Pokémon read
+    endpoint와 현재 JavaScript asset을 확인한다.
+13. 내부 health와 public smoke가 모두 성공한 경우에만 성공 state를 기록한다.
+14. candidate health 또는 public smoke가 실패하면 이전 API·Web SHA와 runtime
+    config를 함께 복구하고 public smoke를 다시 확인한다.
 
 GitHub Actions의 deploy job 제한 시간은 30분이다. 이 시간에는 최대
 15분의 game 종료 대기뿐 아니라 Tailscale 연결, image pull, backup,
@@ -488,6 +503,10 @@ image rollback은 PostgreSQL volume을 삭제하지 않는다. Flyway가 새
 schema를 적용한 경우 DB migration은 자동으로 rollback하지 않는다.
 migration 호환성 문제가 있으면 배포 전 backup과 별도 restore 계획을
 사용한다.
+
+One-shot migration은 candidate API/Web image pair를 subprocess의 Compose
+interpolation에만 주입하고 `--pull never`로 이미 검증한 local image를 사용한다.
+성공 전에는 production `.env`, state/current와 실행 중 API/Web을 바꾸지 않는다.
 
 ### 중단된 runtime config transaction 복구
 
@@ -519,7 +538,7 @@ fallback하지 않고 실패한다. marker가 생기기 전 실패한 bootstrap�
 Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌리지
 않는다.
 
-## 14. 운영 backup과 3일 보존
+## 14. 운영 snapshot, age/iCloud와 보존 계획
 
 예약 작업은 stable
 `/Users/homeserver/Server/scripts/backup/backup-guess-pokemon-bootstrap.sh`
@@ -530,7 +549,9 @@ script-enabled release의 `scripts/backup-guess-pokemon.sh`를 실행한다.
 legacy fallback으로 사용한다.
 Stable bootstrap 설치만으로 macOS LaunchAgent가 등록되지는 않는다.
 예약 실행을 사용할 때는 별도 승인된 LaunchAgent가 위 stable 경로만
-호출하는지 확인한다.
+호출하는지 확인한다. Repository template은
+`launchd/com.homeserver.guess-pokemon-backup.plist.example`이며 Mac의 local
+timezone이 Asia/Seoul인 전제에서 00:20, 06:20, 12:20, 18:20에 실행한다.
 
 검증된 운영 DB archive와 backup 중 생성되는 임시 파일의 저장 위치는
 `/Users/homeserver/Server/backups/guess-pokemon/data/`다. 프로젝트 backup
@@ -542,16 +563,45 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
 - runtime config v2 state가 있으면 state의 content hash와 `current` pointer가
   함께 가리키는 immutable release Compose만 사용한다. v2 state가 아직 없는
   기존 설치에서만 app directory의 legacy Compose를 사용한다.
-- mode `600`의 temporary file에 custom-format dump를 기록한다.
-- `pg_restore --list`가 성공한 archive만 최종 이름으로 공개한다.
-- 새 backup이 성공한 뒤 3일을 초과한 Guess Pokémon archive만 정리한다.
-- 정확히
-  `guess-pokemon-production-YYYYMMDDTHHMMSSZ.dump` 형식인 파일만
-  정리 대상이다.
-- 최신 backup과 다른 프로젝트 backup은 건드리지 않는다.
+- mode `700`의 temporary directory 안에 custom-format dump를 기록한다.
+- `pg_restore --list`로 archive를 검증하고, DB에 연결하지 않은
+  `pg_restore --data-only --schema=public --file=-`가 stdout에 생성한 COPY SQL
+  stream에서 같은 archive
+  snapshot의 public table row count를 계산한다. Engine/version과 dump
+  SHA-256도 함께 기록한다.
+- `--file=-` output contract나 COPY table coverage가 실패하면 `SUCCESS`와 manifest
+  게시 전에 hard failure로 종료한다. Row count를 얻기 위해 live DB에 다시 연결하지 않는다.
+- `manifest.json`을 만든 뒤 `SUCCESS`를 마지막으로 생성하고 같은 filesystem의
+  `guess-pokemon-production-YYYYMMDDTHHMMSSZ/` directory로 원자 이동한다.
+- 최근 정상 snapshot 4개와 지난 7 calendar day마다 KST 06:00 이후 첫 정상
+  snapshot 1개를 보존 대상으로 계산한다.
+- 결과는 `data/retention-plan.json`에 기록하며 현재 worker는 실제 삭제 없이
+  dry-run만 수행한다.
+- symlink, 불완전 snapshot, 예상 밖 이름과 다른 프로젝트 backup은 삭제
+  후보에도 넣지 않는다.
+- 이름이 일치하는 개별 snapshot의 metadata·dump·checksum을 권한 문제나 동시
+  disappearance로 읽지 못하면 `invalidIgnored`에만 기록하고 `keep`과
+  `pruneCandidates`에서 제외한다. Worker는 해당 snapshot을 수정하거나 삭제하지
+  않는다.
+- Backup root 열거와 retention plan 임시 파일 생성·flush·원자 교체 실패는
+  fail-closed로 전체 backup을 실패시킨다.
 
 같은 Mac mini SSD의 backup은 장비 전체 장애를 복구하지 못한다.
-외장 SSD 또는 암호화한 원격 복사본은 별도 작업으로 추가한다.
+검증된 snapshot만 age public recipient로 암호화해 local offsite staging에
+기록하고 iCloud Drive의 Guess Pokémon 전용 directory로 전달한다. raw dump는
+iCloud에 복사하지 않는다. `.partial` 복사본의 SHA-256 일치, final rename 성공,
+symlink가 아닌 final regular file과 local ciphertext의 SHA-256 재일치까지 확인한
+뒤에만 handoff 성공과 iCloud-stage heartbeat를 허용한다. Final 검증 전 실패하면
+local ciphertext를 보존한다. 검증된 final 뒤 local ciphertext 정리만 실패하면
+generic 경고를 남기고 handoff 성공은 유지한다. 이 handoff는 Apple server remote
+upload 완료 판정과는 다르다.
+
+선택적 mode `0600` `backup-heartbeats.conf`는
+`LOCAL_HEARTBEAT_URL`, `ICLOUD_STAGE_HEARTBEAT_URL` 두 key만 허용한다. URL은
+Git·문서·로그에 남기지 않는다. 최초 7일 관찰, remote decrypt·restore drill과
+별도 backup 삭제 승인 전에는 `retention-plan.json`의 `pruneCandidates`를
+실행하지 않는다. 전체 계약은
+`docs/DEVELOPMENT-DEPLOYMENT-BACKUP.md`를 따른다.
 
 ## 15. 참고 문서
 

@@ -7,6 +7,7 @@ PROJECT_ROOT="$(
 )"
 SOURCE_SCRIPT="${PROJECT_ROOT}/scripts/deploy-guess-pokemon.sh"
 MOCK_DOCKER="${PROJECT_ROOT}/scripts/fixtures/mock-guess-pokemon-docker.sh"
+MOCK_CURL="${PROJECT_ROOT}/scripts/fixtures/mock-guess-pokemon-curl.sh"
 
 REVISION_ONE=1111111111111111111111111111111111111111
 REVISION_TWO=2222222222222222222222222222222222222222
@@ -29,6 +30,8 @@ backup_script="${test_root}/backup.sh"
 runtime_backup_script="${test_root}/runtime-backup.sh"
 runtime_deploy_script="${test_root}/runtime-deploy.sh"
 runtime_backup_marker="${test_root}/runtime-backup-ran"
+runtime_backup_args_log="${test_root}/runtime-backup-args.log"
+curl_log="${test_root}/curl.log"
 runtime_compose="${test_root}/runtime-compose.yaml"
 runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
 /bin/mkdir -p "${app_dir}"
@@ -46,18 +49,25 @@ runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
 /bin/mv "${app_dir}/.env.updated" "${app_dir}/.env"
 
 printf '#!/bin/bash\nexit 97\n' >"${backup_script}"
-printf '#!/bin/bash\n: >"%s"\n' "${runtime_backup_marker}" >"${runtime_backup_script}"
+printf \
+  '#!/bin/bash\n: >"%s"\nprintf "%%s\\n" "$*" >>"%s"\n' \
+  "${runtime_backup_marker}" \
+  "${runtime_backup_args_log}" \
+  >"${runtime_backup_script}"
 printf '#!/bin/bash\nexit 0\n' >"${runtime_deploy_script}"
 /bin/chmod 600 "${backup_script}"
 /bin/chmod 700 "${runtime_backup_script}" "${runtime_deploy_script}"
+: >"${runtime_backup_args_log}"
+: >"${curl_log}"
 
 /usr/bin/sed \
   -e "s#readonly DOCKER_BIN=/usr/local/bin/docker#readonly DOCKER_BIN=${MOCK_DOCKER}#" \
+  -e "s#readonly CURL_BIN=/usr/bin/curl#readonly CURL_BIN=${MOCK_CURL}#" \
   -e "s#readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon#readonly APP_DIR=${app_dir}#" \
   -e "s#readonly BACKUP_SCRIPT=/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh#readonly BACKUP_SCRIPT=${backup_script}#" \
   "${SOURCE_SCRIPT}" \
   >"${test_script}"
-/bin/chmod 700 "${test_script}" "${MOCK_DOCKER}"
+/bin/chmod 700 "${test_script}" "${MOCK_DOCKER}" "${MOCK_CURL}"
 
 run_deploy() {
   printf 'test-token' \
@@ -72,6 +82,10 @@ run_deploy() {
         FAKE_REVISION_TWO="${REVISION_TWO}" \
         FAKE_REVISION_THREE="${REVISION_THREE}" \
         FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
+        FAKE_CURL_LOG="${curl_log}" \
+        FAKE_PUBLIC_SMOKE_FAIL="${FAKE_PUBLIC_SMOKE_FAIL:-false}" \
+        FAKE_PUBLIC_SMOKE_FAIL_ONCE_FILE="${FAKE_PUBLIC_SMOKE_FAIL_ONCE_FILE:-}" \
+        FAKE_MIGRATION_FAIL="${FAKE_MIGRATION_FAIL:-false}" \
         FAKE_FAIL_CP="${FAKE_FAIL_CP:-false}" \
         FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX="${FAKE_RUNTIME_INVALID_DEPLOY_SYNTAX:-false}" \
         FAKE_RUNTIME_INSECURE_SCRIPT_MODE="${FAKE_RUNTIME_INSECURE_SCRIPT_MODE:-false}" \
@@ -86,6 +100,7 @@ run_deploy() {
         FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON="${FAKE_RENDER_CANDIDATE_DB_COMMAND_JSON:-}" \
         FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON="${FAKE_RENDER_CANDIDATE_DB_ENTRYPOINT_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT="${FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT:-}" \
+        FAKE_RENDER_CANDIDATE_FLYWAY_ENABLED="${FAKE_RENDER_CANDIDATE_FLYWAY_ENABLED:-}" \
         FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON="${FAKE_RENDER_CANDIDATE_API_HEALTHCHECK_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_TMPFS_JSON="${FAKE_RENDER_CANDIDATE_API_TMPFS_JSON:-}" \
         FAKE_RENDER_CANDIDATE_API_USER_JSON="${FAKE_RENDER_CANDIDATE_API_USER_JSON:-}" \
@@ -138,6 +153,10 @@ run_recovery() {
     FAKE_REVISION_ONE="${REVISION_ONE}" \
     FAKE_REVISION_TWO="${REVISION_TWO}" \
     FAKE_REVISION_THREE="${REVISION_THREE}" \
+    FAKE_DOCKER_LOG="${FAKE_DOCKER_LOG:-}" \
+    FAKE_CURL_LOG="${curl_log}" \
+    FAKE_PUBLIC_SMOKE_FAIL="${FAKE_PUBLIC_SMOKE_FAIL:-false}" \
+    FAKE_PUBLIC_SMOKE_FAIL_ONCE_FILE="${FAKE_PUBLIC_SMOKE_FAIL_ONCE_FILE:-}" \
     /bin/bash "${test_script}" recover
 }
 
@@ -214,6 +233,8 @@ fi
 test -f "${bootstrap_failure_marker}"
 test -d "${bootstrap_candidate}"
 test -f "${runtime_backup_marker}"
+/usr/bin/tail -n 1 "${runtime_backup_args_log}" \
+  | /usr/bin/grep -Fxq -- '--trigger predeploy'
 test ! -e "${state_file}"
 test ! -e "${current_link}"
 test ! -e "${initialization_marker}"
@@ -516,6 +537,77 @@ FAKE_RENDER_API_HEALTHCHECK_JSON='{"test":["CMD-SHELL","wget -qO- http://127.0.0
 FAKE_RENDER_LOGGING_JSON='{"driver":"local","options":{"max-size":"20m"}}' \
   run_deploy "${REVISION_TWO}" keep test-user
 
+verified_state_sha="$(
+  /usr/bin/shasum -a 256 "${state_file}" | /usr/bin/awk '{print $1}'
+)"
+verified_env_sha="$(
+  /usr/bin/shasum -a 256 "${app_dir}/.env" | /usr/bin/awk '{print $1}'
+)"
+verified_current_target="$(/usr/bin/readlink "${current_link}")"
+
+migration_failure_log="${test_root}/migration-failure-docker.log"
+: >"${migration_failure_log}"
+set +e
+FAKE_CONFIG_REVISION_OVERRIDE="${REVISION_THREE}" \
+FAKE_DOCKER_LOG="${migration_failure_log}" \
+FAKE_MIGRATION_FAIL=true \
+  run_deploy \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user \
+    >/dev/null 2>&1
+migration_failure_exit_code="$?"
+set -e
+if [[ "${migration_failure_exit_code}" -ne 1 ]] \
+  || [[ ! -f "${pending_file}" ]]
+then
+  printf 'Migration failure must retain a recoverable pending transaction\n' >&2
+  exit 1
+fi
+/usr/bin/grep -Fq -- \
+  'run --rm --no-deps --pull never --entrypoint java api -Dloader.main=com.guesspokemon.ops.MigrationMain -cp /app/application.jar org.springframework.boot.loader.launch.PropertiesLauncher' \
+  "${migration_failure_log}"
+/usr/bin/grep -Fxq -- \
+  "migration-images API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_THREE} WEB_IMAGE=ghcr.io/xxh3898/guess-pokemon-web:${REVISION_THREE}" \
+  "${migration_failure_log}"
+if /usr/bin/grep -q '^compose .* up ' "${migration_failure_log}"; then
+  printf 'Migration failure must not start candidate application containers\n' >&2
+  exit 1
+fi
+test "$(/usr/bin/shasum -a 256 "${state_file}" | /usr/bin/awk '{print $1}')" \
+  = "${verified_state_sha}"
+test "$(/usr/bin/shasum -a 256 "${app_dir}/.env" | /usr/bin/awk '{print $1}')" \
+  = "${verified_env_sha}"
+test "$(/usr/bin/readlink "${current_link}")" = "${verified_current_target}"
+run_recovery
+test ! -e "${pending_file}"
+
+public_smoke_failure_marker="${test_root}/fail-public-smoke-once"
+set +e
+FAKE_CONFIG_REVISION_OVERRIDE="${REVISION_THREE}" \
+FAKE_PUBLIC_SMOKE_FAIL_ONCE_FILE="${public_smoke_failure_marker}" \
+  run_deploy \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user \
+    >/dev/null 2>&1
+public_smoke_failure_exit_code="$?"
+set -e
+if [[ "${public_smoke_failure_exit_code}" -ne 1 ]] \
+  || [[ ! -f "${public_smoke_failure_marker}" ]] \
+  || [[ -e "${pending_file}" ]]
+then
+  printf 'Public smoke failure must roll application images back and clear pending\n' >&2
+  exit 1
+fi
+test "$(/usr/bin/shasum -a 256 "${state_file}" | /usr/bin/awk '{print $1}')" \
+  = "${verified_state_sha}"
+test "$(/usr/bin/shasum -a 256 "${app_dir}/.env" | /usr/bin/awk '{print $1}')" \
+  = "${verified_env_sha}"
+test "$(/usr/bin/readlink "${current_link}")" = "${verified_current_target}"
+
 FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
 FAKE_RENDER_CANDIDATE_DB_IMAGE=postgres:unexpected \
   assert_deploy_rejected \
@@ -547,6 +639,15 @@ FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
 FAKE_RENDER_CANDIDATE_API_EXTRA_ENVIRONMENT=',"SPRING_JPA_HIBERNATE_DDL_AUTO":"create-drop"' \
   assert_deploy_rejected \
     'Runtime config enabling destructive schema management must fail' \
+    "${REVISION_THREE}" \
+    update \
+    "${CONFIG_DIGEST_TWO}" \
+    test-user
+
+FAKE_RENDER_BASELINE_COMPOSE_FILE="${release_one}/compose.yaml" \
+FAKE_RENDER_CANDIDATE_FLYWAY_ENABLED=true \
+  assert_deploy_rejected \
+    'Runtime config enabling automatic API Flyway execution must fail' \
     "${REVISION_THREE}" \
     update \
     "${CONFIG_DIGEST_TWO}" \
