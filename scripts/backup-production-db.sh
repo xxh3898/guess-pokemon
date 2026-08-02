@@ -801,7 +801,9 @@ stage_offsite_snapshot() {
   local ciphertext
   local ciphertext_sha
   local icloud_final
+  local icloud_final_sha
   local local_partial
+  local offsite_copy_sha
   local snapshot_name
 
   if [[ ! -x "${AGE_BIN}" ]] \
@@ -829,11 +831,22 @@ stage_offsite_snapshot() {
       printf 'Offsite stage failed: target directory is unsafe\n' >&2
       return 1
     fi
-    /bin/mkdir -p "${directory}"
-    /bin/chmod 700 "${directory}"
+    if ! /bin/mkdir -p "${directory}" \
+      || [[ -L "${directory}" ]] \
+      || [[ ! -d "${directory}" ]] \
+      || ! /bin/chmod 700 "${directory}"
+    then
+      printf 'Offsite stage failed: target directory preparation failed\n' >&2
+      return 1
+    fi
   done
 
-  snapshot_name="$(/usr/bin/basename "${final_dir}")"
+  if ! snapshot_name="$(/usr/bin/basename "${final_dir}")" \
+    || [[ -z "${snapshot_name}" ]]
+  then
+    printf 'Offsite stage failed: snapshot name resolution failed\n' >&2
+    return 1
+  fi
   ciphertext="${OFFSITE_STAGING_ROOT}/${snapshot_name}.tar.age"
   icloud_final="${ICLOUD_ROOT}/${snapshot_name}.tar.age"
   if [[ -e "${ciphertext}" || -L "${ciphertext}" ]]; then
@@ -841,10 +854,22 @@ stage_offsite_snapshot() {
     return 1
   fi
 
-  local_partial="$(
+  if ! local_partial="$(
     /usr/bin/mktemp "${OFFSITE_STAGING_ROOT}/.${snapshot_name}.XXXXXX.partial"
   )"
-  /bin/chmod 600 "${local_partial}"
+  then
+    printf 'Offsite stage failed: local ciphertext staging failed\n' >&2
+    return 1
+  fi
+  if [[ ! -f "${local_partial}" || -L "${local_partial}" ]] \
+    || ! /bin/chmod 600 "${local_partial}"
+  then
+    if [[ -f "${local_partial}" && ! -L "${local_partial}" ]]; then
+      /bin/unlink "${local_partial}" || true
+    fi
+    printf 'Offsite stage failed: local ciphertext staging failed\n' >&2
+    return 1
+  fi
   if ! /usr/bin/tar -C "${BACKUP_DIR}" -cf - "${snapshot_name}" \
     | "${AGE_BIN}" -R "${AGE_RECIPIENT_FILE}" >"${local_partial}"
   then
@@ -860,38 +885,92 @@ stage_offsite_snapshot() {
     printf 'Offsite stage failed: ciphertext validation failed\n' >&2
     return 1
   fi
-  /bin/mv "${local_partial}" "${ciphertext}"
+  if ! /bin/mv "${local_partial}" "${ciphertext}"; then
+    /bin/unlink "${local_partial}" || true
+    printf 'Offsite stage failed: local ciphertext publish failed\n' >&2
+    return 1
+  fi
+  local_partial=
+  if [[ ! -f "${ciphertext}" || -L "${ciphertext}" ]]; then
+    printf 'Offsite stage failed: local ciphertext publish validation failed\n' >&2
+    return 1
+  fi
 
-  ciphertext_sha="$(
+  if ! ciphertext_sha="$(
     /usr/bin/shasum -a 256 "${ciphertext}" | /usr/bin/awk '{print $1}'
-  )"
-  if [[ -e "${icloud_final}" || -L "${icloud_final}" ]]; then
-    if [[ -f "${icloud_final}" && ! -L "${icloud_final}" ]] \
-      && [[ "$(/usr/bin/shasum -a 256 "${icloud_final}" | /usr/bin/awk '{print $1}')" == "${ciphertext_sha}" ]]
-    then
-      /bin/unlink "${ciphertext}"
-      offsite_staged=true
-      printf 'OFFSITE_QUEUED=%s\n' "${icloud_final}"
-      return 0
-    fi
-    printf 'Offsite stage failed: iCloud target collision\n' >&2
+  )" \
+    || [[ -z "${ciphertext_sha}" ]]
+  then
+    printf 'Offsite stage failed: local ciphertext checksum unavailable\n' >&2
     return 1
+  fi
+  if [[ -e "${icloud_final}" || -L "${icloud_final}" ]]; then
+    if [[ ! -f "${icloud_final}" || -L "${icloud_final}" ]]; then
+      printf 'Offsite stage failed: iCloud target collision\n' >&2
+      return 1
+    fi
+    if ! icloud_final_sha="$(
+      /usr/bin/shasum -a 256 "${icloud_final}" | /usr/bin/awk '{print $1}'
+    )" \
+      || [[ -z "${icloud_final_sha}" ]]
+    then
+      printf 'Offsite stage failed: iCloud final checksum unavailable\n' >&2
+      return 1
+    fi
+    if [[ "${icloud_final_sha}" != "${ciphertext_sha}" ]]; then
+      printf 'Offsite stage failed: iCloud target collision\n' >&2
+      return 1
+    fi
+  else
+    if ! offsite_partial="$(
+      /usr/bin/mktemp "${ICLOUD_ROOT}/.${snapshot_name}.XXXXXX.partial"
+    )"
+    then
+      printf 'Offsite stage failed: iCloud partial creation failed\n' >&2
+      return 1
+    fi
+    if [[ ! -f "${offsite_partial}" || -L "${offsite_partial}" ]] \
+      || ! /bin/cp "${ciphertext}" "${offsite_partial}" \
+      || ! /bin/chmod 600 "${offsite_partial}"
+    then
+      printf 'Offsite stage failed: iCloud partial staging failed\n' >&2
+      return 1
+    fi
+    if ! offsite_copy_sha="$(
+      /usr/bin/shasum -a 256 "${offsite_partial}" | /usr/bin/awk '{print $1}'
+    )" \
+      || [[ -z "${offsite_copy_sha}" ]] \
+      || [[ "${offsite_copy_sha}" != "${ciphertext_sha}" ]]
+    then
+      printf 'Offsite stage failed: iCloud handoff checksum mismatch\n' >&2
+      return 1
+    fi
+    if ! /bin/mv "${offsite_partial}" "${icloud_final}"; then
+      printf 'Offsite stage failed: iCloud final publish failed\n' >&2
+      return 1
+    fi
+    offsite_partial=
+    if [[ ! -f "${icloud_final}" || -L "${icloud_final}" ]]; then
+      printf 'Offsite stage failed: iCloud final validation failed\n' >&2
+      return 1
+    fi
+    if ! icloud_final_sha="$(
+      /usr/bin/shasum -a 256 "${icloud_final}" | /usr/bin/awk '{print $1}'
+    )" \
+      || [[ -z "${icloud_final_sha}" ]] \
+      || [[ "${icloud_final_sha}" != "${ciphertext_sha}" ]]
+    then
+      printf 'Offsite stage failed: iCloud final checksum mismatch\n' >&2
+      return 1
+    fi
   fi
 
-  offsite_partial="$(
-    /usr/bin/mktemp "${ICLOUD_ROOT}/.${snapshot_name}.XXXXXX.partial"
-  )"
-  /bin/cp "${ciphertext}" "${offsite_partial}"
-  /bin/chmod 600 "${offsite_partial}"
-  if [[ "$(/usr/bin/shasum -a 256 "${offsite_partial}" | /usr/bin/awk '{print $1}')" != "${ciphertext_sha}" ]]; then
-    printf 'Offsite stage failed: iCloud handoff checksum mismatch\n' >&2
-    return 1
+  if ! /bin/unlink "${ciphertext}"; then
+    printf 'Offsite stage warning: local ciphertext cleanup failed\n' >&2
   fi
-  /bin/mv "${offsite_partial}" "${icloud_final}"
-  offsite_partial=
-  /bin/unlink "${ciphertext}"
   offsite_staged=true
   printf 'OFFSITE_QUEUED=%s\n' "${icloud_final}"
+  return 0
 }
 
 printf 'Backup completed: %s\n' "${final_dir}"

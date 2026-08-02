@@ -179,9 +179,13 @@ lock을 사용한다.
 
 Snapshot directory를 tar stream으로 만들고 recipient file로 age 암호화한다.
 Ciphertext header와 SHA-256을 확인한 뒤 iCloud의 `.partial` 파일로 복사하고,
-hash가 같을 때만 final `.tar.age`로 rename한다. iCloud에는 raw dump가
-들어가지 않는다. iCloud local folder handoff는 remote upload 완료 판정이
-아니다.
+hash가 같은 상태에서 final `.tar.age` rename 명령이 성공해야 한다. Rename 뒤
+final 경로가 symlink가 아닌 regular file이고 SHA-256이 local ciphertext와 다시
+일치할 때만 handoff 성공으로 기록한다. 그 전에 실패하면 local ciphertext를
+보존하고 iCloud-stage heartbeat를 보내지 않는다. 검증된 final을 만든 뒤 local
+ciphertext 정리만 실패하면 handoff는 성공으로 유지하되 경고를 남긴다. iCloud에는
+raw dump가 들어가지 않으며, iCloud local folder handoff는 remote upload 완료
+판정이 아니다.
 
 선택적 heartbeat 설정은 app directory의 mode `0600`
 `backup-heartbeats.conf`다. 정확히 아래 두 key만 허용하며 실제 URL은 Git,
@@ -218,7 +222,7 @@ handoff 뒤에만 보낸다. 운영 monitor 기준은 local 7시간, iCloud-stag
 | one-shot migration | 기존 app 유지, pending 보존 | 일부 적용 가능성 조사 |
 | candidate readiness/JPA validate | 이전 image/config 재적용 | migration 유지 |
 | public smoke | 이전 image/config 재적용 후 public smoke 재확인 | migration 유지 |
-| iCloud handoff | scheduled 실패 또는 predeploy generic 경고 | local snapshot 유지 |
+| iCloud handoff | scheduled 실패 또는 predeploy generic 경고, iCloud heartbeat 생략 | local snapshot과 local ciphertext 유지 |
 | heartbeat 전송 | generic 경고, 다음 monitor timeout 관찰 | snapshot 유지 |
 
 `docker compose down -v`, broad cleanup, 자동 reverse migration과 자동 운영

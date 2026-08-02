@@ -29,8 +29,10 @@ trap cleanup EXIT INT TERM
 mock_docker="${test_root}/docker"
 mock_age="${test_root}/age"
 mock_curl="${test_root}/curl"
+mock_final_move="${test_root}/fail-final-move"
 docker_log="${test_root}/docker.log"
 heartbeat_log="${test_root}/heartbeat.log"
+final_move_log="${test_root}/final-move.log"
 
 {
   printf '%s\n' \
@@ -91,10 +93,21 @@ heartbeat_log="${test_root}/heartbeat.log"
 /bin/chmod 700 "${mock_curl}"
 : >"${heartbeat_log}"
 
+{
+  printf '%s\n' \
+    '#!/bin/bash' \
+    'set -Eeuo pipefail' \
+    'printf "%s\n" "$*" >>"${FINAL_MOVE_LOG}"' \
+    'exit 75'
+} >"${mock_final_move}"
+/bin/chmod 700 "${mock_final_move}"
+: >"${final_move_log}"
+
 prepare_script() {
   local app_dir="$1"
   local backup_dir="$2"
   local target_script="$3"
+  local final_move_bin="${4:-/bin/mv}"
 
   if ! /usr/bin/grep -Fqx \
     "readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}" \
@@ -114,9 +127,17 @@ prepare_script() {
     -e "s#readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}#readonly BACKUP_DIR=${backup_dir}#" \
     -e "s#readonly OFFSITE_STAGING_ROOT=${PRODUCTION_OFFSITE_ROOT}#readonly OFFSITE_STAGING_ROOT=${backup_dir}-offsite#" \
     -e "s#readonly ICLOUD_ROOT='${PRODUCTION_ICLOUD_ROOT}'#readonly ICLOUD_ROOT='${backup_dir}-icloud'#" \
+    -e "s#/bin/mv \"\${offsite_partial}\" \"\${icloud_final}\"#${final_move_bin} \"\${offsite_partial}\" \"\${icloud_final}\"#" \
     "${SOURCE_SCRIPT}" >"${target_script}"
   if ! /usr/bin/grep -Fqx "readonly BACKUP_DIR=${backup_dir}" "${target_script}"; then
     printf 'Test backup path substitution failed: %s\n' "${backup_dir}" >&2
+    exit 1
+  fi
+  if [[ "$(/usr/bin/grep -Fc \
+      "${final_move_bin} \"\${offsite_partial}\" \"\${icloud_final}\"" \
+      "${target_script}")" != 1 ]]
+  then
+    printf 'Final iCloud move injection contract did not match exactly once\n' >&2
     exit 1
   fi
   /bin/chmod 700 "${target_script}"
@@ -289,6 +310,8 @@ PY
 assert_snapshot_contract() {
   local backup_dir="$1"
   local expected_trigger="$2"
+  local expected_offsite_state="${3:-published}"
+  local retained_ciphertext
   local snapshot
 
   snapshot="$(
@@ -359,23 +382,53 @@ assert plan["policy"] == {
 assert snapshot.name in plan["keep"]
 assert isinstance(plan["pruneCandidates"], list)
 PY
-  test "$(
-    /usr/bin/find "${backup_dir}-icloud" \
-      -mindepth 1 \
-      -maxdepth 1 \
-      -type f \
-      -name 'guess-pokemon-production-*.tar.age' \
-      | /usr/bin/wc -l \
-      | /usr/bin/tr -d ' '
-  )" = 1
-  test "$(
-    /usr/bin/find "${backup_dir}-offsite" \
-      -mindepth 1 \
-      -maxdepth 1 \
-      -print \
-      | /usr/bin/wc -l \
-      | /usr/bin/tr -d ' '
-  )" = 0
+  case "${expected_offsite_state}" in
+    published)
+      test "$(
+        /usr/bin/find "${backup_dir}-icloud" \
+          -mindepth 1 \
+          -maxdepth 1 \
+          -type f \
+          -name 'guess-pokemon-production-*.tar.age' \
+          | /usr/bin/wc -l \
+          | /usr/bin/tr -d ' '
+      )" = 1
+      test "$(
+        /usr/bin/find "${backup_dir}-offsite" \
+          -mindepth 1 \
+          -maxdepth 1 \
+          -print \
+          | /usr/bin/wc -l \
+          | /usr/bin/tr -d ' '
+      )" = 0
+      ;;
+    publish-failed)
+      test "$(
+        /usr/bin/find "${backup_dir}-icloud" \
+          -mindepth 1 \
+          -maxdepth 1 \
+          -print \
+          | /usr/bin/wc -l \
+          | /usr/bin/tr -d ' '
+      )" = 0
+      retained_ciphertext="$(
+        /usr/bin/find "${backup_dir}-offsite" \
+          -mindepth 1 \
+          -maxdepth 1 \
+          -type f \
+          -name 'guess-pokemon-production-*.tar.age'
+      )"
+      test "$(printf '%s\n' "${retained_ciphertext}" | /usr/bin/grep -c .)" = 1
+      /usr/bin/head -n 1 "${retained_ciphertext}" \
+        | /usr/bin/grep -Fqx 'age-encryption.org/v1'
+      ;;
+    *)
+      printf 'Unsupported expected offsite state: %s\n' \
+        "${expected_offsite_state}" \
+        >&2
+      exit 1
+      ;;
+  esac
 }
 
 runtime_content_sha256() {
@@ -478,6 +531,108 @@ assert_retention_matrix "${v2_backups}" "${v2_retention_expected}"
 test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 2
 /usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
 /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"
+
+final_move_scheduled_app="${test_root}/final-move-scheduled-app"
+final_move_scheduled_backups="${test_root}/final-move-scheduled-backups"
+final_move_scheduled_script="${test_root}/final-move-scheduled-backup.sh"
+final_move_scheduled_output="${test_root}/final-move-scheduled.out"
+/bin/mkdir -p \
+  "${final_move_scheduled_app}" \
+  "${final_move_scheduled_backups}"
+prepare_app "${final_move_scheduled_app}"
+printf '%s\n' \
+  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-local-test' \
+  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-icloud-test' \
+  >"${final_move_scheduled_app}/backup-heartbeats.conf"
+/bin/chmod 600 "${final_move_scheduled_app}/backup-heartbeats.conf"
+prepare_runtime_state "${final_move_scheduled_app}"
+prepare_script \
+  "${final_move_scheduled_app}" \
+  "${final_move_scheduled_backups}" \
+  "${final_move_scheduled_script}" \
+  "${mock_final_move}"
+: >"${heartbeat_log}"
+: >"${final_move_log}"
+
+if DOCKER_LOG="${docker_log}" \
+  HEARTBEAT_LOG="${heartbeat_log}" \
+  FINAL_MOVE_LOG="${final_move_log}" \
+  "${final_move_scheduled_script}" >"${final_move_scheduled_output}" 2>&1
+then
+  printf 'scheduled backup accepted a failed final iCloud move\n' >&2
+  exit 1
+fi
+test "$(/usr/bin/wc -l <"${final_move_log}" | /usr/bin/tr -d ' ')" = 1
+/usr/bin/grep -Fq \
+  'Offsite stage failed: iCloud final publish failed' \
+  "${final_move_scheduled_output}"
+/usr/bin/grep -Fq \
+  'local snapshot succeeded but offsite staging failed' \
+  "${final_move_scheduled_output}"
+if /usr/bin/grep -Fq 'OFFSITE_QUEUED=' "${final_move_scheduled_output}"; then
+  printf 'scheduled backup announced a failed iCloud handoff\n' >&2
+  exit 1
+fi
+assert_snapshot_contract \
+  "${final_move_scheduled_backups}" \
+  scheduled \
+  publish-failed
+test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 1
+/usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
+if /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"; then
+  printf 'scheduled backup sent iCloud heartbeat after final move failure\n' >&2
+  exit 1
+fi
+
+final_move_predeploy_app="${test_root}/final-move-predeploy-app"
+final_move_predeploy_backups="${test_root}/final-move-predeploy-backups"
+final_move_predeploy_script="${test_root}/final-move-predeploy-backup.sh"
+final_move_predeploy_output="${test_root}/final-move-predeploy.out"
+/bin/mkdir -p \
+  "${final_move_predeploy_app}" \
+  "${final_move_predeploy_backups}"
+prepare_app "${final_move_predeploy_app}"
+printf '%s\n' \
+  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-local-test' \
+  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-icloud-test' \
+  >"${final_move_predeploy_app}/backup-heartbeats.conf"
+/bin/chmod 600 "${final_move_predeploy_app}/backup-heartbeats.conf"
+prepare_runtime_state "${final_move_predeploy_app}"
+prepare_script \
+  "${final_move_predeploy_app}" \
+  "${final_move_predeploy_backups}" \
+  "${final_move_predeploy_script}" \
+  "${mock_final_move}"
+: >"${heartbeat_log}"
+: >"${final_move_log}"
+
+DOCKER_LOG="${docker_log}" \
+HEARTBEAT_LOG="${heartbeat_log}" \
+FINAL_MOVE_LOG="${final_move_log}" \
+  "${final_move_predeploy_script}" \
+    --trigger predeploy \
+    >"${final_move_predeploy_output}" 2>&1
+test "$(/usr/bin/wc -l <"${final_move_log}" | /usr/bin/tr -d ' ')" = 1
+/usr/bin/grep -Fq \
+  'Offsite stage failed: iCloud final publish failed' \
+  "${final_move_predeploy_output}"
+/usr/bin/grep -Fq \
+  'Predeploy continues because the verified local snapshot succeeded' \
+  "${final_move_predeploy_output}"
+if /usr/bin/grep -Fq 'OFFSITE_QUEUED=' "${final_move_predeploy_output}"; then
+  printf 'predeploy backup announced a failed iCloud handoff\n' >&2
+  exit 1
+fi
+assert_snapshot_contract \
+  "${final_move_predeploy_backups}" \
+  predeploy \
+  publish-failed
+test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 1
+/usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
+if /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"; then
+  printf 'predeploy backup sent iCloud heartbeat after final move failure\n' >&2
+  exit 1
+fi
 
 malformed_archive_app="${test_root}/malformed-archive-app"
 malformed_archive_backups="${test_root}/malformed-archive-backups"

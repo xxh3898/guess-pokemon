@@ -583,9 +583,12 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
 같은 Mac mini SSD의 backup은 장비 전체 장애를 복구하지 못한다.
 검증된 snapshot만 age public recipient로 암호화해 local offsite staging에
 기록하고 iCloud Drive의 Guess Pokémon 전용 directory로 전달한다. raw dump는
-iCloud에 복사하지 않으며 `.partial` 복사본의 SHA-256이 일치할 때만 final
-`.tar.age`로 바꾼다. 이 handoff는 Apple server remote upload 완료 판정과는
-다르다.
+iCloud에 복사하지 않는다. `.partial` 복사본의 SHA-256 일치, final rename 성공,
+symlink가 아닌 final regular file과 local ciphertext의 SHA-256 재일치까지 확인한
+뒤에만 handoff 성공과 iCloud-stage heartbeat를 허용한다. Final 검증 전 실패하면
+local ciphertext를 보존한다. 검증된 final 뒤 local ciphertext 정리만 실패하면
+generic 경고를 남기고 handoff 성공은 유지한다. 이 handoff는 Apple server remote
+upload 완료 판정과는 다르다.
 
 선택적 mode `0600` `backup-heartbeats.conf`는
 `LOCAL_HEARTBEAT_URL`, `ICLOUD_STAGE_HEARTBEAT_URL` 두 key만 허용한다. URL은
