@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 readonly DOCKER_BIN=/usr/local/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
+readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py
 readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon
 readonly PROJECT_NAME=guess-pokemon
 readonly LEGACY_COMPOSE_FILE="${APP_DIR}/compose.yaml"
@@ -192,10 +193,68 @@ initialization_temp=
 config_container_id=
 prepared_release=
 logged_in=false
+homeops_deployment_started_at=
+homeops_deployment_event_key=
+homeops_rollback_succeeded=false
+
+report_homeops_deployment() {
+  local status="$1"
+  local finished_at="$2"
+  local payload
+
+  if [[ -z "${homeops_deployment_event_key}" ]]; then
+    return
+  fi
+  if [[ ! -f "${HOMEOPS_EVENT_REPORTER}" || -L "${HOMEOPS_EVENT_REPORTER}" || ! -x "${HOMEOPS_EVENT_REPORTER}" ]]; then
+    printf 'HomeOps deployment event reporter is unavailable\n' >&2
+    return
+  fi
+  payload="$(
+    "${PYTHON_BIN}" - \
+      "${homeops_deployment_event_key}" "${normalized_sha}" "${previous_sha:-}" \
+      "${status}" "${homeops_deployment_started_at}" "${finished_at}" <<'PY'
+import json, sys
+event_key, commit_sha, previous_sha, status, started_at, finished_at = sys.argv[1:]
+print(json.dumps({
+    "eventKey": event_key,
+    "project": "guess-pokemon",
+    "environment": "production",
+    "branch": "main",
+    "commitSha": commit_sha,
+    "imageTag": commit_sha,
+    "previousCommitSha": previous_sha or None,
+    "status": status,
+    "startedAt": started_at,
+    "finishedAt": finished_at or None,
+    "failureStage": "deploy-worker" if status == "FAILED" else None,
+    "failureSummary": "deployment worker exited unsuccessfully" if status == "FAILED" else None,
+    "actor": "home-server-deploy",
+    "rollback": status == "ROLLED_BACK",
+}, separators=(",", ":")))
+PY
+  )" || {
+    printf 'HomeOps deployment event payload could not be generated\n' >&2
+    return
+  }
+  if ! printf '%s' "${payload}" | "${HOMEOPS_EVENT_REPORTER}" deployments; then
+    printf 'HomeOps deployment event could not be retained\n' >&2
+  fi
+}
 
 # ShellCheck cannot infer that trap invokes this cleanup function.
 # shellcheck disable=SC2329
 cleanup() {
+  local exit_status="$?"
+
+  if [[ -n "${homeops_deployment_event_key}" ]]; then
+    if [[ "${exit_status}" -eq 0 ]]; then
+      report_homeops_deployment SUCCESS "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    elif [[ "${homeops_rollback_succeeded}" == true ]]; then
+      report_homeops_deployment ROLLED_BACK "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    else
+      report_homeops_deployment FAILED "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    fi
+  fi
   registry_token=
 
   if [[ -n "${env_temp}" && -e "${env_temp}" ]]; then
@@ -234,6 +293,7 @@ cleanup() {
   if [[ "$(/usr/bin/basename "${docker_config_dir}")" == guess-pokemon-docker-config.* ]]; then
     /bin/rm -rf -- "${docker_config_dir}"
   fi
+  return "${exit_status}"
 }
 
 trap cleanup EXIT
@@ -1434,6 +1494,10 @@ fi
 
 wait_for_no_active_games
 
+homeops_deployment_started_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+homeops_deployment_event_key="guess-pokemon:deploy:${normalized_sha}:${homeops_deployment_started_at}"
+report_homeops_deployment RUNNING ""
+
 if [[ ! -x "${active_backup_script}" || -L "${active_backup_script}" ]]; then
   fail "verified production backup script is missing or unsafe"
 fi
@@ -1505,6 +1569,7 @@ if [[ -n "${previous_sha}" ]]; then
     if [[ "${legacy_mode}" == false ]]; then
       /bin/rm -f -- "${RUNTIME_CONFIG_PENDING}"
     fi
+    homeops_rollback_succeeded=true
     printf 'Application image rollback succeeded: %s\n' "${previous_sha}" >&2
   else
     printf 'Application image rollback failed: %s\n' "${previous_sha}" >&2

@@ -361,6 +361,8 @@ public hostname 추가는 각각 대상과 rollback을 확인한 뒤 실행한�
 
 ## 13. GitHub Actions 자동 배포
 
+운영 worker는 적용 시작과 종료 시 HomeOps의 고정 event reporter에 `RUNNING` 및 `SUCCESS`/`FAILED`/`ROLLED_BACK` metadata를 전달한다. Reporter는 HomeOps가 소유한 secret과 HTTPS origin만 읽고 local spool을 먼저 기록한다. HomeOps 장애나 reporter 부재는 active-game gate, backup, image rollback 또는 배포 exit status를 바꾸지 않는다. Reporter와 secret의 운영 설치는 HomeOps runbook에서 별도로 승인한다.
+
 - `dev` push와 `main` 대상 PR은 `.github/workflows/validate.yml`에서
   frontend, backend, infra, Nginx 검증과 두 ARM64 image build를 실행한다.
 - frontend, backend, infra, API image, Web image 검증은 독립 job으로
@@ -520,6 +522,8 @@ Web/API/WebSocket을 다시 확인한다. Flyway migration은 recovery가 되돌
 않는다.
 
 ## 14. 운영 backup과 3일 보존
+
+Backup worker는 HomeOps에 `guess-pokemon/data/...` logical identifier, archive size와 결과만 전달한다. HomeOps는 dump를 실행하거나 읽지 않으며 event 전송 실패는 archive 검증과 보존 정책을 차단하지 않는다.
 
 예약 작업은 stable
 `/Users/homeserver/Server/scripts/backup/backup-guess-pokemon-bootstrap.sh`
