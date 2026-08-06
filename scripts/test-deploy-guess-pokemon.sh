@@ -34,6 +34,8 @@ runtime_backup_args_log="${test_root}/runtime-backup-args.log"
 curl_log="${test_root}/curl.log"
 runtime_compose="${test_root}/runtime-compose.yaml"
 runtime_real_ip="${test_root}/cloudflare-edge-real-ip.conf"
+event_log="${test_root}/homeops-events.log"
+event_reporter="${test_root}/report-homeops-event.py"
 /bin/mkdir -p "${app_dir}"
 /bin/cp "${PROJECT_ROOT}/compose.production.yaml" "${app_dir}/compose.yaml"
 /bin/cp "${PROJECT_ROOT}/compose.production.yaml" "${runtime_compose}"
@@ -57,6 +59,14 @@ printf \
 printf '#!/bin/bash\nexit 0\n' >"${runtime_deploy_script}"
 /bin/chmod 600 "${backup_script}"
 /bin/chmod 700 "${runtime_backup_script}" "${runtime_deploy_script}"
+: >"${event_log}"
+printf '%s\n' \
+  '#!/bin/bash' \
+  'printf "%s " "$1" >>"${HOMEOPS_EVENT_LOG}"' \
+  '/bin/cat >>"${HOMEOPS_EVENT_LOG}"' \
+  'printf "\n" >>"${HOMEOPS_EVENT_LOG}"' \
+  >"${event_reporter}"
+/bin/chmod 700 "${event_reporter}"
 : >"${runtime_backup_args_log}"
 : >"${curl_log}"
 
@@ -65,6 +75,7 @@ printf '#!/bin/bash\nexit 0\n' >"${runtime_deploy_script}"
   -e "s#readonly CURL_BIN=/usr/bin/curl#readonly CURL_BIN=${MOCK_CURL}#" \
   -e "s#readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon#readonly APP_DIR=${app_dir}#" \
   -e "s#readonly BACKUP_SCRIPT=/Users/homeserver/Server/scripts/backup/backup-guess-pokemon.sh#readonly BACKUP_SCRIPT=${backup_script}#" \
+  -e "s#readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py#readonly HOMEOPS_EVENT_REPORTER=${event_reporter}#" \
   "${SOURCE_SCRIPT}" \
   >"${test_script}"
 /bin/chmod 700 "${test_script}" "${MOCK_DOCKER}" "${MOCK_CURL}"
@@ -76,6 +87,7 @@ run_deploy() {
         FAKE_RUNTIME_REAL_IP="${runtime_real_ip}" \
         FAKE_RUNTIME_BACKUP_SCRIPT="${runtime_backup_script}" \
         FAKE_RUNTIME_DEPLOY_SCRIPT="${runtime_deploy_script}" \
+        HOMEOPS_EVENT_LOG="${event_log}" \
         FAKE_CONFIG_REVISION="${FAKE_CONFIG_REVISION_OVERRIDE:-${REVISION_ONE}}" \
         FAKE_CONFIG_PROJECT="${FAKE_CONFIG_PROJECT:-guess-pokemon}" \
         FAKE_REVISION_ONE="${REVISION_ONE}" \
@@ -1047,5 +1059,8 @@ fi
 /usr/bin/grep -Fxq \
   "API_IMAGE=ghcr.io/xxh3898/guess-pokemon-api:${REVISION_TWO}" \
   "${app_dir}/.env"
+/usr/bin/grep -Fq 'deployments {"eventKey":"guess-pokemon:deploy:' "${event_log}"
+/usr/bin/grep -Fq '"status":"RUNNING"' "${event_log}"
+/usr/bin/grep -Eq '"status":"(SUCCESS|ROLLED_BACK|FAILED)"' "${event_log}"
 
 printf 'Guess Pokémon deploy v2 tests passed\n'

@@ -31,6 +31,8 @@ mock_age="${test_root}/age"
 mock_curl="${test_root}/curl"
 mock_final_move="${test_root}/fail-final-move"
 docker_log="${test_root}/docker.log"
+event_log="${test_root}/homeops-events.log"
+event_reporter="${test_root}/report-homeops-event.py"
 heartbeat_log="${test_root}/heartbeat.log"
 final_move_log="${test_root}/final-move.log"
 
@@ -74,6 +76,14 @@ final_move_log="${test_root}/final-move.log"
     'fi'
 } >"${mock_docker}"
 /bin/chmod 700 "${mock_docker}"
+: >"${event_log}"
+{
+  printf '#!/bin/bash\n'
+  printf 'printf "%%s " "$1" >>"%s"\n' "${event_log}"
+  printf '/bin/cat >>"%s"\n' "${event_log}"
+  printf 'printf "\\n" >>"%s"\n' "${event_log}"
+} >"${event_reporter}"
+/bin/chmod 700 "${event_reporter}"
 
 {
   printf '%s\n' \
@@ -125,6 +135,7 @@ prepare_script() {
     -e "s#readonly CURL_BIN=/usr/bin/curl#readonly CURL_BIN=${mock_curl}#" \
     -e "s#readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon#readonly APP_DIR=${app_dir}#" \
     -e "s#readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}#readonly BACKUP_DIR=${backup_dir}#" \
+    -e "s#readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py#readonly HOMEOPS_EVENT_REPORTER=${event_reporter}#" \
     -e "s#readonly OFFSITE_STAGING_ROOT=${PRODUCTION_OFFSITE_ROOT}#readonly OFFSITE_STAGING_ROOT=${backup_dir}-offsite#" \
     -e "s#readonly ICLOUD_ROOT='${PRODUCTION_ICLOUD_ROOT}'#readonly ICLOUD_ROOT='${backup_dir}-icloud'#" \
     -e "s#/bin/mv \"\${offsite_partial}\" \"\${icloud_final}\"#${final_move_bin} \"\${offsite_partial}\" \"\${icloud_final}\"#" \
@@ -533,6 +544,7 @@ prepare_script "${v2_app}" "${v2_backups}" "${v2_script}"
 
 COMPOSE_PROJECT_NAME=ambient-project \
 DOCKER_LOG="${docker_log}" \
+HOMEOPS_EVENT_LOG="${event_log}" \
 HEARTBEAT_LOG="${heartbeat_log}" \
   "${v2_script}" >/dev/null
 expected_release="${v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
@@ -815,5 +827,9 @@ DOCKER_LOG="${docker_log}" "${legacy_script}" >/dev/null
 /usr/bin/grep -Fq -- "--project-name guess-pokemon" "${docker_log}"
 /usr/bin/grep -Fq -- "--project-directory ${legacy_app}" "${docker_log}"
 /usr/bin/grep -Fq -- "--file ${legacy_app}/compose.yaml" "${docker_log}"
+/usr/bin/grep -Fq 'backups {"eventKey":"guess-pokemon:backup:' "${event_log}"
+/usr/bin/grep -Fq '"status":"RUNNING"' "${event_log}"
+/usr/bin/grep -Fq '"status":"SUCCESS"' "${event_log}"
+/usr/bin/grep -Fq '"sizeBytes":31' "${event_log}"
 
 printf 'Guess Pokémon production backup selection tests passed\n'

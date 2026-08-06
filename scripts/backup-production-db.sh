@@ -6,6 +6,7 @@ umask 077
 
 readonly DOCKER_BIN=/usr/local/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
+readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py
 readonly AGE_BIN=/opt/homebrew/bin/age
 readonly CURL_BIN=/usr/bin/curl
 readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon
@@ -28,6 +29,50 @@ readonly ZERO_DIGEST=sha256:0000000000000000000000000000000000000000000000000000
 work_dir=
 final_dir=
 active_compose_file=
+homeops_backup_started_at=
+homeops_backup_event_key=
+
+report_homeops_backup() {
+  local status="$1"
+  local finished_at="$2"
+  local logical_location="${3:-}"
+  local size_bytes="${4:-}"
+  local payload
+
+  if [[ -z "${homeops_backup_event_key}" ]]; then
+    return
+  fi
+  if [[ ! -f "${HOMEOPS_EVENT_REPORTER}" || -L "${HOMEOPS_EVENT_REPORTER}" || ! -x "${HOMEOPS_EVENT_REPORTER}" ]]; then
+    printf 'HomeOps backup event reporter is unavailable\n' >&2
+    return
+  fi
+  payload="$(
+    "${PYTHON_BIN}" - \
+      "${homeops_backup_event_key}" "${status}" "${homeops_backup_started_at}" \
+      "${finished_at}" "${logical_location}" "${size_bytes}" <<'PY'
+import json, sys
+event_key, status, started_at, finished_at, logical_location, size_bytes = sys.argv[1:]
+print(json.dumps({
+    "eventKey": event_key,
+    "project": "guess-pokemon",
+    "databaseType": "POSTGRESQL",
+    "logicalLocation": logical_location or None,
+    "status": status,
+    "startedAt": started_at,
+    "finishedAt": finished_at or None,
+    "sizeBytes": int(size_bytes) if size_bytes else None,
+    "failureSummary": "backup worker exited unsuccessfully" if status == "FAILED" else None,
+}, separators=(",", ":")))
+PY
+  )" || {
+    printf 'HomeOps backup event payload could not be generated\n' >&2
+    return
+  }
+  if ! printf '%s' "${payload}" | "${HOMEOPS_EVENT_REPORTER}" backups; then
+    printf 'HomeOps backup event could not be retained\n' >&2
+  fi
+}
+
 offsite_partial=
 offsite_staged=false
 local_heartbeat_url=
@@ -69,12 +114,30 @@ prepare_private_directory() {
 }
 
 cleanup() {
+  local exit_status="$?"
+  local finished_at
+  local logical_location=
+  local size_bytes=
+
+  if [[ -n "${homeops_backup_event_key}" ]]; then
+    finished_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    if [[ "${exit_status}" -eq 0 && -n "${final_dir}" && -d "${final_dir}" ]] \
+      && [[ -f "${final_dir}/database/dump" && ! -L "${final_dir}/database/dump" ]]
+    then
+      logical_location="guess-pokemon/data/$(/usr/bin/basename "${final_dir}")"
+      size_bytes="$(/usr/bin/wc -c <"${final_dir}/database/dump" | /usr/bin/tr -d '[:space:]')"
+      report_homeops_backup SUCCESS "${finished_at}" "${logical_location}" "${size_bytes}"
+    else
+      report_homeops_backup FAILED "${finished_at}" "" ""
+    fi
+  fi
   if [[ -n "${offsite_partial}" && -f "${offsite_partial}" ]]; then
     /bin/unlink "${offsite_partial}" || true
   fi
   if [[ -n "${work_dir}" && -d "${work_dir}" ]]; then
     printf 'Partial backup remains for inspection: %s\n' "${work_dir}" >&2
   fi
+  return "${exit_status}"
 }
 
 trap cleanup EXIT
@@ -388,7 +451,6 @@ select_compose_file() {
 if [[ ! -x "${DOCKER_BIN}" ]]; then
   fail "Docker CLI is not executable: ${DOCKER_BIN}"
 fi
-
 if [[ ! -x "${PYTHON_BIN}" ]]; then
   fail "Python is not executable: ${PYTHON_BIN}"
 fi
@@ -419,6 +481,9 @@ fi
 
 started_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 timestamp="$(/bin/date -u '+%Y%m%dT%H%M%SZ')"
+homeops_backup_started_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+homeops_backup_event_key="guess-pokemon:backup:${timestamp}"
+report_homeops_backup RUNNING "" "guess-pokemon/data/guess-pokemon-production-${timestamp}" ""
 work_dir="$(
   /usr/bin/mktemp -d "${BACKUP_DIR}/.guess-pokemon-backup.XXXXXX"
 )"
