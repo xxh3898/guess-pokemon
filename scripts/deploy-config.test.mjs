@@ -6,6 +6,7 @@ import test from "node:test";
 const [
   validateWorkflow,
   deployWorkflow,
+  productionCompose,
   deployScript,
   restrictedWrapper,
   productionBackupBootstrap,
@@ -17,6 +18,7 @@ const [
 ] = await Promise.all([
   read("../.github/workflows/validate.yml"),
   read("../.github/workflows/deploy.yml"),
+  read("../compose.production.yaml"),
   read("./deploy-guess-pokemon.sh"),
   read("./deploy-guess-pokemon-ci.sh"),
   read("./backup-production-db-bootstrap.sh"),
@@ -49,19 +51,19 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
     /infrastructure:\n    name: Infrastructure checks/,
   );
   assert.match(
-    workflowJob(validateWorkflow, "backend-image"),
-    /name: Backend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "api-image"),
+    /name: API ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   assert.match(
-    workflowJob(validateWorkflow, "frontend-image"),
-    /name: Frontend ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
+    workflowJob(validateWorkflow, "web-image"),
+    /name: Web ARM64 image[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
   for (const jobId of [
     "infrastructure",
     "frontend",
     "backend",
-    "backend-image",
-    "frontend-image",
+    "api-image",
+    "web-image",
   ]) {
     assert.match(
       workflowJob(validateWorkflow, jobId),
@@ -87,10 +89,6 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   assert.match(validateWorkflow, /changes:\n    name: Detect changes/);
   assert.match(
     validateWorkflow,
-    /mapfile -d '' -t changed_paths < <\([\s\S]*git diff[\s\S]*--no-renames[\s\S]*--name-only[\s\S]*-z/,
-  );
-  assert.match(
-    validateWorkflow,
     /\.\/scripts\/classify-ci-paths\.sh "\$\{changed_paths\[@\]\}"/,
   );
   assert.match(
@@ -99,6 +97,130 @@ test("should_validateDevAndPullRequestsInParallelOnNativeArmBeforeRelease", () =
   );
   assert.match(validateWorkflow, /platforms: linux\/arm64/g);
   assert.doesNotMatch(validateWorkflow, /docker\/setup-qemu-action/);
+  assert.doesNotMatch(
+    validateWorkflow,
+    /backend_image|frontend_image|backend-image|frontend-image/,
+  );
+});
+
+test("should_failClosed_when_changedPathDiffFails", () => {
+  const tempFileOffset = validateWorkflow.indexOf(
+    'changed_paths_file="$(mktemp "${RUNNER_TEMP}/ci-changed-paths.XXXXXX")"',
+  );
+  const diffGuardOffset = validateWorkflow.indexOf(
+    "if ! git diff",
+    tempFileOffset,
+  );
+  const mapfileOffset = validateWorkflow.indexOf(
+    "mapfile -d '' -t changed_paths",
+    diffGuardOffset,
+  );
+  const classifierOffset = validateWorkflow.indexOf(
+    './scripts/classify-ci-paths.sh "${changed_paths[@]}"',
+    mapfileOffset,
+  );
+
+  assert.doesNotMatch(
+    validateWorkflow,
+    /mapfile -d '' -t changed_paths < <\([\s\S]*git diff/,
+  );
+  assert.ok(tempFileOffset >= 0, "Missing exact changed-path temp file");
+  assert.ok(diffGuardOffset > tempFileOffset, "Diff must follow temp file setup");
+  assert.ok(mapfileOffset > diffGuardOffset, "Mapfile must follow checked diff");
+  assert.ok(
+    classifierOffset > mapfileOffset,
+    "Classifier must run only after the checked diff is loaded",
+  );
+  assert.match(
+    validateWorkflow,
+    /trap 'rm -f -- "\$\{changed_paths_file\}"' EXIT/,
+  );
+  assert.match(
+    validateWorkflow.slice(diffGuardOffset, mapfileOffset),
+    /if ! git diff \\\n+\s+--no-renames \\\n+\s+--name-only \\\n+\s+-z \\\n+\s+"\$\{base_sha\}" \\\n+\s+"\$\{GITHUB_SHA\}" \\\n+\s+>"\$\{changed_paths_file\}"; then[\s\S]*printf '%s\\n' 'Failed to detect changed paths\.' >&2[\s\S]*exit 1[\s\S]*fi/,
+  );
+  assert.match(
+    validateWorkflow.slice(mapfileOffset, classifierOffset),
+    /mapfile -d '' -t changed_paths \\\n+\s+<"\$\{changed_paths_file\}"/,
+  );
+});
+
+test("should_forceFullValidationForMainRelease", () => {
+  const fullReleaseGuard =
+    'if [[ "${REF_NAME}" == "refs/heads/main" ]]; then';
+  const guardOffset = validateWorkflow.indexOf(fullReleaseGuard);
+  const eventCaseOffset = validateWorkflow.indexOf(
+    'case "${EVENT_NAME}" in',
+  );
+
+  assert.match(validateWorkflow, /REF_NAME: \$\{\{ github\.ref \}\}/);
+  assert.ok(guardOffset >= 0, "Missing main release full-validation guard");
+  assert.ok(
+    guardOffset < eventCaseOffset,
+    "Main release guard must run before path-aware event classification",
+  );
+  assert.match(
+    validateWorkflow.slice(guardOffset, eventCaseOffset),
+    /\.\/scripts\/classify-ci-paths\.sh \\\n\s+"\.github\/workflows\/validate\.yml"[\s\S]*exit 0/,
+  );
+});
+
+test("should_gateEachRequiredJobWithItsMatchingChangeOutput", () => {
+  const outputByJob = new Map([
+    ["infrastructure", "infrastructure"],
+    ["backend", "backend"],
+    ["frontend", "frontend"],
+    ["api-image", "api_image"],
+    ["web-image", "web_image"],
+  ]);
+
+  for (const [jobId, expectedOutput] of outputByJob) {
+    const job = workflowJob(validateWorkflow, jobId);
+    const outputReferences = [
+      ...job.matchAll(/needs\.changes\.outputs\.([a-z_]+)/g),
+    ].map((match) => match[1]);
+
+    assert.match(
+      job,
+      new RegExp(
+        `needs\\.changes\\.outputs\\.${expectedOutput} != 'true'`,
+      ),
+    );
+    assert.match(
+      job,
+      new RegExp(
+        `needs\\.changes\\.outputs\\.${expectedOutput} == 'true'`,
+      ),
+    );
+    assert.deepEqual(
+      [...new Set(outputReferences)],
+      [expectedOutput],
+      `${jobId} must not reference another change output`,
+    );
+
+    const gatedSteps = job
+      .split(/^      - name: /m)
+      .slice(1)
+      .filter(
+        (step) =>
+          !step.startsWith("Fail when change detection fails\n") &&
+          !step.startsWith("Skip unrelated"),
+      );
+
+    assert.ok(gatedSteps.length > 0, `${jobId} must have gated work`);
+    for (const step of gatedSteps) {
+      const stepName = step.slice(0, step.indexOf("\n"));
+
+      assert.match(
+        step,
+        new RegExp(
+          `^        if: .*needs\\.changes\\.outputs\\.${expectedOutput} == 'true'`,
+          "m",
+        ),
+        `${jobId}/${stepName} must use ${expectedOutput}`,
+      );
+    }
+  }
 });
 
 test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
@@ -106,8 +228,8 @@ test("should_runOnlyFrontendChecks_when_frontendSourceChanges", () => {
     backend: "false",
     frontend: "true",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -116,8 +238,8 @@ test("should_runInfrastructureAndFrontendChecks_when_frontendDockerfileChanges",
     backend: "false",
     frontend: "true",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -126,8 +248,18 @@ test("should_runOnlyBackendChecks_when_backendSourceChanges", () => {
     backend: "true",
     frontend: "false",
     infrastructure: "false",
-    backend_image: "true",
-    frontend_image: "false",
+    api_image: "true",
+    web_image: "false",
+  });
+});
+
+test("should_runInfrastructureBackendAndApiImage_when_backendDockerfileChanges", () => {
+  assert.deepEqual(classifyPaths(["backend/Dockerfile"]), {
+    backend: "true",
+    frontend: "false",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "false",
   });
 });
 
@@ -136,8 +268,8 @@ test("should_runInfraAndFrontendImage_when_nginxChanges", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -146,9 +278,24 @@ test("should_runOnlyInfrastructureChecks_when_operationsDocsChange", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
   });
+});
+
+test("should_runOnlyInfrastructureChecks_when_launchAgentChanges", () => {
+  assert.deepEqual(
+    classifyPaths([
+      "launchd/com.homeserver.guess-pokemon-backup.plist.example",
+    ]),
+    {
+      backend: "false",
+      frontend: "false",
+      infrastructure: "true",
+      api_image: "false",
+      web_image: "false",
+    },
+  );
 });
 
 test("should_runOnlyInfrastructureChecks_when_runtimeConfigImageChanges", () => {
@@ -156,8 +303,8 @@ test("should_runOnlyInfrastructureChecks_when_runtimeConfigImageChanges", () => 
     backend: "false",
     frontend: "false",
     infrastructure: "true",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
   });
 });
 
@@ -168,8 +315,8 @@ test("should_runBothScopes_when_fileMovesFromFrontendToBackend", () => {
       backend: "true",
       frontend: "true",
       infrastructure: "false",
-      backend_image: "true",
-      frontend_image: "true",
+      api_image: "true",
+      web_image: "true",
     },
   );
 });
@@ -179,8 +326,8 @@ test("should_preserveNonAsciiPath_when_frontendFileChanges", () => {
     backend: "false",
     frontend: "true",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "true",
+    api_image: "false",
+    web_image: "true",
   });
 });
 
@@ -189,8 +336,28 @@ test("should_skipExpensiveChecks_when_unrelatedMetadataChanges", () => {
     backend: "false",
     frontend: "false",
     infrastructure: "false",
-    backend_image: "false",
-    frontend_image: "false",
+    api_image: "false",
+    web_image: "false",
+  });
+});
+
+test("should_runEveryCheck_when_gitAttributesChangeCheckoutPolicy", () => {
+  assert.deepEqual(classifyPaths([".gitattributes"]), {
+    backend: "true",
+    frontend: "true",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "true",
+  });
+});
+
+test("should_runEveryCheck_when_unclassifiedRuntimePathChanges", () => {
+  assert.deepEqual(classifyPaths(["new-runtime/tool.toml"]), {
+    backend: "true",
+    frontend: "true",
+    infrastructure: "true",
+    api_image: "true",
+    web_image: "true",
   });
 });
 
@@ -203,8 +370,8 @@ test("should_runEveryCheck_when_classifierOrWorkflowChanges", () => {
       backend: "true",
       frontend: "true",
       infrastructure: "true",
-      backend_image: "true",
-      frontend_image: "true",
+      api_image: "true",
+      web_image: "true",
     });
   }
 });
@@ -240,7 +407,7 @@ test("should_cacheBackendGradleDependenciesWithoutSkippingTests", () => {
   );
 });
 
-test("should_publishBothShaImagesOnlyFromMain", () => {
+test("should_validateThenPublishBothShaImagesOnlyFromMain", () => {
   assert.match(
     deployWorkflow,
     /push:\n    branches:\n      - main/,
@@ -265,16 +432,22 @@ test("should_publishBothShaImagesOnlyFromMain", () => {
     deployWorkflow,
     /publish:\n    name: Publish ARM64 images[\s\S]*runs-on: ubuntu-24\.04-arm/,
   );
-  assert.doesNotMatch(deployWorkflow, /\n  validate:\n/);
-  assert.doesNotMatch(
-    workflowJob(deployWorkflow, "publish"),
-    /^    needs:/m,
-  );
-  assert.doesNotMatch(
+  assert.match(
     deployWorkflow,
-    /uses: \.\/\.github\/workflows\/validate\.yml/,
+    /validate:\n    name: Validate release[\s\S]*uses: \.\/\.github\/workflows\/validate\.yml/,
+  );
+  assert.match(
+    workflowJob(deployWorkflow, "publish"),
+    /^    needs:\n      - validate/m,
   );
   assert.doesNotMatch(deployWorkflow, /docker\/setup-qemu-action/);
+  assert.doesNotMatch(deployWorkflow, /:latest|:main/);
+  assert.equal(
+    deployWorkflow.match(
+      /if: github\.ref == 'refs\/heads\/main' && vars\.MAC_MINI_DEPLOY_ENABLED == 'true'/g,
+    )?.length,
+    2,
+  );
   assert.match(
     deployWorkflow,
     /needs:\n      - publish[\s\S]*packages: read[\s\S]*id-token: write/,
@@ -500,30 +673,180 @@ test("should_rollbackBothImagesWithoutDeletingDatabase", () => {
   );
 });
 
-test("should_validateArchiveBeforePruningExpiredProjectBackups", () => {
+test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () => {
   const restoreList = productionBackupScript.indexOf("pg_restore --list");
-  const finalLink = productionBackupScript.indexOf(
-    '/bin/ln "${temporary_file}" "${final_file}"',
+  const snapshotInventory = productionBackupScript.indexOf("--data-only");
+  const snapshotInventoryCommandStart = productionBackupScript.lastIndexOf(
+    "compose exec -T db pg_restore",
+    snapshotInventory,
   );
-  const retentionLoop = productionBackupScript.indexOf(
-    'for candidate in "${BACKUP_DIR}"/guess-pokemon-production-*.dump',
+  const snapshotInventoryCommandEnd = productionBackupScript.indexOf(
+    '| "${PYTHON_BIN}" -c',
+    snapshotInventory,
+  );
+  const successMarker = productionBackupScript.indexOf(
+    'printf \'snapshot complete\\n\' >"${work_dir}/SUCCESS"',
+  );
+  const finalMove = productionBackupScript.indexOf(
+    '/bin/mv "${work_dir}" "${final_dir}"',
+  );
+  const retention = productionBackupScript.indexOf('"mode": "dry-run"');
+  const offsite = productionBackupScript.indexOf("stage_offsite_snapshot() {");
+  const offsiteEnd = productionBackupScript.indexOf(
+    "\nprintf 'Backup completed",
+    offsite,
   );
 
   assert.ok(restoreList >= 0);
-  assert.ok(finalLink > restoreList);
-  assert.ok(retentionLoop > finalLink);
+  assert.ok(snapshotInventory > restoreList);
+  assert.ok(snapshotInventoryCommandStart >= 0);
+  assert.ok(snapshotInventoryCommandEnd > snapshotInventory);
+  const snapshotInventoryCommand = productionBackupScript.slice(
+    snapshotInventoryCommandStart,
+    snapshotInventoryCommandEnd,
+  );
+  assert.match(snapshotInventoryCommand, /--file=-/);
+  assert.match(snapshotInventoryCommand, /<"\$\{db_dump_file\}"/);
+  assert.doesNotMatch(
+    snapshotInventoryCommand,
+    /(?:^|\s)(?:-d(?:\s|=)|--dbname(?:\s|=))/m,
+  );
+  assert.ok(successMarker > snapshotInventory);
+  assert.ok(successMarker > restoreList);
+  assert.ok(finalMove > successMarker);
+  assert.ok(retention > finalMove);
+  assert.ok(offsite > retention);
+  assert.ok(offsiteEnd > offsite);
+  const offsiteFunction = productionBackupScript.slice(offsite, offsiteEnd);
+  const finalPublish = offsiteFunction.indexOf(
+    'if ! /bin/mv "${offsite_partial}" "${icloud_final}"; then',
+  );
+  const partialRelease = offsiteFunction.indexOf(
+    "offsite_partial=",
+    finalPublish,
+  );
+  const finalRegularFileCheck = offsiteFunction.indexOf(
+    'if [[ ! -f "${icloud_final}" || -L "${icloud_final}" ]]; then',
+    partialRelease,
+  );
+  const finalChecksum = offsiteFunction.indexOf(
+    'if ! icloud_final_sha="$(',
+    finalRegularFileCheck,
+  );
+  const localCiphertextCleanup = offsiteFunction.indexOf(
+    'if ! /bin/unlink "${ciphertext}"; then',
+    finalChecksum,
+  );
+  const offsiteSuccess = offsiteFunction.indexOf(
+    "offsite_staged=true",
+    localCiphertextCleanup,
+  );
+  const offsiteQueued = offsiteFunction.indexOf(
+    "printf 'OFFSITE_QUEUED=%s\\n'",
+    offsiteSuccess,
+  );
+  assert.ok(finalPublish >= 0);
+  assert.ok(partialRelease > finalPublish);
+  assert.ok(finalRegularFileCheck > partialRelease);
+  assert.ok(finalChecksum > finalRegularFileCheck);
+  assert.ok(localCiphertextCleanup > finalChecksum);
+  assert.ok(offsiteSuccess > localCiphertextCleanup);
+  assert.ok(offsiteQueued > offsiteSuccess);
   assert.match(
-    productionBackupScript,
-    /RETENTION_SECONDS=\$\(\(3 \* 24 \* 60 \* 60\)\)/,
+    offsiteFunction,
+    /Offsite stage failed: iCloud final publish failed/,
+  );
+  assert.match(
+    offsiteFunction,
+    /Offsite stage failed: iCloud final checksum mismatch/,
+  );
+  assert.match(
+    offsiteFunction,
+    /Offsite stage warning: local ciphertext cleanup failed/,
+  );
+  assert.doesNotMatch(
+    offsiteFunction,
+    /^\s*\/bin\/mv "\$\{offsite_partial\}" "\$\{icloud_final\}"$/m,
   );
   assert.match(
     productionBackupScript,
-    /\^guess-pokemon-production-\[0-9\]\{8\}T\[0-9\]\{6\}Z\\\.dump\$/,
+    /Usage: backup-guess-pokemon\.sh \[--trigger scheduled\|predeploy\]/,
   );
+  assert.match(productionBackupScript, /"schemaVersion": 1/);
+  assert.match(productionBackupScript, /"status": "success"/);
+  assert.match(productionBackupScript, /"engine": "postgresql"/);
+  assert.match(
+    productionBackupScript,
+    /"recordCounts": dict\(sorted\(record_counts\.items\(\)\)\)/,
+  );
+  assert.match(
+    productionBackupScript,
+    /"recordCountsSource": "database\/dump"/,
+  );
+  assert.match(productionBackupScript, /--schema=public/);
+  assert.match(productionBackupScript, /--strict-names/);
+  assert.doesNotMatch(productionBackupScript, /BACKUP_QUERY=record-counts/);
+  assert.match(
+    productionBackupScript,
+    /"policy": \{"recent": 4, "dailyAtOrAfterKst": "06:00", "dailyDays": 7\}/,
+  );
+  assert.match(productionBackupScript, /"\$\{AGE_BIN\}" -R "\$\{AGE_RECIPIENT_FILE\}"/);
+  assert.match(productionBackupScript, /\.XXXXXX\.partial/);
+  assert.match(productionBackupScript, /iCloud handoff checksum mismatch/);
+  assert.match(productionBackupScript, /age recipient file mode must be 600/);
+  assert.match(
+    productionBackupScript,
+    /prepare_private_directory "\$\{BACKUP_DIR\}"/,
+  );
+  assert.match(
+    productionBackupScript,
+    /readonly HEARTBEAT_CONFIG_FILE="\$\{APP_DIR\}\/backup-heartbeats\.conf"/,
+  );
+  assert.match(
+    productionBackupScript,
+    /backup heartbeat configuration mode must be 600/,
+  );
+  assert.match(
+    productionBackupScript,
+    /backup heartbeat configuration contains unexpected content/,
+  );
+  assert.match(productionBackupScript, /Backup heartbeat delivery failed: %s/);
   assert.doesNotMatch(
     productionBackupScript,
     /rm -rf|find[^\n]*-delete|down[^\n]*(?:--volumes|-v)/,
   );
+});
+
+test("should_runOneShotFlywayBeforeCutoverAndGateSuccessOnPublicSmoke", () => {
+  const migrationFunction = deployScript.match(
+    /run_one_shot_migration\(\) \{[\s\S]*?\n\}/,
+  )?.[0];
+  const pending = deployScript.lastIndexOf("write_pending_state \\");
+  const migration = deployScript.lastIndexOf(
+    'if ! run_one_shot_migration "${new_api_image}" "${new_web_image}"; then',
+  );
+  const imageWrite = deployScript.lastIndexOf(
+    'write_image_env "${new_api_image}" "${new_web_image}"',
+  );
+  const publicSmoke = deployScript.lastIndexOf("if public_smoke; then");
+  const successState = deployScript.lastIndexOf("write_success_state \\");
+
+  assert.match(productionCompose, /SPRING_FLYWAY_ENABLED: "false"/);
+  assert.ok(migrationFunction);
+  assert.match(
+    migrationFunction,
+    /-Dloader\.main=\$\{MIGRATION_MAIN_CLASS\}[\s\S]*PropertiesLauncher/,
+  );
+  assert.match(migrationFunction, /local candidate_api_image="\$1"/);
+  assert.match(migrationFunction, /local candidate_web_image="\$2"/);
+  assert.match(migrationFunction, /export API_IMAGE="\$\{candidate_api_image\}"/);
+  assert.match(migrationFunction, /export WEB_IMAGE="\$\{candidate_web_image\}"/);
+  assert.match(migrationFunction, /compose run \\\n[\s\S]*--pull never/);
+  assert.ok(pending >= 0);
+  assert.ok(migration > pending);
+  assert.ok(imageWrite > migration);
+  assert.ok(publicSmoke > imageWrite);
+  assert.ok(successState > publicSmoke);
 });
 
 test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
@@ -537,7 +860,19 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
     operations,
     /15분 시점에도 남아 있으면 기존 service를 바꾸지 않은 채 실패한다/,
   );
-  assert.match(operations, /3일을 초과한 Guess Pokémon archive만 정리한다/);
+  assert.match(
+    operations,
+    /최근 정상 snapshot 4개와 지난 7 calendar day마다 KST 06:00 이후 첫 정상/,
+  );
+  assert.match(operations, /현재 worker는 실제 삭제 없이\s+dry-run만 수행한다/);
+  assert.match(
+    operations,
+    /candidate API image의 `MigrationMain`을 one-shot으로 실행해 Flyway/,
+  );
+  assert.match(
+    operations,
+    /public Web `\/`, deep link `\/history`, API readiness/,
+  );
   assert.match(operations, /DB migration은 자동으로 rollback하지 않는다/);
   assert.match(deployScript, /readonly PYTHON_BIN=\/usr\/bin\/python3/);
   assert.match(productionBackupScript, /readonly PROJECT_NAME=guess-pokemon/);
@@ -551,7 +886,10 @@ test("should_documentCiBackupAndMigrationRollbackBoundary", () => {
     operations,
     /마지막 성공 Production deployment[\s\S]*변경된 배포만[\s\S]*runtime-config/,
   );
-  assert.match(operations, /이전 API·Web SHA와 runtime config를 함께 복구한다/);
+  assert.match(
+    operations,
+    /이전 API·Web SHA와 runtime\s+config를 함께 복구하고 public smoke를 다시 확인한다/,
+  );
 });
 
 test("should_publishRuntimeConfigOnly_when_allowlistedFilesChange", () => {
