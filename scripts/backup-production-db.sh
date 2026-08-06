@@ -83,7 +83,7 @@ cleanup() {
     finished_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
     if [[ "${exit_status}" -eq 0 && -n "${final_file}" && -f "${final_file}" ]]; then
       logical_location="guess-pokemon/data/$(/usr/bin/basename "${final_file}")"
-      size_bytes="$(/usr/bin/stat -f '%z' "${final_file}")"
+      size_bytes="$(/usr/bin/wc -c <"${final_file}" | /usr/bin/tr -d '[:space:]')"
       report_homeops_backup SUCCESS "${finished_at}" "${logical_location}" "${size_bytes}"
     else
       report_homeops_backup FAILED "${finished_at}" "" ""

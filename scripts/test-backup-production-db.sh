@@ -274,5 +274,6 @@ DOCKER_LOG="${docker_log}" "${legacy_script}" >/dev/null
 /usr/bin/grep -Fq 'backups {"eventKey":"guess-pokemon:backup:' "${event_log}"
 /usr/bin/grep -Fq '"status":"RUNNING"' "${event_log}"
 /usr/bin/grep -Fq '"status":"SUCCESS"' "${event_log}"
+/usr/bin/grep -Fq '"sizeBytes":31' "${event_log}"
 
 printf 'Guess Pokémon production backup selection tests passed\n'
