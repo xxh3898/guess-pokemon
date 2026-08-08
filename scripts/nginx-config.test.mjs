@@ -44,26 +44,29 @@ test("should_trustOnlyTunnelConnectorAddresses_when_realIpIsEnabled", () => {
   );
 });
 
-test("should_trustOnlyPinnedSharedConnector_when_productionRuns", () => {
+test("should_trustSharedEdgeNetwork_when_productionRuns", () => {
   assert.match(
     cloudflareEdgeRealIpConfig,
-    /set_real_ip_from 172\.18\.0\.2;/,
+    /set_real_ip_from 172\.18\.0\.0\/16;/,
   );
   assert.match(
     cloudflareEdgeRealIpConfig,
     /real_ip_header CF-Connecting-IP;/,
   );
-  assert.match(cloudflareEdgeRealIpConfig, /real_ip_recursive off;/);
+  assert.match(
+    cloudflareEdgeRealIpConfig,
+    /real_ip_recursive off;/,
+  );
   assert.doesNotMatch(
     cloudflareEdgeRealIpConfig,
-    /set_real_ip_from (?:0\.0\.0\.0\/0|10\.0\.0\.0\/8|172\.18\.0\.0\/16|192\.168\.0\.0\/16);/,
+    /set_real_ip_from (?:0\.0\.0\.0\/0|10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16);/,
   );
 });
 
-test("should_forwardExternalSchemeAndPort_when_requestComesFromTunnel", () => {
+test("should_forwardExternalSchemeAndPort_when_requestComesFromTrustedTunnelNetwork", () => {
   assert.match(
     nginxConfig,
-    /map \$realip_remote_addr \$trusted_tunnel_request \{[\s\S]*172\.18\.0\.2 1;[\s\S]*172\.30\.77\.3 1;[\s\S]*172\.30\.77\.4 1;[\s\S]*default 0;[\s\S]*\}/,
+    /geo \$trusted_tunnel_request \{[\s\S]*default 0;[\s\S]*172\.18\.0\.0\/16 1;[\s\S]*172\.30\.77\.3\/32 1;[\s\S]*172\.30\.77\.4\/32 1;[\s\S]*\}/,
   );
   assert.match(
     nginxConfig,
@@ -103,6 +106,7 @@ test("should_preserveBrowserHost_when_proxyingWebSocket", () => {
   )?.groups?.body;
 
   assert.ok(webSocketLocation, "location /ws block is required");
+
   assert.match(
     webSocketLocation,
     /proxy_set_header Host \$external_host;/,
@@ -130,7 +134,10 @@ test("should_limitApiBursts_when_requestRateIsExceeded", () => {
     nginxConfig,
     /limit_req_zone \$binary_remote_addr zone=auth_per_ip:10m rate=30r\/m;/,
   );
-  assert.match(nginxConfig, /limit_req_status 429;/);
+  assert.match(
+    nginxConfig,
+    /limit_req_status 429;/,
+  );
   assert.match(
     nginxConfig,
     /location ~ \^\/api\/v1\/auth\/\(\?:login\|signup\)\$ \{[\s\S]*limit_req zone=auth_per_ip burst=10 nodelay;/,
@@ -158,7 +165,10 @@ test("should_sendHstsOnlyForHttps_when_securityHeadersAreApplied", () => {
     nginxConfig,
     /add_header Content-Security-Policy [^\n]+ always;/,
   );
-  assert.match(nginxConfig, /server_tokens off;/);
+  assert.match(
+    nginxConfig,
+    /server_tokens off;/,
+  );
 });
 
 function countMatches(value, pattern) {
