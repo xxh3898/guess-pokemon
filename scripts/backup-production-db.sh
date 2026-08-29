@@ -8,7 +8,6 @@ readonly DOCKER_BIN=/usr/local/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
 readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py
 readonly AGE_BIN=/opt/homebrew/bin/age
-readonly CURL_BIN=/usr/bin/curl
 readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon
 readonly PROJECT_NAME=guess-pokemon
 readonly LEGACY_COMPOSE_FILE="${APP_DIR}/compose.yaml"
@@ -17,7 +16,6 @@ readonly BACKUP_DIR=/Users/homeserver/Server/backups/guess-pokemon/data
 readonly OFFSITE_STAGING_ROOT=/Users/homeserver/Server/backups/guess-pokemon/offsite
 readonly ICLOUD_ROOT='/Users/homeserver/Library/Mobile Documents/com~apple~CloudDocs/HomeServerBackups/guess-pokemon'
 readonly AGE_RECIPIENT_FILE="${APP_DIR}/backup-age-recipient-v1.txt"
-readonly HEARTBEAT_CONFIG_FILE="${APP_DIR}/backup-heartbeats.conf"
 readonly RUNTIME_CONFIG_ROOT="${APP_DIR}/runtime-config"
 readonly RUNTIME_CONFIG_RELEASES="${RUNTIME_CONFIG_ROOT}/releases"
 readonly RUNTIME_CONFIG_STATE="${RUNTIME_CONFIG_ROOT}/state"
@@ -31,6 +29,7 @@ final_dir=
 active_compose_file=
 homeops_backup_started_at=
 homeops_backup_event_key=
+homeops_reporting_degraded=false
 
 report_homeops_backup() {
   local status="$1"
@@ -40,11 +39,11 @@ report_homeops_backup() {
   local payload
 
   if [[ -z "${homeops_backup_event_key}" ]]; then
-    return
+    return 0
   fi
   if [[ ! -f "${HOMEOPS_EVENT_REPORTER}" || -L "${HOMEOPS_EVENT_REPORTER}" || ! -x "${HOMEOPS_EVENT_REPORTER}" ]]; then
     printf 'HomeOps backup event reporter is unavailable\n' >&2
-    return
+    return 1
   fi
   payload="$(
     "${PYTHON_BIN}" - \
@@ -66,17 +65,18 @@ print(json.dumps({
 PY
   )" || {
     printf 'HomeOps backup event payload could not be generated\n' >&2
-    return
+    return 1
   }
-  if ! printf '%s' "${payload}" | "${HOMEOPS_EVENT_REPORTER}" backups; then
+  if ! printf '%s' "${payload}" \
+    | "${HOMEOPS_EVENT_REPORTER}" backups >/dev/null 2>&1
+  then
     printf 'HomeOps backup event could not be retained\n' >&2
+    return 1
   fi
+  return 0
 }
 
 offsite_partial=
-offsite_staged=false
-local_heartbeat_url=
-icloud_stage_heartbeat_url=
 trigger=scheduled
 
 usage() {
@@ -126,9 +126,15 @@ cleanup() {
     then
       logical_location="guess-pokemon/data/$(/usr/bin/basename "${final_dir}")"
       size_bytes="$(/usr/bin/wc -c <"${final_dir}/database/dump" | /usr/bin/tr -d '[:space:]')"
-      report_homeops_backup SUCCESS "${finished_at}" "${logical_location}" "${size_bytes}"
+      if ! report_homeops_backup \
+        SUCCESS "${finished_at}" "${logical_location}" "${size_bytes}"
+      then
+        homeops_reporting_degraded=true
+      fi
     else
-      report_homeops_backup FAILED "${finished_at}" "" ""
+      if ! report_homeops_backup FAILED "${finished_at}" "" ""; then
+        homeops_reporting_degraded=true
+      fi
     fi
   fi
   if [[ -n "${offsite_partial}" && -f "${offsite_partial}" ]]; then
@@ -137,7 +143,12 @@ cleanup() {
   if [[ -n "${work_dir}" && -d "${work_dir}" ]]; then
     printf 'Partial backup remains for inspection: %s\n' "${work_dir}" >&2
   fi
-  return "${exit_status}"
+  if [[ "${exit_status}" -eq 0 && "${homeops_reporting_degraded}" == true ]]; then
+    printf 'HomeOps backup reporting is degraded\n' >&2
+    exit_status=1
+  fi
+  trap - EXIT
+  exit "${exit_status}"
 }
 
 trap cleanup EXIT
@@ -165,101 +176,6 @@ if [[ "${trigger}" != scheduled && "${trigger}" != predeploy ]]; then
   usage
   exit 64
 fi
-
-validate_heartbeat_url() {
-  local value="$1"
-
-  if printf '%s' "${value}" | /usr/bin/grep -q '[[:space:]]'; then
-    return 1
-  fi
-  case "${value}" in
-    https://*/api/push/*|http://127.0.0.1:*/api/push/*|http://localhost:*/api/push/*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-load_heartbeat_config() {
-  local file_mode
-  local line
-  local local_seen=false
-  local icloud_seen=false
-
-  if [[ ! -e "${HEARTBEAT_CONFIG_FILE}" && ! -L "${HEARTBEAT_CONFIG_FILE}" ]]; then
-    return 0
-  fi
-  if [[ ! -f "${HEARTBEAT_CONFIG_FILE}" || -L "${HEARTBEAT_CONFIG_FILE}" ]]; then
-    fail "backup heartbeat configuration is missing or unsafe"
-  fi
-  file_mode="$(private_file_mode "${HEARTBEAT_CONFIG_FILE}")"
-  if [[ "${file_mode}" != 600 ]]; then
-    fail "backup heartbeat configuration mode must be 600"
-  fi
-
-  while IFS= read -r line || [[ -n "${line}" ]]; do
-    case "${line}" in
-      LOCAL_HEARTBEAT_URL=*)
-        if [[ "${local_seen}" == true ]]; then
-          fail "backup heartbeat configuration contains duplicate keys"
-        fi
-        local_seen=true
-        local_heartbeat_url="${line#LOCAL_HEARTBEAT_URL=}"
-        ;;
-      ICLOUD_STAGE_HEARTBEAT_URL=*)
-        if [[ "${icloud_seen}" == true ]]; then
-          fail "backup heartbeat configuration contains duplicate keys"
-        fi
-        icloud_seen=true
-        icloud_stage_heartbeat_url="${line#ICLOUD_STAGE_HEARTBEAT_URL=}"
-        ;;
-      *)
-        fail "backup heartbeat configuration contains unexpected content"
-        ;;
-    esac
-  done <"${HEARTBEAT_CONFIG_FILE}"
-
-  if [[ "${local_seen}" != true || "${icloud_seen}" != true ]] \
-    || ! validate_heartbeat_url "${local_heartbeat_url}" \
-    || ! validate_heartbeat_url "${icloud_stage_heartbeat_url}"
-  then
-    fail "backup heartbeat configuration is incomplete or invalid"
-  fi
-}
-
-send_heartbeat() {
-  local channel="$1"
-  local url
-
-  case "${channel}" in
-    local)
-      url="${local_heartbeat_url}"
-      ;;
-    icloud-stage)
-      url="${icloud_stage_heartbeat_url}"
-      ;;
-    *)
-      return 64
-      ;;
-  esac
-  if [[ -z "${url}" ]]; then
-    return 0
-  fi
-  if [[ ! -x "${CURL_BIN}" ]] \
-    || ! "${CURL_BIN}" \
-      --fail \
-      --silent \
-      --connect-timeout 3 \
-      --max-time 10 \
-      "${url}" \
-      >/dev/null 2>&1
-  then
-    printf 'Backup heartbeat delivery failed: %s\n' "${channel}" >&2
-    return 1
-  fi
-}
 
 is_digest() {
   [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]] && [[ "$1" != "${ZERO_DIGEST}" ]]
@@ -455,8 +371,6 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
   fail "Python is not executable: ${PYTHON_BIN}"
 fi
 
-load_heartbeat_config
-
 if [[ ! -f "${ENV_FILE}" || -L "${ENV_FILE}" ]]; then
   fail "production environment configuration is missing or unsafe"
 fi
@@ -483,7 +397,11 @@ started_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 timestamp="$(/bin/date -u '+%Y%m%dT%H%M%SZ')"
 homeops_backup_started_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 homeops_backup_event_key="guess-pokemon:backup:${timestamp}"
-report_homeops_backup RUNNING "" "guess-pokemon/data/guess-pokemon-production-${timestamp}" ""
+if ! report_homeops_backup \
+  RUNNING "" "guess-pokemon/data/guess-pokemon-production-${timestamp}" ""
+then
+  homeops_reporting_degraded=true
+fi
 work_dir="$(
   /usr/bin/mktemp -d "${BACKUP_DIR}/.guess-pokemon-backup.XXXXXX"
 )"
@@ -1035,21 +953,16 @@ stage_offsite_snapshot() {
   if ! /bin/unlink "${ciphertext}"; then
     printf 'Offsite stage warning: local ciphertext cleanup failed\n' >&2
   fi
-  offsite_staged=true
   printf 'OFFSITE_QUEUED=%s\n' "${icloud_final}"
   return 0
 }
 
 printf 'Backup completed: %s\n' "${final_dir}"
 printf 'Retention dry-run plan: %s\n' "${BACKUP_DIR}/retention-plan.json"
-send_heartbeat local || true
 if ! stage_offsite_snapshot; then
   if [[ "${trigger}" == predeploy ]]; then
     printf 'Predeploy continues because the verified local snapshot succeeded\n' >&2
   else
     fail "local snapshot succeeded but offsite staging failed"
   fi
-fi
-if [[ "${offsite_staged}" == true ]]; then
-  send_heartbeat icloud-stage || true
 fi

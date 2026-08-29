@@ -737,21 +737,16 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
     'if ! /bin/unlink "${ciphertext}"; then',
     finalChecksum,
   );
-  const offsiteSuccess = offsiteFunction.indexOf(
-    "offsite_staged=true",
-    localCiphertextCleanup,
-  );
   const offsiteQueued = offsiteFunction.indexOf(
     "printf 'OFFSITE_QUEUED=%s\\n'",
-    offsiteSuccess,
+    localCiphertextCleanup,
   );
   assert.ok(finalPublish >= 0);
   assert.ok(partialRelease > finalPublish);
   assert.ok(finalRegularFileCheck > partialRelease);
   assert.ok(finalChecksum > finalRegularFileCheck);
   assert.ok(localCiphertextCleanup > finalChecksum);
-  assert.ok(offsiteSuccess > localCiphertextCleanup);
-  assert.ok(offsiteQueued > offsiteSuccess);
+  assert.ok(offsiteQueued > localCiphertextCleanup);
   assert.match(
     offsiteFunction,
     /Offsite stage failed: iCloud final publish failed/,
@@ -798,19 +793,28 @@ test("should_publishValidatedSnapshotsAndPlanRetentionBeforeOffsiteHandoff", () 
     productionBackupScript,
     /prepare_private_directory "\$\{BACKUP_DIR\}"/,
   );
+  const removedBackupTokens = [
+    ["backup", "heartbeats.conf"].join("-"),
+    ["LOCAL", "HEARTBEAT", "URL"].join("_"),
+    ["ICLOUD", "STAGE", "HEARTBEAT", "URL"].join("_"),
+    ["PROD", "DB", "BACKUP", "HEARTBEAT", "SUCCESS", "URL"].join("_"),
+    ["PROD", "DB", "BACKUP", "HEARTBEAT", "FAILURE", "URL"].join("_"),
+    ["/api", "push/"].join("/"),
+  ];
+  for (const removedToken of removedBackupTokens) {
+    assert.equal(productionBackupScript.includes(removedToken), false);
+  }
+  assert.doesNotMatch(productionBackupScript, /(?:\/usr\/bin\/)?curl|CURL/);
+  assert.match(productionBackupScript, /homeops_reporting_degraded=false/);
   assert.match(
     productionBackupScript,
-    /readonly HEARTBEAT_CONFIG_FILE="\$\{APP_DIR\}\/backup-heartbeats\.conf"/,
+    /HomeOps backup event could not be retained/,
   );
   assert.match(
     productionBackupScript,
-    /backup heartbeat configuration mode must be 600/,
+    /HomeOps backup reporting is degraded/,
   );
-  assert.match(
-    productionBackupScript,
-    /backup heartbeat configuration contains unexpected content/,
-  );
-  assert.match(productionBackupScript, /Backup heartbeat delivery failed: %s/);
+  assert.match(productionBackupScript, /trap - EXIT\n  exit "\$\{exit_status\}"/);
   assert.doesNotMatch(
     productionBackupScript,
     /rm -rf|find[^\n]*-delete|down[^\n]*(?:--volumes|-v)/,
