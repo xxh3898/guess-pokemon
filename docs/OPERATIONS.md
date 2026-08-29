@@ -595,16 +595,20 @@ root의 `predeploy/`와 `bootstrap/`은 각각 배포 전 snapshot과 host boots
 기록하고 iCloud Drive의 Guess Pokémon 전용 directory로 전달한다. raw dump는
 iCloud에 복사하지 않는다. `.partial` 복사본의 SHA-256 일치, final rename 성공,
 symlink가 아닌 final regular file과 local ciphertext의 SHA-256 재일치까지 확인한
-뒤에만 handoff 성공과 iCloud-stage heartbeat를 허용한다. Final 검증 전 실패하면
-local ciphertext를 보존한다. 검증된 final 뒤 local ciphertext 정리만 실패하면
-generic 경고를 남기고 handoff 성공은 유지한다. 이 handoff는 Apple server remote
-upload 완료 판정과는 다르다.
+뒤에만 handoff 성공으로 기록한다. Final 검증 전 실패하면 local ciphertext를
+보존한다. 검증된 final 뒤 local ciphertext 정리만 실패하면 generic 경고를 남기고
+handoff 성공은 유지한다. 이 handoff는 Apple server remote upload 완료 판정과는
+다르다.
 
-선택적 mode `0600` `backup-heartbeats.conf`는
-`LOCAL_HEARTBEAT_URL`, `ICLOUD_STAGE_HEARTBEAT_URL` 두 key만 허용한다. URL은
-Git·문서·로그에 남기지 않는다. 최초 7일 관찰, remote decrypt·restore drill과
-별도 backup 삭제 승인 전에는 `retention-plan.json`의 `pruneCandidates`를
-실행하지 않는다. 전체 계약은
+백업 lifecycle은 공용 HomeOps event reporter만 사용한다. 같은 `eventKey`로
+`RUNNING`과 최종 `SUCCESS` 또는 `FAILED`를 보내며, reporter 종료 코드 `0`만
+owner-only spool 접수 성공으로 간주한다. Project worker는 endpoint, origin,
+HMAC key와 외부 전송 secret을 알지 못한다. Event 접수 실패는 일반화한 stderr와
+nonzero reporting degraded 상태로 드러내되, 검증된 snapshot과 offsite 결과를
+삭제하거나 손상시키지 않는다. Reporter 접수는 downstream ingestion이나 알림
+전달 성공 판정이 아니다. 최초 7일 관찰, remote decrypt·restore drill과 별도
+backup 삭제 승인 전에는 `retention-plan.json`의 `pruneCandidates`를 실행하지
+않는다. 전체 계약은
 `docs/DEVELOPMENT-DEPLOYMENT-BACKUP.md`를 따른다.
 
 ## 15. 참고 문서
