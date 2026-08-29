@@ -28,12 +28,12 @@ trap cleanup EXIT INT TERM
 
 mock_docker="${test_root}/docker"
 mock_age="${test_root}/age"
-mock_curl="${test_root}/curl"
 mock_final_move="${test_root}/fail-final-move"
 docker_log="${test_root}/docker.log"
 event_log="${test_root}/homeops-events.log"
 event_reporter="${test_root}/report-homeops-event.py"
-heartbeat_log="${test_root}/heartbeat.log"
+rejected_event_log="${test_root}/rejected-homeops-events.log"
+reject_event_reporter="${test_root}/reject-homeops-event.sh"
 final_move_log="${test_root}/final-move.log"
 
 {
@@ -84,6 +84,16 @@ final_move_log="${test_root}/final-move.log"
   printf 'printf "\\n" >>"%s"\n' "${event_log}"
 } >"${event_reporter}"
 /bin/chmod 700 "${event_reporter}"
+: >"${rejected_event_log}"
+{
+  printf '#!/bin/bash\n'
+  printf 'printf "%%s " "$1" >>"%s"\n' "${rejected_event_log}"
+  printf '/bin/cat >>"%s"\n' "${rejected_event_log}"
+  printf 'printf "\\n" >>"%s"\n' "${rejected_event_log}"
+  printf 'printf "reporter detail: /Users/%%s https:%%s%%s\\n" "private" "/" "/endpoint" >&2\n'
+  printf 'exit 75\n'
+} >"${reject_event_reporter}"
+/bin/chmod 700 "${reject_event_reporter}"
 
 {
   printf '%s\n' \
@@ -93,15 +103,6 @@ final_move_log="${test_root}/final-move.log"
     '/bin/cat'
 } >"${mock_age}"
 /bin/chmod 700 "${mock_age}"
-
-{
-  printf '%s\n' \
-    '#!/bin/bash' \
-    'set -Eeuo pipefail' \
-    'printf "%s\n" "$*" >>"${HEARTBEAT_LOG}"'
-} >"${mock_curl}"
-/bin/chmod 700 "${mock_curl}"
-: >"${heartbeat_log}"
 
 {
   printf '%s\n' \
@@ -118,6 +119,7 @@ prepare_script() {
   local backup_dir="$2"
   local target_script="$3"
   local final_move_bin="${4:-/bin/mv}"
+  local reporter_bin="${5:-${event_reporter}}"
 
   if ! /usr/bin/grep -Fqx \
     "readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}" \
@@ -132,10 +134,9 @@ prepare_script() {
   /usr/bin/sed \
     -e "s#readonly DOCKER_BIN=/usr/local/bin/docker#readonly DOCKER_BIN=${mock_docker}#" \
     -e "s#readonly AGE_BIN=/opt/homebrew/bin/age#readonly AGE_BIN=${mock_age}#" \
-    -e "s#readonly CURL_BIN=/usr/bin/curl#readonly CURL_BIN=${mock_curl}#" \
     -e "s#readonly APP_DIR=/Users/homeserver/Server/apps/guess-pokemon#readonly APP_DIR=${app_dir}#" \
     -e "s#readonly BACKUP_DIR=${PRODUCTION_BACKUP_DIR}#readonly BACKUP_DIR=${backup_dir}#" \
-    -e "s#readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py#readonly HOMEOPS_EVENT_REPORTER=${event_reporter}#" \
+    -e "s#readonly HOMEOPS_EVENT_REPORTER=/Users/homeserver/Server/apps/homeops/runtime-config/current/scripts/report-homeops-event.py#readonly HOMEOPS_EVENT_REPORTER=${reporter_bin}#" \
     -e "s#readonly OFFSITE_STAGING_ROOT=${PRODUCTION_OFFSITE_ROOT}#readonly OFFSITE_STAGING_ROOT=${backup_dir}-offsite#" \
     -e "s#readonly ICLOUD_ROOT='${PRODUCTION_ICLOUD_ROOT}'#readonly ICLOUD_ROOT='${backup_dir}-icloud'#" \
     -e "s#/bin/mv \"\${offsite_partial}\" \"\${icloud_final}\"#${final_move_bin} \"\${offsite_partial}\" \"\${icloud_final}\"#" \
@@ -163,6 +164,65 @@ prepare_app() {
   printf 'age1testrecipient000000000000000000000000000000000000000000000\n' \
     >"${app_dir}/backup-age-recipient-v1.txt"
   /bin/chmod 600 "${app_dir}/backup-age-recipient-v1.txt"
+}
+
+assert_homeops_event_sequence() {
+  local captured_events="$1"
+  local expected_final_status="$2"
+  local expected_size_bytes="${3:-}"
+
+  /usr/bin/python3 - \
+    "${captured_events}" \
+    "${expected_final_status}" \
+    "${expected_size_bytes}" <<'PY'
+import json
+import pathlib
+import sys
+
+event_path = pathlib.Path(sys.argv[1])
+expected_final_status = sys.argv[2]
+expected_size_bytes = int(sys.argv[3]) if sys.argv[3] else None
+lines = event_path.read_text(encoding="utf-8").splitlines()
+assert len(lines) == 2, lines
+
+events = []
+for line in lines:
+    channel, payload = line.split(" ", 1)
+    assert channel == "backups"
+    events.append(json.loads(payload))
+
+running, final = events
+assert [running["status"], final["status"]] == [
+    "RUNNING",
+    expected_final_status,
+]
+assert running["eventKey"] == final["eventKey"]
+assert running["eventKey"].startswith("guess-pokemon:backup:")
+for event in events:
+    assert event["project"] == "guess-pokemon"
+    assert event["databaseType"] == "POSTGRESQL"
+    assert event["startedAt"]
+
+assert running["logicalLocation"].startswith(
+    "guess-pokemon/data/guess-pokemon-production-"
+)
+assert running["finishedAt"] is None
+assert running["sizeBytes"] is None
+assert running["failureSummary"] is None
+assert final["finishedAt"]
+
+if expected_final_status == "SUCCESS":
+    assert final["logicalLocation"].startswith(
+        "guess-pokemon/data/guess-pokemon-production-"
+    )
+    assert final["sizeBytes"] == expected_size_bytes
+    assert final["failureSummary"] is None
+else:
+    assert expected_final_status == "FAILED"
+    assert final["logicalLocation"] is None
+    assert final["sizeBytes"] is None
+    assert final["failureSummary"] == "backup worker exited unsuccessfully"
+PY
 }
 
 seed_retention_matrix() {
@@ -533,19 +593,13 @@ v2_script="${test_root}/v2-backup.sh"
 v2_retention_expected="${test_root}/v2-retention-expected.json"
 /bin/mkdir -p "${v2_app}" "${v2_backups}"
 prepare_app "${v2_app}"
-printf '%s\n' \
-  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-local-test' \
-  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-icloud-test' \
-  >"${v2_app}/backup-heartbeats.conf"
-/bin/chmod 600 "${v2_app}/backup-heartbeats.conf"
 seed_retention_matrix "${v2_backups}" "${v2_retention_expected}"
 prepare_runtime_state "${v2_app}"
 prepare_script "${v2_app}" "${v2_backups}" "${v2_script}"
+: >"${event_log}"
 
 COMPOSE_PROJECT_NAME=ambient-project \
 DOCKER_LOG="${docker_log}" \
-HOMEOPS_EVENT_LOG="${event_log}" \
-HEARTBEAT_LOG="${heartbeat_log}" \
   "${v2_script}" >/dev/null
 expected_release="${v2_app}/runtime-config/releases/${CONFIG_DIGEST#sha256:}"
 /usr/bin/grep -Fq -- "--project-name guess-pokemon" "${docker_log}"
@@ -568,9 +622,7 @@ fi
 test "$(find "${v2_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" -ge 1
 assert_retention_matrix "${v2_backups}" "${v2_retention_expected}"
 assert_snapshot_contract "${v2_backups}" scheduled
-test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 2
-/usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
-/usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"
+assert_homeops_event_sequence "${event_log}" SUCCESS 31
 
 final_move_scheduled_app="${test_root}/final-move-scheduled-app"
 final_move_scheduled_backups="${test_root}/final-move-scheduled-backups"
@@ -580,22 +632,15 @@ final_move_scheduled_output="${test_root}/final-move-scheduled.out"
   "${final_move_scheduled_app}" \
   "${final_move_scheduled_backups}"
 prepare_app "${final_move_scheduled_app}"
-printf '%s\n' \
-  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-local-test' \
-  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-icloud-test' \
-  >"${final_move_scheduled_app}/backup-heartbeats.conf"
-/bin/chmod 600 "${final_move_scheduled_app}/backup-heartbeats.conf"
 prepare_runtime_state "${final_move_scheduled_app}"
 prepare_script \
   "${final_move_scheduled_app}" \
   "${final_move_scheduled_backups}" \
   "${final_move_scheduled_script}" \
   "${mock_final_move}"
-: >"${heartbeat_log}"
 : >"${final_move_log}"
 
 if DOCKER_LOG="${docker_log}" \
-  HEARTBEAT_LOG="${heartbeat_log}" \
   FINAL_MOVE_LOG="${final_move_log}" \
   "${final_move_scheduled_script}" >"${final_move_scheduled_output}" 2>&1
 then
@@ -617,12 +662,6 @@ assert_snapshot_contract \
   "${final_move_scheduled_backups}" \
   scheduled \
   publish-failed
-test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 1
-/usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
-if /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"; then
-  printf 'scheduled backup sent iCloud heartbeat after final move failure\n' >&2
-  exit 1
-fi
 
 final_move_predeploy_app="${test_root}/final-move-predeploy-app"
 final_move_predeploy_backups="${test_root}/final-move-predeploy-backups"
@@ -632,22 +671,15 @@ final_move_predeploy_output="${test_root}/final-move-predeploy.out"
   "${final_move_predeploy_app}" \
   "${final_move_predeploy_backups}"
 prepare_app "${final_move_predeploy_app}"
-printf '%s\n' \
-  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-local-test' \
-  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/guess-icloud-test' \
-  >"${final_move_predeploy_app}/backup-heartbeats.conf"
-/bin/chmod 600 "${final_move_predeploy_app}/backup-heartbeats.conf"
 prepare_runtime_state "${final_move_predeploy_app}"
 prepare_script \
   "${final_move_predeploy_app}" \
   "${final_move_predeploy_backups}" \
   "${final_move_predeploy_script}" \
   "${mock_final_move}"
-: >"${heartbeat_log}"
 : >"${final_move_log}"
 
 DOCKER_LOG="${docker_log}" \
-HEARTBEAT_LOG="${heartbeat_log}" \
 FINAL_MOVE_LOG="${final_move_log}" \
   "${final_move_predeploy_script}" \
     --trigger predeploy \
@@ -667,12 +699,6 @@ assert_snapshot_contract \
   "${final_move_predeploy_backups}" \
   predeploy \
   publish-failed
-test "$(/usr/bin/wc -l <"${heartbeat_log}" | /usr/bin/tr -d ' ')" = 1
-/usr/bin/grep -Fq '/api/push/guess-local-test' "${heartbeat_log}"
-if /usr/bin/grep -Fq '/api/push/guess-icloud-test' "${heartbeat_log}"; then
-  printf 'predeploy backup sent iCloud heartbeat after final move failure\n' >&2
-  exit 1
-fi
 
 malformed_archive_app="${test_root}/malformed-archive-app"
 malformed_archive_backups="${test_root}/malformed-archive-backups"
@@ -689,6 +715,7 @@ prepare_script \
   "${malformed_archive_app}" \
   "${malformed_archive_backups}" \
   "${malformed_archive_script}"
+: >"${event_log}"
 
 if MOCK_PG_RESTORE_DATA_FILE="${malformed_archive_data}" \
   DOCKER_LOG="${docker_log}" \
@@ -698,6 +725,7 @@ then
   exit 1
 fi
 test "$(find "${malformed_archive_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" = 0
+assert_homeops_event_sequence "${event_log}" FAILED
 
 legacy_v2_app="${test_root}/legacy-v2-app"
 legacy_v2_backups="${test_root}/legacy-v2-backups"
@@ -768,29 +796,49 @@ if DOCKER_LOG="${docker_log}" "${symlink_state_script}" >/dev/null 2>&1; then
 fi
 test "$(find "${symlink_state_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" = 0
 
-invalid_heartbeat_app="${test_root}/invalid-heartbeat-app"
-invalid_heartbeat_backups="${test_root}/invalid-heartbeat-backups"
-invalid_heartbeat_script="${test_root}/invalid-heartbeat-backup.sh"
-/bin/mkdir -p "${invalid_heartbeat_app}" "${invalid_heartbeat_backups}"
-prepare_app "${invalid_heartbeat_app}"
-prepare_runtime_state "${invalid_heartbeat_app}"
+reporting_degraded_app="${test_root}/reporting-degraded-app"
+reporting_degraded_backups="${test_root}/reporting-degraded-backups"
+reporting_degraded_script="${test_root}/reporting-degraded-backup.sh"
+reporting_degraded_stdout="${test_root}/reporting-degraded.stdout"
+reporting_degraded_stderr="${test_root}/reporting-degraded.stderr"
+/bin/mkdir -p "${reporting_degraded_app}" "${reporting_degraded_backups}"
+prepare_app "${reporting_degraded_app}"
+prepare_runtime_state "${reporting_degraded_app}"
 prepare_script \
-  "${invalid_heartbeat_app}" \
-  "${invalid_heartbeat_backups}" \
-  "${invalid_heartbeat_script}"
-printf '%s\n' \
-  'LOCAL_HEARTBEAT_URL=https://heartbeat.invalid/api/push/local' \
-  'ICLOUD_STAGE_HEARTBEAT_URL=https://heartbeat.invalid/api/push/icloud' \
-  >"${invalid_heartbeat_app}/backup-heartbeats.conf"
-/bin/chmod 644 "${invalid_heartbeat_app}/backup-heartbeats.conf"
+  "${reporting_degraded_app}" \
+  "${reporting_degraded_backups}" \
+  "${reporting_degraded_script}" \
+  /bin/mv \
+  "${reject_event_reporter}"
+: >"${rejected_event_log}"
 
+reporting_degraded_status=0
 if DOCKER_LOG="${docker_log}" \
-  "${invalid_heartbeat_script}" >/dev/null 2>&1
+  "${reporting_degraded_script}" \
+    >"${reporting_degraded_stdout}" \
+    2>"${reporting_degraded_stderr}"
 then
-  printf 'backup unexpectedly accepted an insecure heartbeat config mode\n' >&2
+  printf 'backup unexpectedly hid degraded HomeOps reporting\n' >&2
+  exit 1
+else
+  reporting_degraded_status="$?"
+fi
+test "${reporting_degraded_status}" -eq 1
+assert_snapshot_contract "${reporting_degraded_backups}" scheduled
+assert_homeops_event_sequence "${rejected_event_log}" SUCCESS 31
+test "$(/usr/bin/grep -Fc 'HomeOps backup event could not be retained' "${reporting_degraded_stderr}")" = 2
+/usr/bin/grep -Fqx \
+  'HomeOps backup reporting is degraded' \
+  "${reporting_degraded_stderr}"
+removed_push_route='/api''/push/'
+if /usr/bin/grep -Eq \
+  'https?://|/Users/|HOMEOPS_EVENT_REPORTER|report-homeops-event' \
+  "${reporting_degraded_stderr}" \
+  || /usr/bin/grep -Fq "${removed_push_route}" "${reporting_degraded_stderr}"
+then
+  printf 'degraded reporting stderr exposed a URL, path, or implementation detail\n' >&2
   exit 1
 fi
-test "$(find "${invalid_heartbeat_backups}" -name 'guess-pokemon-production-*' -type d | wc -l | tr -d ' ')" = 0
 
 orphan_app="${test_root}/orphan-app"
 orphan_backups="${test_root}/orphan-backups"
@@ -823,13 +871,11 @@ printf 'candidate release retained before first successful v2 state\n' \
 prepare_script "${legacy_app}" "${legacy_backups}" "${legacy_script}"
 
 : >"${docker_log}"
+: >"${event_log}"
 DOCKER_LOG="${docker_log}" "${legacy_script}" >/dev/null
 /usr/bin/grep -Fq -- "--project-name guess-pokemon" "${docker_log}"
 /usr/bin/grep -Fq -- "--project-directory ${legacy_app}" "${docker_log}"
 /usr/bin/grep -Fq -- "--file ${legacy_app}/compose.yaml" "${docker_log}"
-/usr/bin/grep -Fq 'backups {"eventKey":"guess-pokemon:backup:' "${event_log}"
-/usr/bin/grep -Fq '"status":"RUNNING"' "${event_log}"
-/usr/bin/grep -Fq '"status":"SUCCESS"' "${event_log}"
-/usr/bin/grep -Fq '"sizeBytes":31' "${event_log}"
+assert_homeops_event_sequence "${event_log}" SUCCESS 31
 
 printf 'Guess Pokémon production backup selection tests passed\n'

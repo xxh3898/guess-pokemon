@@ -14,9 +14,9 @@ Flyway migration, local snapshot, age/iCloud 복사와 복구 흐름을 한 번�
 - 고정 진입점: `scripts/*-bootstrap.sh`, `scripts/*-ci.sh`
 - 운영 상세: `docs/OPERATIONS.md`
 
-저장소 파일을 병합하는 것만으로 LaunchAgent, heartbeat URL, age recipient가
-Mac mini에 설치되지는 않는다. GitHub 변수·secret과 `/Users/homeserver/Server`
-변경도 각각 별도 운영 작업이다.
+저장소 파일을 병합하는 것만으로 LaunchAgent, HomeOps runtime reporter, age
+recipient가 Mac mini에 설치되지는 않는다. GitHub 변수·secret과
+`/Users/homeserver/Server` 변경도 각각 별도 운영 작업이다.
 
 ## 2. 변하지 않는 원칙
 
@@ -174,7 +174,7 @@ Backup root 열거와 `retention-plan.json` 임시 파일 생성·flush·원자 
 최초 7일 관찰, remote decrypt/restore drill과 별도 backup 삭제 승인 전에는
 `pruneCandidates`를 실제 삭제하지 않는다.
 
-## 8. age·iCloud와 heartbeat
+## 8. age·iCloud와 HomeOps reporting
 
 - public recipient: 운영 app directory의 mode `0600`
   `backup-age-recipient-v1.txt`
@@ -188,23 +188,21 @@ Ciphertext header와 SHA-256을 확인한 뒤 iCloud의 `.partial` 파일로 복
 hash가 같은 상태에서 final `.tar.age` rename 명령이 성공해야 한다. Rename 뒤
 final 경로가 symlink가 아닌 regular file이고 SHA-256이 local ciphertext와 다시
 일치할 때만 handoff 성공으로 기록한다. 그 전에 실패하면 local ciphertext를
-보존하고 iCloud-stage heartbeat를 보내지 않는다. 검증된 final을 만든 뒤 local
-ciphertext 정리만 실패하면 handoff는 성공으로 유지하되 경고를 남긴다. iCloud에는
-raw dump가 들어가지 않으며, iCloud local folder handoff는 remote upload 완료
-판정이 아니다.
+보존한다. 검증된 final을 만든 뒤 local ciphertext 정리만 실패하면 handoff는
+성공으로 유지하되 경고를 남긴다. iCloud에는 raw dump가 들어가지 않으며,
+iCloud local folder handoff는 remote upload 완료 판정이 아니다.
 
-선택적 heartbeat 설정은 app directory의 mode `0600`
-`backup-heartbeats.conf`다. 정확히 아래 두 key만 허용하며 실제 URL은 Git,
-문서, 로그에 기록하지 않는다.
+백업 lifecycle은 공용 HomeOps event reporter를 통해서만 보고한다. Worker가
+고정 `eventKey`를 만든 뒤 `RUNNING`을 보내고, 종료할 때 같은 key로 검증된 local
+snapshot의 `SUCCESS` 또는 process 실패의 `FAILED`를 보낸다. Reporter 종료 코드
+`0`만 owner-only spool 접수 성공으로 간주하며, 이는 HomeOps ingestion이나 후속
+알림 전달까지 성공했다는 의미가 아니다.
 
-```text
-LOCAL_HEARTBEAT_URL=<Uptime Kuma push URL>
-ICLOUD_STAGE_HEARTBEAT_URL=<Uptime Kuma push URL>
-```
-
-Local heartbeat는 snapshot publish 뒤, iCloud-stage heartbeat는 ciphertext
-handoff 뒤에만 보낸다. 운영 monitor 기준은 local 7시간, iCloud-stage
-8시간 grace이며 hook 설치 전에는 pause 상태를 유지한다.
+Project worker는 endpoint, origin, HMAC key 또는 외부 전송 secret을 알지 못한다.
+어느 lifecycle event든 reporter가 접수하지 못하면 stderr에는 일반화한 메시지만
+남긴다. 백업과 offsite 처리는 계속하고 검증된 artifact를 삭제하거나 손상시키지
+않지만, 원래 성공한 process도 최종적으로 nonzero 종료해 reporting degraded를
+명시한다. 원래 백업이 실패했다면 그 nonzero 상태를 유지한다.
 
 ## 9. 복구 원칙
 
@@ -228,8 +226,8 @@ handoff 뒤에만 보낸다. 운영 monitor 기준은 local 7시간, iCloud-stag
 | one-shot migration | 기존 app 유지, pending 보존 | 일부 적용 가능성 조사 |
 | candidate readiness/JPA validate | 이전 image/config 재적용 | migration 유지 |
 | public smoke | 이전 image/config 재적용 후 public smoke 재확인 | migration 유지 |
-| iCloud handoff | scheduled 실패 또는 predeploy generic 경고, iCloud heartbeat 생략 | local snapshot과 local ciphertext 유지 |
-| heartbeat 전송 | generic 경고, 다음 monitor timeout 관찰 | snapshot 유지 |
+| iCloud handoff | scheduled 실패 또는 predeploy generic 경고 | local snapshot과 local ciphertext 유지 |
+| HomeOps event 접수 | generic 경고와 reporting degraded nonzero 종료 | 검증된 snapshot과 offsite 결과 유지 |
 
 `docker compose down -v`, broad cleanup, 자동 reverse migration과 자동 운영
 restore는 rollback 수단이 아니다.
@@ -250,10 +248,10 @@ restore는 rollback 수단이 아니다.
 - [ ] recent 4 + daily 7 dry-run retention table test 추가
 - [ ] isolated one-shot Flyway와 API startup schema validate 추가
 - [ ] project별 quiescence hook과 public Web/deep/API/asset smoke 정의
-- [ ] age recipient, iCloud project directory, heartbeat config 경로 분리
+- [ ] age recipient, iCloud project directory, HomeOps reporter 경계 분리
 - [ ] 6시간 stagger schedule과 project lock 추가
 - [ ] 격리 restore drill, RTO 측정과 운영 restore 승인 절차 작성
-- [ ] Server 설치, GitHub 설정, monitor activation을 repository merge와 분리
+- [ ] Server 설치, GitHub 설정, HomeOps ingestion 활성화를 repository merge와 분리
 
 ## 12. 운영 전 최종 확인
 
